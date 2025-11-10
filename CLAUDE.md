@@ -2,6 +2,44 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repository Information
+
+**GitHub Repository**: https://github.com/leithwelsford/techspec-studio
+
+**Project Name**: TechSpec Studio
+
+**Owner**: leithwelsford (Leith Welsford <leith.welsford@gmail.com>)
+
+**License**: Not yet specified
+
+**Main Branch**: `main`
+
+**Initial Commit**: 2025-11-10 (commit 0fc2625)
+
+### Cloning the Repository
+
+```bash
+# HTTPS (recommended for most users)
+git clone https://github.com/leithwelsford/techspec-studio.git
+cd techspec-studio
+
+# SSH (if you have SSH keys configured)
+git clone git@github.com:leithwelsford/techspec-studio.git
+cd techspec-studio
+```
+
+### Local Development Setup
+
+After cloning:
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
 ## Project Overview
 
 This is an **AI-Powered Technical Specification Authoring System** built with React + TypeScript + Vite for the **telecommunications industry**. It transforms Business Requirement Specifications (BRS) into complete, standards-compliant technical specification documents.
@@ -117,6 +155,130 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 5. **Import style**: Use **relative paths** (NOT `@/` aliases - they're not configured)
 6. **State management**: Use Zustand store actions only (never mutate state directly)
 7. **Before coding**: Check [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) for planned architecture
+
+## Git Workflow
+
+### Daily Development Workflow
+
+```bash
+# 1. Check current status
+git status
+
+# 2. See what changed
+git diff
+
+# 3. Stage changes (all files)
+git add .
+
+# 4. Or stage specific files
+git add src/components/MyComponent.tsx
+
+# 5. Commit with descriptive message
+git commit -m "Add feature X: description of changes"
+
+# 6. Push to GitHub
+git push
+
+# 7. Pull latest changes (when collaborating)
+git pull
+```
+
+### Commit Message Guidelines
+
+**Format**: `<type>: <short description>`
+
+**Types**:
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation only
+- `style`: Code style/formatting (no logic change)
+- `refactor`: Code restructuring (no feature/bug change)
+- `test`: Adding/updating tests
+- `chore`: Maintenance (dependencies, build config)
+
+**Examples**:
+```bash
+git commit -m "feat: add SequenceDiagramEditor with live preview"
+git commit -m "fix: resolve spacebar handling in BlockDiagramEditor"
+git commit -m "docs: update CLAUDE.md with Git workflow"
+git commit -m "refactor: extract usePanZoom hook"
+```
+
+### Branch Strategy
+
+**Main Branch**: `main`
+- Always production-ready
+- Protected (requires PR for direct pushes in team setting)
+- All commits should be tested
+
+**Feature Branches** (recommended for larger features):
+```bash
+# Create and switch to feature branch
+git checkout -b feature/sequence-diagram-editor
+
+# Work on feature, commit regularly
+git add .
+git commit -m "feat: implement sequence diagram parser"
+
+# Push feature branch
+git push -u origin feature/sequence-diagram-editor
+
+# When ready, merge to main (via PR or locally)
+git checkout main
+git merge feature/sequence-diagram-editor
+git push
+```
+
+### Viewing History
+
+```bash
+# View commit history
+git log
+
+# Compact view
+git log --oneline
+
+# Last 5 commits
+git log --oneline -5
+
+# View changes in a commit
+git show <commit-hash>
+
+# View file history
+git log --follow -- src/components/MyComponent.tsx
+```
+
+### Undoing Changes
+
+```bash
+# Discard uncommitted changes to a file
+git checkout -- src/file.tsx
+
+# Unstage a file (keep changes)
+git reset src/file.tsx
+
+# Undo last commit (keep changes)
+git reset --soft HEAD~1
+
+# Undo last commit (discard changes) - DANGEROUS!
+git reset --hard HEAD~1
+```
+
+### Working with Remote
+
+```bash
+# View remote URLs
+git remote -v
+
+# Fetch changes without merging
+git fetch origin
+
+# Pull changes from main
+git pull origin main
+
+# Push to main
+git push origin main
+```
 
 ## Development Commands
 

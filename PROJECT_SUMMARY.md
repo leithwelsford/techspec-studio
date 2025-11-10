@@ -1,5 +1,11 @@
 # Project Summary
 
+## Repository
+
+**GitHub**: https://github.com/leithwelsford/techspec-studio
+**Project**: TechSpec Studio
+**Author**: Leith Welsford (leithwelsford)
+
 ## What We're Building
 
 An **AI-Powered Technical Specification Authoring System** where:

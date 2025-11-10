@@ -1,6 +1,10 @@
-# 5G Private Line Block Diagram Editor
+# TechSpec Studio
 
-A sophisticated React-based interactive diagram editor for visualizing 5G network architectures with real-time canvas manipulation.
+**AI-Powered Technical Specification Authoring System**
+
+A sophisticated React-based tool for creating technical specifications with AI assistance, featuring interactive diagram editing, markdown authoring, and 3GPP standards compliance.
+
+**GitHub Repository**: https://github.com/leithwelsford/techspec-studio
 
 ## Features
 
@@ -32,12 +36,23 @@ A sophisticated React-based interactive diagram editor for visualizing 5G networ
 
 ## Installation
 
-```bash
-# Install dependencies
-npm install
+### Clone the Repository
 
-# Add Tailwind CSS dependencies (not in package.json)
-npm install -D tailwindcss postcss autoprefixer
+```bash
+# HTTPS (recommended)
+git clone https://github.com/leithwelsford/techspec-studio.git
+cd techspec-studio
+
+# SSH (if you have SSH keys configured)
+git clone git@github.com:leithwelsford/techspec-studio.git
+cd techspec-studio
+```
+
+### Install Dependencies
+
+```bash
+# Install all dependencies (Tailwind CSS already included)
+npm install
 
 # Start development server
 npm run dev
@@ -47,6 +62,17 @@ npm run build
 
 # Preview production build
 npm run preview
+```
+
+### Git Configuration (for contributors)
+
+```bash
+# Set your Git identity
+git config user.name "Your Name"
+git config user.email "your.email@example.com"
+
+# Verify configuration
+git config --list
 ```
 
 ## Usage
@@ -275,6 +301,42 @@ Educational/demo code - adapt as needed for your project.
 8. **Validation**: Check for disconnected nodes or invalid connections
 9. **Search**: Find nodes by label or type
 10. **Minimap**: Overview navigator for large diagrams
+
+## Contributing
+
+### Development Workflow
+
+1. **Fork and clone** the repository
+2. **Create a feature branch**: `git checkout -b feature/your-feature-name`
+3. **Make your changes** and commit regularly
+4. **Push your branch**: `git push -u origin feature/your-feature-name`
+5. **Open a Pull Request** on GitHub
+
+### Commit Guidelines
+
+Follow conventional commit format:
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation changes
+- `refactor:` - Code refactoring
+- `test:` - Adding tests
+- `chore:` - Maintenance tasks
+
+**Example**: `feat: add SequenceDiagramEditor with live preview`
+
+### Code Style
+
+- Use TypeScript for all new code
+- Follow existing patterns (Zustand store, relative imports)
+- Add types to [src/types/index.ts](src/types/index.ts)
+- Never mutate Zustand state directly
+- Test your changes before committing
+
+### Getting Help
+
+- Check [CLAUDE.md](CLAUDE.md) for development guidance
+- Review [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) for roadmap
+- See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues
 
 ---
 
