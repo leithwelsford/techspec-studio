@@ -1,0 +1,519 @@
+# **Ethio Telecom**
+
+## **Project Name:** 5G Private Line
+
+### **Technical Specification (TSD)**
+
+**Version:** 0.1 (Draft)
+**Status:** Draft
+**Date:** [DD-MMM-2025]
+
+---
+
+## Table of Contents
+
+1. Document Control
+2. Service Overview
+
+   * 2.1 Service Description
+   * 2.2 Objectives
+   * 2.3 Target Customer
+   * 2.4 Architecture Context
+3. Functional Specification
+
+   * 3.1 Service Definition & Variants (Normative)
+   * 3.2 Service Logic
+   * 3.3 Business and Operational Rules
+4. Solution Architecture and Design
+
+   * 4.1 Architecture Figures (Block Diagrams)
+   * 4.2 Architecture Overview
+
+     * 4.2.1 QoS & Bearer Model (Normative)
+     * 4.2.2 Fixed–Mobile Convergence (RADIUS→PCC, Shared TDF)
+   * 4.3 Logical Architecture
+
+     * 4.3.1 Access-Layer QoS Mapping (Normative)
+   * 4.4 Interfaces
+   * 4.5 Sequence Diagrams
+   * 4.6 PCC Procedures (NSA/EPC)
+
+     * 4.6.1 Fixed Session Lifecycle (RADIUS→PCC)
+     * 4.6.x PrimaryUp Enforcement (Fixed Healthy)
+     * 4.6.y Dual-Active Detection Response
+     * 4.6.3 Primary/Backup Coordination — Policy State Machine
+5. Non-Functional Requirements
+6. OSS/BSS and Service Management
+
+   * 6.1 Provisioning & Identity Correlation (Fixed + Mobile)
+   * 6.2 Assurance & Reporting (Fixed + Mobile)
+7. SLA Summary
+
+   * 7.1 Measurement & Reporting
+8. Open Items
+9. Appendices
+
+   * A. Abbreviations
+   * B. References
+   * C. Design Rationale — Dedicated GBR Bearer (and Alternatives)
+
+---
+
+## Document Control
+
+### Document Release
+
+| Name     | Title | Date       |
+| -------- | ----- | ---------- |
+| Author   |       | DD/MM/YYYY |
+| Reviewer |       | DD/MM/YYYY |
+
+### Customer Sign-off
+
+| Name     | Title | Date       |
+| -------- | ----- | ---------- |
+| Approver |       | DD/MM/YYYY |
+
+### Revision History
+
+| Revision | Name | Changes       | Date       |
+| -------- | ---- | ------------- | ---------- |
+| 0.1      |      | Initial Draft | DD/MM/YYYY |
+
+---
+
+## 2. Service Overview
+
+### 2.1 Service Description
+
+The **5G Private Line** is an enterprise connectivity service providing **guaranteed throughput** and **speed assurance** using the **existing 5G NSA infrastructure**. It enables enterprise customers to use 5G for:
+
+* **Primary access**, delivering fixed-site broadband where fibre is unavailable.
+* **Backup (Failover)** connectivity to FTTx services.
+* **On-the-Move** connectivity, providing guaranteed speed within 5G NR coverage areas.
+
+This service leverages the existing **Evolved Packet Core (EPC)** for user-plane and policy management functions.
+
+> **MVP assumption (NSA NR detection unavailable):** For **Primary Access** and **Backup (Failover)** variants, the service assumes the deployed **CPE/UE is 5G-capable and configured for 5G operation**. This requirement **SHALL** be disclosed during sales and captured in the customer order/acceptance checklist.
+
+### 2.2 Objectives
+
+* Introduce a premium 5G enterprise-grade service to commercialise the 5G network.
+* Provide deterministic SLA-based connectivity and extend enterprise use cases beyond FTTx.
+
+### 2.3 Target Customer
+
+Enterprise customers requiring guaranteed, SLA-driven connectivity for fixed sites, backup continuity, or mobility within NR coverage.
+
+### 2.4 Architecture Context
+
+* **Access:** **Converged** — **5G NR (NSA)** *and* **Fixed (FTTx via BNG/BRAS)**.
+* **Core:** **EPC (mobile)** + **BNG/BRAS** with **converged service edge: TDF/PCEF (SG + SMP)** on SGi.
+* **Control Plane:** **EPC‑anchored (NSA)** for mobile; **RADIUS → SMP (Fixed) → PCRF** for fixed (converged policy domain).
+* **User Plane:** **Mobile:** UE ⇄ **P‑GW (PCEF)** ⇄ **TDF/PCEF (SG)** ⇄ Internet; **Fixed:** CPE ⇄ **BNG** ⇄ **TDF/PCEF (SG)** ⇄ Internet — the **TDF/PCEF** provides a common enforcement/visibility anchor.
+
+---
+
+## 3. Functional Specification
+
+### 3.1 Service Definition & Variants (Normative)
+
+**Service Definition (normative — the what):**
+
+* **Scope & Purpose:** Enterprise 5G Private Line with **speed‑only assurance** for fixed‑site connectivity, failover to 5G for FTTx, and conditional mobility.
+* **Access Types:** **Fixed (FTTx backup)** and **Mobile (On‑the‑Move)** under NR coverage; both governed by common PCC/TDF policy.
+* **Bearer Model:** **Dedicated GBR EPS bearer** between **UE ↔ P‑GW (PCEF)** with tiered **GBR/MBR/ARP** values.
+* **Pre‑conditions:** Verified **NR coverage**, serving‑site capacity **< 80%**, customer **X,Y coordinates** provided.
+* **Constraints:** **No load balancing** for Backup; **Fair Usage Policy** may apply; **On‑the‑Move** speed targets are **conditional** (see §7.1).
+* **CPE Behaviour (Backup variant):** Customer-managed routers/CPE **SHALL NOT** be configured for WAN aggregation/ECMP or any form of load‑balancing across **FTTx** and **5G**. Only **failover** is permitted. When **PrimaryUp=true**, the Operator **SHALL** enforce **mobile path gating** (P‑GW Gate=Closed) and/or TDF drop/shape to prevent service traffic on the 5G leg.
+* **Measurement Point:** **SGi at P‑GW/TDF** per §7.1; reporting windows and compliance rules as defined in §7.
+* **Exclusions:** Out‑of‑coverage, planned maintenance, force majeure, CPE faults.
+
+- **Location binding (Primary/Backup):** The service is **bound to a single, provisioned service location** (geofence tied to installation address). **Sessions originating outside the provisioned location SHALL be blocked** on the mobile leg. *(Not applicable to On-the-Move.)*
+
+**Variants (commercial):**
+
+Aligned to the BRS, three commercial variants are supported:
+
+#### a. Basic Connectivity
+
+| Speed    | Base Price (ETB) | Excise Tax | VAT      | Final Price (ETB) | SLA (Speed Only) |
+| -------- | ---------------- | ---------- | -------- | ----------------- | ---------------- |
+| 50 Mbps  | 5,086.96         | 254.35     | 801.20   | 6,142.50          | 80%              |
+| 100 Mbps | 7,627.33         | 381.37     | 1,201.30 | 9,210.00          | 75%              |
+| 200 Mbps | 13,565.22        | 678.26     | 2,136.52 | 16,380.00         | 70%              |
+
+#### b. Backup for FTTx Service
+
+Backup provides a redundant 5G connection priced at **25% of the primary connectivity cost**.
+
+| Speed    | Base Price (ETB) | Excise Tax | VAT    | Final Price (ETB) |
+| -------- | ---------------- | ---------- | ------ | ----------------- |
+| 50 Mbps  | 4,271.74         | 63.59      | 200.30 | 1,535.63          |
+| 100 Mbps | 1,906.83         | 95.34      | 300.33 | 2,302.50          |
+| 200 Mbps | 3,391.30         | 169.57     | 534.13 | 4,095.00          |
+
+#### c. On-the-Move Service
+
+Provides guaranteed speed while within 5G NR coverage.
+
+| Speed   | Base Price (ETB) | Excise Tax | VAT    | Final Price (ETB) | SLA (Speed Only) |
+| ------- | ---------------- | ---------- | ------ | ----------------- | ---------------- |
+| 10 Mbps | 2,766.21         | 138.31     | 345.68 | 3,340.20          | 75%              |
+| 20 Mbps | 3,256.61         | 162.83     | 512.92 | 3,932.36          | 70%              |
+
+*Technical note:* Owing to stochastic NR‑Uu radio conditions (fading, mobility handovers, PRB load variability), a deterministic minimum‑throughput SLA for **On‑the‑Move** is not technically enforceable end‑to‑end; any speed targets are conditional KPIs only.
+
+**On‑the‑Move Handling Options (Design Decision)**
+
+* **Option A — Priority‑Only Mobility (recommended general case):**
+
+  * **Contract:** *No minimum speed commitment.*
+  * **Policy:** Provision a **priority non‑GBR bearer** (QCI with high **ARP**) and apply **TDF priority policy** with an **advisory minimum bitrate target** (for queuing/shaping), not a guarantee. Optional per‑application boosts via TDF ADC.
+  * **Rationale:** Works uniformly across LTE anchor and NR under NSA without making unenforceable promises.
+* **Option B — Conditional GBR (LTE anchor present):**
+
+  * **Contract:** *No minimum speed commitment.*
+  * **Policy:** When **LTE anchor** is available and **RAN/OSS KPIs** (coverage/quality/load) pass thresholds, **PCRF may authorise a Dedicated GBR EPS bearer**; otherwise fall back to **Option A**. GBR use is **opportunistic** and **non‑contractual**.
+
+*Design note:* **The Operator SHALL select Option A or Option B during solution design** based on available technology and platform capabilities in the Operator’s network (PCRF/PCEF/TDF/RAN). Selection does **not** convert On‑the‑Move into a speed‑based SLA.
+
+*Recommendation:* (a) enforce speed assurance via a Dedicated **GBR** bearer on the **LTE** anchor (explicit and controllable in the EPC control plane); or (b) if LTE GBR is not provisioned, **do not** offer a speed SLA—apply **priority‑only** treatment at the **TDF** (ADC shaping/marking) instead.
+
+#### 3.1.x Customer‑Managed CPE Requirements (Normative)
+
+* **Dual‑WAN profile:** WAN1=FTTx (primary), WAN2=5G (standby).
+* **No load‑balancing:** ECMP, “smart balance/aggregation,” and per‑flow PBR across WANs **MUST be disabled**.
+* **Health checks & hysteresis:** Active probes for primary‑alive; fail after N consecutive losses; restore after M successes; hold‑down ≥30 s.
+* **Failover only:** 5G default route **disabled or higher metric** until failover. Revert to FTTx on restoration.
+* **Optional overlay:** When session continuity is required, use IPsec/GRE/SD‑WAN with **FTTx=primary underlay** and **5G=standby underlay**.
+
+---
+
+### 3.2 Service Logic
+
+* **Basic Connectivity:** Fixed-site 5G access with guaranteed speed according to the subscribed SLA.
+* **Backup:** Active in failover only; no load balancing permitted between primary and backup links.
+* **On-the-Move:** SLA applies only within active 5G NR coverage; once out of coverage, guaranteed speed lapses.
+
+---
+
+### 3.3 Business and Operational Rules (per BRS)
+
+1. **Sales Pre-Check:** Salesperson must validate 5G coverage and site capacity prior to sale.
+2. **Capacity Threshold:** Sales are not permitted once site capacity reaches 80%.
+3. **Customer Location:** Customer must provide **X, Y coordinates** for installation.
+4. **Mobility Limitation:** Guaranteed speed applies only within NR coverage.
+5. **Failover Restriction:** No load balancing between connections.
+6. **Location Binding (Primary/Backup):** The service is limited to the registered installation address; off-site use is prohibited and **policy-blocked**.
+7. **Mobility Exception (On-the-Move):** On-the-Move variant is **explicitly exempt** from location binding; use is permitted within NR coverage subject to product rules.
+8. **Relocation:** Must verify speed availability at the new site before transfer.
+9. **Fair Usage:** Policy applies to all packages.
+10. **Pricing:** All prices are **inclusive of excise tax and VAT**.
+11. **CPE attestation:** Customer acknowledges the no‑load‑balancing configuration; Operator may request configuration evidence during acceptance.
+12. **Enforcement:** If dual‑active use is detected while PrimaryUp=true, Operator may block/shape 5G traffic (Gate=Closed) and notify Customer.
+13. **SLA scope:** Speed‑only SLA on the 5G leg applies **only** when `BackupActive=true`. Dual‑active periods are out‑of‑scope.
+14. **MVP sales disclosure (NSA NR detection unavailable):** Order forms **SHALL** state that the **CPE/UE is 5G‑capable and configured for 5G**, and this **SHALL** be verified at installation (device model, bands, firmware).
+
+---
+
+## 4. Solution Architecture and Design
+
+### 4.1 Architecture Figures (Block Diagrams)
+
+*Figure 4‑1 — Converged Service Edge (TDF/PCEF) Overview:* *(placeholder — insert final image)*
+
+
+*Figure 4‑2 — Fixed Access (BNG→SG→Internet):* *(placeholder — insert final image or refined diagram)*
+
+*Figure 4‑3 — Policy/Charging Control Context (Gx/Sd/Gyn):* *(placeholder — insert final image or refined diagram)*
+
+### 4.2 Architecture Overview
+
+> #### Design Summary — Converged Service Edge (TDF/PCEF = SG + SMP)
+> - **Converged node**: A single service edge handles both mobile and fixed: **TDF (mobile)** and **PCEF (fixed)** realised by shared **SG** dataplane plus **SMP (Mobile/Fixed)** control components.
+> - **Unified policy brain**: **PCRF** governs both legs (Gx to P‑GW; Sd to **SMP (Mobile)**; Gxn from **SMP (Fixed)**); **Gyn** used for online charging where enabled.
+> - **Why split into SG + SMP**: clarifies dataplane (**SG**) vs control/mediation (**SMP**) responsibilities, enabling clean integration of **RADIUS→PCC** for fixed and **Gx/Sd** for mobile.
+> - **Operational benefits**: one enforcement/visibility point on **SGi**, consistent dual‑active detection, and location‑binding/gating logic aligned with Backup rules.
+> - **Scope alignment**: Design matches the BRS “speed‑only SLA”, Dedicated **GBR** on LTE anchor, and no hard speed commitments for On‑the‑Move.
+
+
+**Network Type:** **Converged** — **5G NSA (Non‑Standalone)** **+ Fixed (FTTx via BNG/BRAS)** with **converged service edge TDF/PCEF (SG + SMP)** on **SGi**.
+
+**Core Components (service‑relevant):**
+
+* **UE/CPE** — Enterprise device (mobile UE or fixed CPE) using the service.
+* **P‑GW (PCEF)** — Mobile policy enforcement & user‑plane anchor; terminates the **Dedicated GBR EPS bearer** used for 5G Private Line.
+* **BNG/BRAS (fixed)** — Fixed user‑plane anchor toward SGi/**SG**.
+* **PCRF** — Unified policy decision point: issues PCC rules to **P‑GW (Gx)**; issues ADC/shaping to **SMP (Mobile)** over **Sd**; receives fixed‑side policy events over **Gxn** from **SMP (Fixed)**.
+* **SMP (Fixed)** — Fixed control‑plane function mediating **RADIUS (Auth/Acct/CoA)** into subscriber state/events for **PCRF** (e.g., `PrimaryUp/Down`) and **Gxn** signalling.
+* **TDF/PCEF (SG + SMP)** — Converged service edge on **SGi** providing application detection/traffic shaping (**SG/ADC**) and housing **SMP (Mobile)**; serves as **common enforcement/visibility** for both legs.
+* **OCS** — Online charging for detected flows via **Gyn (Mobile/Fixed)** as applicable.
+* **OSS/BSS** — Orchestration, activation, assurance & reporting.
+
+> **Convergence note:** Elements such as **MME/AMF** and **SGW** are part of the NSA/EPC environment but are **not service‑defining**. The decisive constructs are (i) the **Dedicated GBR EPS bearer** between **UE ↔ P‑GW (PCEF)** on the mobile leg, and (ii) **policy/visibility via the converged TDF/PCEF (SG + SMP)** on SGi for **both** legs.
+
+**Policy note:** To mitigate misconfigured CPE (load‑balancing), the PCRF enforces **Gate=Closed** at the P‑GW and/or **SG** drop rules whenever **PrimaryUp=true** (see §4.6.3).
+
+#### 4.2.1 QoS & Bearer Model (Normative)
+
+* The service **SHALL** use a **Dedicated GBR EPS bearer** between **UE ↔ P‑GW (PCEF)**, with GBR/MBR/ARP values per subscribed tier.
+* **PCRF (Gx)** **SHALL** install/modify PCC rules (GBR/MBR/QCI/ARP, gating) on the PCEF; **Sd** to **SMP (Mobile)** MAY apply ADC/shaping at the **SG**; **Gyn** MAY be used for online charging where enabled.
+* **Dedicated bearer setup** **SHALL** follow standard procedures: **RAR/RAA** on Gx, with RAN executing RAB/DRB configuration accordingly.
+* **Backup variant** **SHALL NOT** be load-balanced with primary fixed access; gating is applied per state machine in **4.6.3**.
+* **On‑the‑Move handling:** The Operator SHALL choose **Option A (Priority‑Only Mobility)** or **Option B (Conditional GBR)** per §3.1.c. Under either option, **no minimum speed is committed**; GBR (if used) is **conditional** and **non‑contractual**.
+
+- **Enforcement of location binding (Primary/Backup):** PCRF **SHALL** apply **geofence policy** (cell/site/TA whitelist or equivalent) for the subscriber; on mismatch, **Gate=Closed** at P‑GW and **SG** drop for service SDFs. *(On-the-Move excluded.)*
+
+#### 4.2.2 Fixed–Mobile Convergence (RADIUS→PCC, Converged TDF/PCEF)
+
+* **Single policy brain:** A unified **PCRF** governs **both fixed and mobile** legs.
+* **Fixed control-plane:** **BNG/BRAS → SMP (Fixed) → PCRF**. The **SMP (Fixed)** mediates **RADIUS** (Access/Acct/CoA) into **subscriber state** (e.g., `PrimaryUp/Down`) and **Gxn** signalling to the PCRF.
+* **Shared enforcement/visibility:** The **TDF/PCEF (SG + SMP)** on SGi applies **ADC/shaping** and exports usage/events for both legs; **P‑GW (PCEF)** enforces **Gx** policies on the mobile leg.
+* **Backup logic:** When **PrimaryUp=true** (fixed healthy), PCRF keeps the mobile service **gated** (Gate=Closed) and denies GBR on the mobile leg; when **PrimaryUp=false**, PCRF opens GBR on mobile per tier.
+* **Vendor note (non‑3GPP naming):** “PMF” seen in some docs maps to **SMP (Fixed)** here; Huawei **UPCC (PCRF)** does **not** terminate **RADIUS** — use **SMP (Fixed)**/AAA mediation northbound to **PCRF**.
+
+### 4.3 Logical Architecture
+
+* **Service construct:** **Converged** policy/enforcement: mobile leg uses a **Dedicated GBR EPS bearer** (**UE ↔ P‑GW (PCEF)**) per tier; fixed leg is governed by **ADC policies at the converged TDF/PCEF (SG)** on SGi; both legs are controlled by a **single PCRF**.
+* **Policy path:** **PCRF → PCEF (Gx)** for PCC rules; **PCRF → SMP (Mobile) (Sd)** for ADC/shaping on **SG**; **SMP (Fixed) → PCRF (Gxn)** for fixed‑side state/policy; **SMP (Mobile/Fixed) ↔ OCS (Gyn)** when online charging applies.
+* **Data path:** **Mobile:** UE ⇄ **P‑GW** ⇄ **TDF/PCEF (SG)** ⇄ Internet; **Fixed:** CPE ⇄ **BNG** ⇄ **TDF/PCEF (SG)** ⇄ Internet — service SDFs identified for assurance/charging as applicable.
+* **Operational:** OSS/BSS triggers activation, monitors KPIs, and enforces “no load balancing” for Backup variant; assurance pulls SGi throughput counters.
+* **Dual‑Active detection:** **SG/IPFIX** and SGi counters identify simultaneous fixed+mobile flows for the same Subscriber ID. When detected under **PrimaryUp=true**, PCRF triggers **RAR→P‑GW (Gate=Closed)** and raises an assurance event (see §6.2).
+* **NR in‑scope determination (NSA):** Determined via **RAN/OSS telemetry** (NR coverage maps/neighbor lists, EN‑DC availability, **PRB utilisation**, **RSRP/SINR** thresholds). In NSA, the **EPC/Gx RAT‑Type typically reports E‑UTRAN** and **does not reliably indicate NR usage**.
+* **Use of RAT‑Type (NSA):** **Informational only** for policy decisions; **not** used to decide SLA in‑scope status (see §7.1).
+
+**Normative note (NSA):** The EPC control‑plane does **not** expose an NR RAT‑Type; NR usage **SHALL NOT** be inferred from Gx—SLA in‑scope **SHALL** rely on RAN/OSS telemetry.
+
+### 4.4 Interfaces
+
+| Interface                           | Function                                   | Notes                                                                                                     |
+| ----------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| SGi                                 | P‑GW/BNG ↔ **TDF/PCEF (SG)** / Internet    | Converged service data path (mobile & fixed)                                                              |
+| Gx                                  | PCRF ↔ P‑GW (PCEF)                         | PCC rules, QoS, gating for 5G Private Line                                                                |
+| Sd                                  | PCRF ↔ **SMP (Mobile)**                    | ADC rules, signatures, reporting (executed at **SG**)                                                     |
+| **Gyn (Mobile)**                    | **SMP (Mobile) ↔ OCS**                     | Online charging for mobile‑detected flows                                                                 |
+| **Gyn (Fixed)**                     | **SMP (Fixed) ↔ OCS**                      | Online charging for fixed‑detected flows                                                                  |
+| **RADIUS (Auth/Acct/CoA)**          | **BNG/BRAS ↔ SMP (Fixed)**                 | Fixed access control plane; CoA used for policy updates                                                   |
+| **Gxn**                              | **SMP (Fixed) ↔ PCRF**                     | Translates RADIUS sessions/events to PCRF subscriber state                                                |
+| **BNG ↔ SG (SPAN/IPFIX)**           | **Fixed user‑plane visibility**            | **SG** observes fixed flows; unified ADC policies                                                         |
+| **RAN/OSS KPIs**                    | **RAN/OSS ↔ OSS/Assurance**                | NR coverage/EN‑DC availability, PRB utilisation, RSRP/SINR; used for SLA in‑scope tagging (§7.1)          |
+| **CPE Ops Hooks (optional)**        | **CPE ↔ SMP (Fixed)/OSS**                  | Webhook/SNMP traps for PrimaryUp/Down and probe state (advisory; not trusted for SLA)                     |
+| OSS API                             | OSS ↔ Network Functions                    | Activation, monitoring, assurance                                                                         |
+| **RAN Cell/Sector Catalogue**       | **OSS/Inventory ↔ PCRF/Assurance**         | Provides cell/eNB/gNB lists per service location for geofence enforcement (Primary/Backup); kept updated  |
+| **Location Policy Feed**            | **Provisioning/CRM ↔ PCRF**                | Supplies service address geo (lat/long or sector set) used to compile the geofence whitelist              |
+
+### 4.5 Sequence Diagrams
+
+* **4.5.1 IP‑CAN Session Setup — Sequence (Fig. 4‑4)**
+* **4.5.2 Dedicated GBR Creation (RAR/RAA) — Sequence (Fig. 4‑5)**
+* **4.5.3 Sd Session (TSR/TSA) via SMP (Mobile) — Sequence (Fig. 4‑6)**
+* **4.5.4 Unsolicited Application Reporting — Sequence (Fig. 4‑7)**
+* **4.5.5 Gyn Online Charging — Sequence (Fig. 4‑8)**
+* **4.5.6 Dual‑Active Detection & Mitigation — Sequence (Fig. 4‑9)**
+
+### 4.6 PCC Procedures (NSA/EPC)
+
+1. **IP‑CAN Session Establishment** — PCEF sends `CCR [INITIAL]` to PCRF over **Gx**; PCRF responds with `CCA [INITIAL]` and PCC rules.
+2. **Sd Session Establishment (Solicited)** — PCRF sends `TSR` over **Sd** to **SMP (Mobile)**; `TSA` returned.
+3. **Online Charging (if enabled)** — **SMP (Mobile/Fixed)** ↔ OCS `CCR/CCA` over **Gyn** to obtain/grant service units.
+4. **Dedicated Bearer & QoS Enforcement** — PCRF issues **RAR** to PCEF to install/modify PCC rules (GBR, ARP); **RAA** returned.
+5. **Updates & Monitoring** — `CCR/CCA [UPDATE]` between PCEF/**SMP** and PCRF for usage and policy changes.
+6. **Session Termination** — `CCR/CCA [TERMINATION]` to close sessions (Gx/Sd/Gyn as applicable).
+
+**Normative (Backup variant):** When `PrimaryUp=true`, the PCRF **SHALL** keep 5G service **gated** at the P‑GW (**Gx Gate=Closed**) and **SHALL NOT** authorise **GBR** bearers for the subscriber. The mobile IP‑CAN may remain established for correlation and signalling. Optional hard rejection (APN bar / IP‑CAN termination) is out‑of‑scope for the Backup variant.
+
+#### 4.6.1 Fixed Session Lifecycle (RADIUS→PCC)
+
+1. **RADIUS Access‑Accept (BNG ↔ SMP (Fixed))**: **SMP (Fixed)** creates/updates **FixedSession** with subscriber ID; informs **PCRF** (create/update subscriber state) via **Gxn**.
+2. **RADIUS Accounting‑Start/Interim:** **SMP (Fixed)** updates usage/heartbeat; **PCRF** evaluates **PrimaryUp=true**; installs/updates **ADC policy on SG** via **Sd → SMP (Mobile)** (monitor‑only) and, where relevant, notifies mobile side to **gate close**.
+3. **RADIUS Accounting‑Stop** (or CoA‑Terminate): **SMP (Fixed)** flags **PrimaryUp=false**; **PCRF** triggers **RAR to P‑GW** to **open** dedicated GBR bearer (backup activation) and updates SG policies.
+
+**Identity correlation:**
+
+| Domain       | Identifiers used                                                                           | Correlation target                               |
+| ------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| Fixed (BNG)  | username/realm, IPv4/IPv6, **Acct‑Session‑Id**, CPE MAC (Option 82/Agent‑Circuit‑Id), VLAN | **Subscriber ID** (MSISDN/Enterprise ID) in PCRF |
+| Mobile (EPC) | IMSI/MSISDN, APN, IP‑CAN session ID                                                        | Same **Subscriber ID**                           |
+
+**Policy mapping (illustrative):**
+
+| RADIUS Attribute              | PCRF Concept     | Effect                                |
+| ----------------------------- | ---------------- | ------------------------------------- |
+| Filter‑Id / QoS‑Profile       | PCC policy set   | QoS class/profile applied at BNG/SG   |
+| Acct‑Status‑Type              | Subscriber state | Drives **PrimaryUp/Down** transitions |
+| Framed‑IP‑Address/IPv6‑Prefix | UE IP (fixed)    | For SG flow correlation               |
+
+#### 4.6.2 Location Binding Enforcement (Primary/Backup)
+1. **Provisioning:** Service location (lat/long and/or authorised cell/site list) is associated with Subscriber ID in PCRF.  
+2. **Evaluation:** On IP-CAN [INITIAL/UPDATE], PCRF evaluates **serving cell/TA/sector** (via vendor-specific feeds or OSS tags).  
+3. **Decision:** If **outside geofence** → **Gx RAR Gate=Closed** for service SDFs; optional **SG drop**; raise assurance event.  
+4. **Exception:** On-the-Move variant **bypasses geofence checks**.
+
+#### 4.6.x PrimaryUp Enforcement (Fixed Healthy)
+
+1. **SMP (Fixed)** sets `PrimaryUp=true` → PCRF state update  
+2. PCRF → P‑GW (Gx RAR): **Gate=Closed** for mobile service SDFs; GBR not authorised  
+3. PCRF → **SMP (Mobile) / SG (Sd)**: monitor‑only policy (no service traffic pass)
+
+#### 4.6.y Dual‑Active Detection Response
+
+1. **SG/IPFIX** indicates concurrent fixed+mobile flows for Subscriber ID while `PrimaryUp=true`  
+2. PCRF → P‑GW (Gx RAR): **Gate=Closed** / drop mobile SDFs; optional notification to OSS  
+3. Assurance records **Dual‑Active minutes** and customer notice (see §6.2)
+
+#### 4.6.3 Primary/Backup Coordination — Policy State Machine
+
+**Goal:** Ensure 5G Private Line is **failover‑only** when fixed is healthy.
+
+**States:** `PrimaryUp` → `BackupBlocked` (5G gated) / `PrimaryDown` → `BackupActive` (5G GBR open).
+
+**Transitions & actions:**
+
+| Event                                                                | Source                     | PCRF Action                                                                     | Enforcement                                                                     |
+| -------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Fixed session start / interim alive                                  | RADIUS via **SMP (Fixed)** | Set **PrimaryUp=true**                                                          | **Gx RAR** to P‑GW: **Gate=Closed** or no GBR auth; **Sd** to **SMP (Mobile)/SG** monitor‑only  |
+| Fixed session stop / CoA‑Terminate / heartbeat lost                  | RADIUS/**SMP (Fixed)** or **SG** | Set **PrimaryUp=false**                                                         | **Gx RAR** to P‑GW: **Gate=Open**, install GBR; **Sd** to **SMP (Mobile)/SG** apply ADC/shaping |
+| Restore with hysteresis                                              | Timers (OSS/**SMP (Fixed)**)  | Hold‑down 30–60 s                                                               | Prevents flap between paths                                                     |
+| Fixed alive (PrimaryUp=true) **and** mobile service traffic observed | **SG/Assurance**           | **Gx RAR Gate=Closed**; optional 0‑rate on mobile SDFs; raise Dual‑Active event | Blocks 5G use while fixed is healthy                                            |
+
+**Charging options:**
+
+* **Retainer** always on fixed bill; **backup usage** rated only when `BackupActive=true` (**SMP → OCS via Gyn**). (If not required, disable Gyn for fixed.)
+
+## 5. Non-Functional Requirements
+
+| Parameter           | Requirement                        | Source            |
+| ------------------- | ---------------------------------- | ----------------- |
+| Availability        | Guaranteed within 5G coverage      | BRS section 2.1.5 |
+| Throughput SLA      | 80% / 75% / 70% according to tier  | BRS tables        |
+| Coverage Dependence | SLA valid only in NR coverage area | BRS section 2.1.5 |
+| Backup Behaviour    | Failover-only; no load balancing   | BRS section 2.1.5 |
+| Fair Usage          | Applies to all tiers               | BRS section 2.1.5 |
+| Pricing             | Inclusive of Excise Tax and VAT    | BRS tables        |
+
+---
+
+## 6. OSS/BSS and Service Management
+
+### 6.1 Provisioning & Identity Correlation (Fixed + Mobile)
+
+* **Catalog → PCRF**: single product with **two access legs** (Fixed, Mobile) bound to one **Subscriber ID**.
+* **SMP (Fixed) onboarding**: configure realms, attribute maps (RADIUS→PCC), identity stitching (username/MSISDN/CPE MAC).
+* **CPE/Router**: configure health probe FQDN/IP for primary‑alive detection; ensure **no ECMP**, higher route metric for 5G.
+* **MVP capture (NSA NR detection unavailable):** Record **CPE model**, **5G band support**, **firmware**, and **5G mode enabled** at activation; store as part of the service record.
+* **Location data:** Capture **installation address + lat/long** and/or **authorised cell/site set**; maintain in inventory and sync to PCRF.
+* **Variant flag:** **On-the-Move exemption** flag to bypass location enforcement policies.
+
+### 6.2 Assurance & Reporting (Fixed + Mobile)
+
+* **KPIs**: Time‑to‑failover, Time‑to‑restore, %Time on backup, Backup throughput (SGi), Fixed session uptime, **Dual‑Active minutes**, **Gate=Closed events**, **% sessions within geofence (Primary/Backup)**.
+* **Logs**: State transitions (PrimaryUp/Down) with reason codes; RADIUS and Gx/RAR timestamps; **geofence policy hits (cell mismatch) and Gate=Closed actions with serving-cell evidence**.
+* **In‑scope tagging (NSA):** Use **RAN/OSS telemetry** to determine NR in‑scope status (coverage/neighbor lists, EN‑DC availability, **PRB utilisation**, **RSRP/SINR** thresholds). Treat **EPC/Gx RAT‑Type** as **informational only**.
+* **Rule:** Any mobile service traffic while `PrimaryUp=true` is flagged **Dual‑Active** and may be **actively blocked**; such intervals are **SLA out‑of‑scope**.
+* **Evidence retention:** Retain **geofence and RAN evidence** (serving cell/sector, PRB, RSRP/SINR snapshots) for **≥ 90 days** for audit/dispute resolution.
+* **Reports**: Unified customer report combining fixed + mobile usage and SLA compliance; include in‑scope %, CMSF compliance %, HO counts, average RSRP/SINR and PRB load.
+
+## 7. SLA Summary
+
+| Service Variant    | Speed Options   | SLA (Speed Only)      | Notes                                                                                          |
+| ------------------ | --------------- | --------------------- | ---------------------------------------------------------------------------------------------- |
+| Basic Connectivity | 50/100/200 Mbps | 80% / 75% / 70%       | Fixed site guaranteed service                                                                  |
+| Backup             | Mirrors primary | Same as Basic         | 25% pricing of primary; failover-only                                                          |
+| On-the-Move        | 10/20 Mbps      | *No speed commitment* | **Priority handling** via Option A or **conditional GBR** via Option B; KPIs are informational |
+
+### 7.1 Measurement & Reporting
+
+* **Measurement point:** User‑plane throughput measured at **P‑GW/TDF** over SGi (per service data flow/APN as applicable).
+* **Window:** 5‑minute granularity with hourly/day aggregates for assurance.
+* **Compliance:** SLA compares sustained rate vs. subscribed tier; only speed is assured (**“SLA for speed only”**).
+* **In‑scope determination (NSA):** **RAN/OSS‑derived**: NR coverage map/neighbor list plus radio thresholds (**RSRP/SINR**) and **PRB utilisation ≤ threshold** (e.g., 80%). **Do not** use EPC/Gx RAT‑Type to infer NR usage in NSA; it typically indicates E‑UTRAN only.
+* **Normative note (NSA):** No NR RAT‑Type is available on EPC/Gx in NSA; **in‑scope SHALL** be determined from RAN/OSS telemetry only.
+* **Eligibility rule (no‑demand buckets):** A 5‑minute bucket is eligible for speed compliance only if user‑plane demand is **≥ 1% of the subscribed rate for ≥ 30 s** or total transfer is **≥ 5 MB**. Otherwise mark **N/A (no demand)** and **exclude** from the denominator.
+* **Denominator rule:** Compliance is calculated over **in‑scope & eligible‑traffic** buckets only; idle/no‑demand buckets are **excluded** from the denominator.
+* **Offered‑load cap (slow‑server fairness):** A bucket is **Compliant** if the delivered throughput (Mbps) is **greater than or equal to the lesser of** (i) the **Threshold_Mbps** (Subscribed_Rate × SLA%) and (ii) the **OfferedLoad_Mbps** derived from SGi byte deltas in the bucket.
+* **Reference test (dispute resolution):** For **Failed** buckets with **OfferedLoad_Mbps ≥ Threshold_Mbps**, the Operator **MAY** execute a **non‑billable synthetic throughput test** (e.g., RFC 6349 / ITU‑T Y.1564 to operator‑controlled endpoints) during the same window; if the test meets **Threshold_Mbps**, the bucket **SHALL** be deemed **Network‑Compliant**.
+* **Location scope:** Compliance scoring for **Primary/Backup** applies **only to in‑geofence traffic**; **off-site attempts are blocked** and counted as out‑of-scope events (not SLA minutes).
+* **Variant scope (Backup):** Score buckets only when **`BackupActive = true`**; periods with no backup activation are **N/A by design**.
+
+#### 7.1.1 NR In‑Scope Determination Profiles (NSA)
+
+To balance accuracy and cost, the Operator MAY select one of the following profiles for determining **NR in‑scope** status. All profiles SHALL respect the normative rule that **Gx RAT‑Type is not used** for NR determination in NSA (control‑plane reports **E‑UTRAN** under EN‑DC).
+
+* **Bronze — Coverage‑Map Gating (low cost):** In‑scope if service address/geofence intersects an NR coverage polygon. *Coarse; no real‑time quality/load.*
+* **Silver — Sector KPIs (recommended baseline):** In‑scope if **EN‑DC available** ∧ **PRB utilisation ≤ threshold** (e.g., 80%) ∧ **RSRP/SINR ≥ thresholds** for the serving sector/cluster in the 5‑minute window. *Good cost/accuracy trade‑off.*
+* **Gold — KPI + EN‑DC Events:** Silver **plus** presence of **SCG Add/Change/Release** (EN‑DC UE activity) in the same window for the serving sector(s). *Higher accuracy; higher KPI breadth.*
+* **Platinum — Per‑Subscriber Evidence (on demand):** Per‑UE trace/MDT sampling or enterprise CPE telemetry (EN‑DC active, NR DRBs, RSRP/SINR) correlated to the subscriber’s bucket. *Highest accuracy; highest cost; used for audits/disputes/VIPs.*
+
+**Vendor note (NSA):** For Huawei, ZTE and similar EPC implementations, **Gx RAT‑Type remains E‑UTRAN** under NSA (EN‑DC); vendors do **not** expose a reliable “NR present” flag on **Gx**. Use **RAN/OSS** KPIs/events per the chosen profile.
+
+**MVP mode (NR detection unavailable):** Until NR in‑scope telemetry is operational, the Operator **MAY** run with **MVP assumption** for **Primary Access** and **Backup** variants: **CPE/UE is 5G‑capable and configured for 5G**, disclosed at sale and verified at installation (§3.3.12, §6.1). In‑scope tagging SHALL default to **Bronze** (coverage‑map gating) with conservative thresholds; disputes follow the **reference‑test** ladder in §7.1.
+
+**Evidence ladder:** If a bucket fails SGi throughput while in‑scope per the selected profile, the Operator MAY run **reference tests** (RFC 6349 / ITU‑T Y.1564) to operator endpoints; if still disputed, escalate to **Platinum** sampling for that site/subscriber.
+
+---
+
+## 8. Open Items
+
+1. Finalise FUP thresholds and throttling policy per tier.
+2. Freeze NR in‑scope radio/load thresholds (RSRP/SINR/PRB) after field trials.
+3. Confirm PMF attribute map (RADIUS↔PCRF) and identity stitching.
+4. Define assurance report format (in‑scope %, CMSF %, HO counts, PRB/RSRP/SINR).
+5. Decide on Gy usage for fixed path (enable/disable, rating plans).
+
+---
+
+## 9. Appendices
+
+### Appendix A. Abbreviations
+
+| Term            | Definition                                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **NSA**         | Non‑Standalone 5G deployment option where NR is anchored on LTE/EPC control plane (EN‑DC).                                       |
+| **EPC**         | Evolved Packet Core; 3G/4G core network providing control/user plane (e.g., MME/SGW/P‑GW).                                       |
+| **NR**          | New Radio; 5G radio access technology (gNB).                                                                                     |
+| **LTE**         | Long Term Evolution; 4G radio access technology (eNB).                                                                           |
+| **UTRAN**       | UMTS Terrestrial Radio Access Network (3G).                                                                                      |
+| **QoS**         | Quality of Service; traffic treatment objectives (throughput, delay, loss, priority).                                            |
+| **QCI**         | QoS Class Identifier; EPS bearer QoS template defining priority, packet delay budget, loss.                                      |
+| **ARP**         | Allocation/Retention Priority; bearer admission/pre‑emption priority.                                                            |
+| **GBR**         | Guaranteed Bit Rate; minimum bit rate committed on a bearer.                                                                     |
+| **MBR**         | Maximum Bit Rate; upper rate bound on a bearer.                                                                                  |
+| **APN**         | Access Point Name; PDN connectivity identifier (service context) in EPC.                                                         |
+| **PCRF**        | Policy and Charging Rules Function; central policy decision point for PCC.                                                       |
+| **PCEF**        | Policy and Charging Enforcement Function; typically at P‑GW enforcing PCC rules.                                                 |
+| **TDF**         | Traffic Detection Function; application detection/ADC and traffic shaping/monitoring on SGi.                                     |
+| **OCS**         | Online Charging System; real‑time credit control (Diameter **Gyn**).                                                             |
+| **PCC**         | Policy and Charging Control framework (TS 23.203).                                                                               |
+| **ADC**         | Application Detection and Control; SG/TDF feature set (classification, shaping, marking).                                        |
+| **OSS**         | Operations Support Systems; provisioning, assurance, and network ops tooling.                                                    |
+| **BSS**         | Business Support Systems; product, order, billing, CRM.                                                                          |
+| **SG**          | **Service Gateway** — converged SGi/N6 dataplane (visibility/shaping) used by both mobile and fixed legs.                        |
+| **SMP**         | **Subscriber Management Function** — control/mediation function (mobile & fixed variants).                                       |
+| **TDF/PCEF**    | **Converged service edge** comprising SG + SMP components, handling both mobile and fixed traffic/subscribers.                   |
+| **SGi**         | Interface between P‑GW/BNG and external packet data networks (Internet/services).                                                |
+| **RAR/RAA**     | Re‑Auth Request/Answer (Diameter Gx); PCRF→PCEF command to (re)apply policy/QoS.                                                 |
+| **CCR/CCA**     | Credit‑Control Request/Answer (Diameter); usage/credit messages (**Gyn** for online charging, Gx usage reporting in profiles).   |
+| **TSR/TSA**     | TDF Session Request/Answer (Diameter **Sd**); PCRF↔**SMP (Mobile)** session establishment/messages.                               |
+| **EN‑DC**       | E‑UTRA‑NR Dual Connectivity; LTE eNB + 5G gNB serving the UE concurrently (NSA).                                                 |
+| **PRB**         | Physical Resource Block; basic radio resource unit used for load/throughput metrics.                                             |
+| **RSRP**        | Reference Signal Received Power; coverage/quality KPI.                                                                           |
+| **SINR**        | Signal‑to‑Interference‑plus‑Noise Ratio; radio quality KPI.                                                                      |
+| **BNG**         | Broadband Network Gateway (a.k.a. BRAS); fixed access edge router.                                                               |
+| **BRAS**        | Broadband Remote Access Server; legacy term for BNG.                                                                             |
+| **AAA**         | Authentication, Authorization, Accounting platform (generic fixed network function).                                              |
+| **RADIUS**      | Remote Authentication Dial‑In User Service; protocol used by BNG/SMP (Fixed) for auth/accounting/CoA.                            |
+| **CoA**         | Change of Authorization; RADIUS message to modify/live‑update session policy.                                                    |
+| **PMF**         | Policy Mediation Function (legacy/operator‑specific); maps here to **SMP (Fixed)** in this specification.                         |
+
+### Appendix B. References (Informative). References (Informative). References (Informative)
+
+* 3GPP TS 23.203: Policy and Charging Control (PCC) Architecture.
+* 3GPP TS 29.212: Policy and Charging Control (PCC) interfaces; Gx/Gxx/Sd/Gy.
+* 3GPP TS 29.213: PCC signalling flows and QoS parameter mapping.
+* Operator internal standards and OSS KPI definitions (to be inserted).
+
+### Appendix C. Design Rationale — Dedicated GBR Bearer (and Alternatives)
+
+**Why Dedicated GBR?** Provides deterministic, policy‑enforced GBR on the EPS bearer anchored at the P‑GW, aligning with “speed‑only” SLA tiers. Alternatives (P‑GW‑only policing; TDF‑only shaping) lack radio‑scheduler guarantees. Operational implications: PCRF tiers, SGi measurements, and gating hysteresis per §4.6.3.
+

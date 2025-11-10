@@ -1,0 +1,411 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import mermaid from "mermaid";
+
+/*************************
+ * Converter (SeqOrg -> Mermaid)
+ *************************/
+function seqOrgToMermaid(src) {
+  const text = (src || "").replace(/\r\n?/g, "\n");
+  const trimmed = text.trimStart();
+  if (/^sequenceDiagram\b/i.test(trimmed)) {
+    return text.replace(/-\>{3,}/g, "->>");
+  }
+
+  const out = ["sequenceDiagram", "autonumber", ""];
+  const lines = text.split("\n");
+  const push = (s = "") => out.push(s);
+  let inNote = false;
+  let lastMsgIndex = -1;
+
+  const escapeSemis = (s) => s.replace(/;/g, "&#59;");
+  const isDirective = (s) =>
+    /^(title:|participant\s+|note\s+|alt\b|else\b|opt\b|loop\b|par\b|and\b|critical\b|option\b|break\b|rect\b|end\b)/i.test(s);
+
+  const aliasMap = new Map();
+  const norm = (s) =>
+    (s || "")
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[\s\u00A0\u2000-\u200D\u2060\uFEFF]/g, "")
+      .replace(/-/g, "");
+
+  const mapAlias = (a) => aliasMap.get(norm(a)) || a;
+
+  for (let raw of lines) {
+    const line = (raw || "").trim();
+    if (!line) { lastMsgIndex = -1; push(""); continue; }
+    const lower = line.toLowerCase();
+
+    if (inNote) {
+      if (/^end\s*note\b/.test(lower)) { push("end note"); push(""); inNote = false; lastMsgIndex = -1; continue; }
+      push(escapeSemis(line));
+      continue;
+    }
+
+    if (lower.startsWith("title:")) { push("%% " + line); push(""); lastMsgIndex = -1; continue; }
+
+    if (lower.startsWith("participant ")) {
+      const m = /^participant\s+([^\s]+)\s+as\s+(.+)$/.exec(line);
+      if (m) {
+        const alias = m[1].trim();
+        const label = m[2].trim().replace(/^"|"$/g, "");
+        aliasMap.set(norm(alias), alias);
+        push(`participant "${label}" as ${alias}`);
+      } else {
+        const name = line.replace(/^participant\s+/i, "").trim();
+        aliasMap.set(norm(name), name);
+        push(`participant ${name}`);
+      }
+      push("");
+      lastMsgIndex = -1;
+      continue;
+    }
+
+    const one = /^note\s+(over|left of|right of)\s+([^:]+):\s*(.*)$/i.exec(line);
+    if (one) {
+      const who = one[2].split(",").map(s => mapAlias(s.trim())).join(",");
+      push(`Note ${one[1]} ${who}: ${escapeSemis(one[3] || "")}`);
+      push("");
+      lastMsgIndex = -1;
+      continue;
+    }
+
+    const start = /^note\s+(over|left of|right of)\s+([^:]+)\s*$/i.exec(line);
+    if (start) {
+      const who = start[2].split(",").map(s => mapAlias(s.trim())).join(",");
+      push(`Note ${start[1]} ${who}`);
+      inNote = true;
+      lastMsgIndex = -1;
+      continue;
+    }
+
+    if (/^(alt|else|opt|loop|par|and|critical|option|break|rect)\b/i.test(line)) {
+      push(line.replace(/^([A-Za-z]+)/, (m)=>m.toLowerCase()));
+      lastMsgIndex = -1;
+      continue;
+    }
+    if (/^end\b/i.test(line)) { push("end"); lastMsgIndex = -1; push(""); continue; }
+
+    const arrow = line.indexOf("->");
+    const colon = line.indexOf(":", arrow + 2);
+    if (arrow > -1 && colon > -1) {
+      const from = mapAlias(line.slice(0, arrow).trim());
+      const to = mapAlias(line.slice(arrow + 2, colon).trim());
+      const msg = line.slice(colon + 1).trim();
+      if (from && to) {
+        push(`${from}->>${to}: ${escapeSemis(msg)}`);
+        lastMsgIndex = out.length - 1;
+        continue;
+      }
+    }
+
+    if (lastMsgIndex !== -1 && !isDirective(line)) {
+      out[lastMsgIndex] = `${out[lastMsgIndex]} <br/> ${escapeSemis(line)}`;
+      continue;
+    }
+
+    push(`%% ${line}`);
+    lastMsgIndex = -1;
+  }
+
+  if (inNote) push("end note");
+  return out.join("\n").replace(/-\>{3,}/g, "->>");
+}
+
+function tidyParticipants(merm) {
+  const lines = merm.split("\n");
+  const seen = new Set();
+  const norm = (s) =>
+    (s || "")
+      .normalize("NFKC")
+      .toLowerCase()
+      // strip any whitespace incl. NBSP/ZW* and hyphens
+      .replace(/[\s\u00A0\u2000-\u200D\u2060\uFEFF]/g, "")
+      .replace(/-/g, "");
+
+  const aliasOf = (l) => {
+    let m = /^participant\s+"[^"]+"\s+as\s+([A-Za-z0-9_-]+)/.exec(l);
+    if (m) return norm(m[1]);
+    m = /^participant\s+([A-Za-z0-9_-]+)\s+as\s+.+$/.exec(l);
+    if (m) return norm(m[1]);
+    m = /^participant\s+([A-Za-z0-9_-]+)\s*$/.exec(l);
+    if (m) return norm(m[1]);
+    return null;
+  };
+
+  const out = [];
+  for (const l of lines) {
+    const a = aliasOf(l);
+    if (!a) { out.push(l); continue; }
+    if (seen.has(a)) continue;
+    seen.add(a);
+    out.push(l);
+  }
+  return out.join("\n");
+}
+
+/*************************
+ * Minimal SVG Pan & Zoom
+ *************************/
+function setupSvgPanZoom(hostDiv) {
+  if (!hostDiv) return () => {};
+  const svg = hostDiv.querySelector('svg');
+  if (!svg) return () => {};
+  if (hostDiv.__pzCleanup) hostDiv.__pzCleanup();
+
+  let vb = svg.getAttribute('viewBox');
+  let vbx, vby, vbw, vbh;
+  if (vb) {
+    const p = vb.split(/[\s,]+/).map(parseFloat); [vbx, vby, vbw, vbh] = p;
+  } else {
+    const bb = svg.getBBox();
+    vbx = bb.x || 0; vby = bb.y || 0; vbw = bb.width || 1000; vbh = bb.height || 600;
+    svg.setAttribute('viewBox', `${vbx} ${vby} ${vbw} ${vbh}`);
+  }
+  const orig = { vbx, vby, vbw, vbh };
+  svg.style.touchAction = 'none';
+
+  let panning = false; let lastX = 0, lastY = 0;
+  const setVB = () => svg.setAttribute('viewBox', `${vbx} ${vby} ${vbw} ${vbh}`);
+
+  const onWheel = (e) => {
+    e.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width;
+    const my = (e.clientY - rect.top) / rect.height;
+    const factor = e.deltaY > 0 ? 1.1 : 0.9;
+    const newW = Math.max(10, vbw * factor);
+    const newH = Math.max(10, vbh * factor);
+    vbx += (vbw - newW) * mx; vby += (vbh - newH) * my; vbw = newW; vbh = newH; setVB();
+  };
+  const onPointerDown = (e) => { panning = true; lastX = e.clientX; lastY = e.clientY; try { svg.setPointerCapture(e.pointerId); } catch {} };
+  const onPointerMove = (e) => {
+    if (!panning) return; const rect = svg.getBoundingClientRect();
+    const dx = (e.clientX - lastX) * (vbw / rect.width);
+    const dy = (e.clientY - lastY) * (vbh / rect.height);
+    vbx -= dx; vby -= dy; lastX = e.clientX; lastY = e.clientY; setVB();
+  };
+  const onPointerUp = (e) => { panning = false; try { svg.releasePointerCapture(e.pointerId); } catch {} };
+
+  svg.addEventListener('wheel', onWheel, { passive: false });
+  svg.addEventListener('pointerdown', onPointerDown);
+  svg.addEventListener('pointermove', onPointerMove);
+  svg.addEventListener('pointerup', onPointerUp);
+  svg.addEventListener('pointerleave', onPointerUp);
+
+  const api = {
+    zoom: (scale) => { const newW = Math.max(10, vbw * scale); const newH = Math.max(10, vbh * scale); vbx += (vbw - newW) * 0.5; vby += (vbh - newH) * 0.5; vbw = newW; vbh = newH; setVB(); },
+    reset: () => { vbx = orig.vbx; vby = orig.vby; vbw = orig.vbw; vbh = orig.vbh; setVB(); },
+    fit: () => { try { const bb = svg.getBBox(); vbx = bb.x; vby = bb.y; vbw = Math.max(bb.width, 10); vbh = Math.max(bb.height, 10); setVB(); } catch {} }
+  };
+
+  hostDiv.__pzApi = api;
+  hostDiv.__pzCleanup = () => {
+    svg.removeEventListener('wheel', onWheel);
+    svg.removeEventListener('pointerdown', onPointerDown);
+    svg.removeEventListener('pointermove', onPointerMove);
+    svg.removeEventListener('pointerup', onPointerUp);
+    svg.removeEventListener('pointerleave', onPointerUp);
+    delete hostDiv.__pzApi;
+  };
+  return hostDiv.__pzCleanup;
+}
+
+/*************************
+ * Tiny test helper (runs in-browser)
+ *************************/
+function TestPanel({ run }) {
+  const [results, setResults] = useState([]);
+  const tests = [
+    {
+      name: "Converts simple SeqOrg message to Mermaid",
+      input: "participant A\nparticipant B\nA->B: hi",
+      expect: (out) => /A->>B: hi/.test(out),
+    },
+    {
+      name: "Sanitizes triple arrows in raw Mermaid",
+      input: "sequenceDiagram\nA->>>B: x",
+      expect: (out) => /A->>B: x/.test(out),
+    },
+    {
+      name: "Multi-line note closes correctly",
+      input: "note over A,B\nfirst line\nsecond line\nend note",
+      expect: (out) => /Note over A,B[\s\S]*end note/.test(out),
+    },
+    {
+      name: "Mermaid passthrough preserves newlines",
+      input: "sequenceDiagram\nA->>B: one\nB->>A: two",
+      expect: (out) => /A->>B: one[\s\S]*B->>A: two/.test(out),
+    },
+    {
+      name: "Continuation lines append with <br/>",
+      input: "participant A\nparticipant B\nA->B: hello\ncontinued",
+      expect: (out) => /A->>B: hello <br\/> continued/.test(out),
+    },
+    {
+      name: "Deduplicates participants by alias",
+      input: "sequenceDiagram\nparticipant \"P-GW (PCEF)\" as PGW\nparticipant UE\nparticipant \"P-GW (PCEF)\" as PGW\nUE->>PGW: test",
+      expect: (out) => out.split("\n").filter(l => /^participant\s/.test(l)).length === 2,
+    },
+  ];
+
+  const runAll = () => {
+    const r = tests.map((t) => {
+      try {
+        const out = tidyParticipants(run(t.input));
+        const pass = !!t.expect(out);
+        return { name: t.name, pass, sample: out };
+      } catch (e) {
+        return { name: t.name, pass: false, error: String(e) };
+      }
+    });
+    setResults(r);
+  };
+
+  return (
+    <div className="mt-2 border rounded-lg p-2 bg-gray-50">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">Diagnostics</div>
+        <button onClick={runAll} className="text-sm border rounded px-2 py-1">Run tests</button>
+      </div>
+      <ul className="mt-2 space-y-1 text-xs">
+        {results.map((r, i) => (
+          <li key={i} className={r.pass ? "text-green-700" : "text-red-700"}>
+            <strong>{r.pass ? "PASS" : "FAIL"}</strong> — {r.name}
+            {r.sample && (
+              <details className="mt-1">
+                <summary>output</summary>
+                <pre className="whitespace-pre-wrap break-words">{r.sample}</pre>
+              </details>
+            )}
+            {r.error && <div>error: {r.error}</div>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default function PCC_Sequence_FromCleanSingle() {
+  const [input, setInput] = useState(`title: PCC — Sd/Gx Call Flow (TS 29.212 & TS 29.213 compliant)
+
+participant UE
+participant PGW
+participant PCRF
+participant TDF
+participant OCS
+
+Note over UE,PGW: Scope limited to UE, P-GW/PCEF, PCRF, TDF, OCS per request.
+
+%% Session start (access-specific details abstracted)
+UE->>PGW: Initiate IP-CAN / PDN connectivity (abstract)
+
+%% Gx establishment
+PGW->>PCRF: CCR [INITIAL] (Gx) <br/> UE id, APN, UE IP/prefix, IP-CAN type/RAT, <br/> Default-EPS-Bearer-QoS, APN-AMBR, (optional) TDF-Information
+PCRF->>PGW: CCA [INITIAL] with PCC Rules, Event-Triggers
+
+%% Sd establishment MUST be PCRF-initiated (TSR/TSA)
+PCRF->>TDF: TSR (Sd) — TDF-Session-Request <br/> (ADC-Rules/Event-Triggers/Monitoring-Keys as applicable)
+TDF->>PCRF: TSA (Sd) — TDF-Session-Answer (ack)
+
+%% ADC provisioning / policing on TDF
+PCRF->>TDF: RAR (Sd) / ADC-Rule-Install <br/> { Flow-Description, (optional) QoS-Information, Monitoring-Key }
+TDF->>PCRF: RAA
+
+%% GBR bearer authorization via PCRF → PCEF (Gx)
+opt Dedicated GBR bearer authorized for SLA flow(s)
+  PCRF->>PGW: RAR (Gx) — PCC Rule Install <br/> { QoS-Information: QCI (GBR), GBR/MBR, ARP }
+  PGW->>PCRF: RAA
+  Note over UE,PGW: P-GW binds PCC to a dedicated GBR EPS bearer and triggers bearer creation (abstracted)
+end
+
+%% Online charging led by TDF over Gy
+Note over TDF,OCS: Online charging for detected flow(s) at TDF (Gy).
+TDF->>OCS: CCR [INITIAL] (Gy) <br/> Subscription-Id, Rating-Group, Requested-Service-Unit
+OCS->>TDF: CCA [INITIAL] <br/> Granted-Service-Unit, Validity-Time, (Final-Unit-Indication if any)
+
+alt Quota depleted / policy change
+  OCS->>TDF: CCA [UPDATE] <br/> Granted-Service-Unit=0, Final-Unit-Indication={REDIRECT|RESTRICT}
+  TDF->>PCRF: CCR [UPDATE] (Sd) <br/> Usage-Monitoring-Report / Application-Detection-Information
+  PCRF->>PGW: RAR (Gx) — update PCC (gating/QoS)
+  PGW->>PCRF: RAA
+  opt Change to Dedicated GBR bearer (policy-driven)
+    Note over UE,PGW: Dedicated bearer QoS updated or removed (abstracted)
+  end
+  PCRF->>TDF: RAR (Sd) — update ADC-Rule (e.g., shaping)
+  TDF->>PCRF: RAA
+else Quota OK
+  Note over TDF,OCS: Periodic CCR[UPDATE]/CCA[UPDATE] with GSU refresh
+end`);
+
+  const hostRef = useRef(null);
+  const [error, setError] = useState("");
+  const mermaidCode = useMemo(() => tidyParticipants(seqOrgToMermaid(input)), [input]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setError("");
+        mermaid.initialize({ startOnLoad: false });
+        const { svg } = await mermaid.render(`seq_${Date.now()}`, mermaidCode);
+        if (!cancelled && hostRef.current) {
+          hostRef.current.innerHTML = svg;
+          setupSvgPanZoom(hostRef.current);
+        }
+      } catch (e) {
+        setError(String(e?.message || e));
+        if (hostRef.current) hostRef.current.innerHTML = "";
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mermaidCode]);
+
+  const zoom = (scale) => hostRef.current?.__pzApi?.zoom(scale);
+  const reset = () => hostRef.current?.__pzApi?.reset();
+  const fit = () => hostRef.current?.__pzApi?.fit();
+  const exportSvg = () => {
+    const svg = hostRef.current?.querySelector("svg");
+    if (!svg) return;
+    const svgData = new Blob([svg.outerHTML], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgData);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "PCC_Sequence_Diagram.svg";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="w-full min-h-screen bg-white text-gray-900 p-6">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-3">
+          <h1 className="text-2xl font-bold">PCC — Sequence Diagram (Mermaid)</h1>
+          <p className="text-sm text-gray-600">Paste <span className="font-mono">SequenceDiagram.org</span>-style text; the canvas converts it to Mermaid v11 and renders on the right.</p>
+          <textarea value={input} onChange={(e)=>setInput(e.target.value)} className="w-full h-72 border rounded-lg p-3 font-mono text-sm" placeholder={"title: ...\nA->B: message"} />
+          <div>
+            <label className="text-sm font-medium">Generated Mermaid</label>
+            <pre className="mt-1 bg-gray-50 border rounded-lg p-3 overflow-auto text-xs">{mermaidCode}</pre>
+            <TestPanel run={(s)=>seqOrgToMermaid(s)} />
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Preview</h2>
+            <div className="flex items-center gap-2 text-sm">
+              <button onClick={()=>zoom(0.9)} className="border rounded-md px-2 py-1">+</button>
+              <button onClick={()=>zoom(1.1)} className="border rounded-md px-2 py-1">−</button>
+              <button onClick={reset} className="border rounded-md px-2 py-1">Reset</button>
+              <button onClick={fit} className="border rounded-md px-2 py-1">Fit</button>
+              <button onClick={exportSvg} className="border rounded-md px-2 py-1">Export SVG</button>
+            </div>
+          </div>
+          <div className="border rounded-xl p-4 min-h-[300px] overflow-auto">
+            <div ref={hostRef} />
+          </div>
+          {error && <div className="text-red-600 text-sm">Render error: {error}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
