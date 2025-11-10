@@ -1,23 +1,25 @@
 # Phase 3 Progress Report: Diagram Editing & Integration
 
-**Date:** 2025-11-09
-**Status:** 🟡 **IN PROGRESS** (2 of 5 features complete)
+**Date:** 2025-11-10 (Updated)
+**Status:** 🟡 **IN PROGRESS** (3 of 5 features complete)
 **Dev Server:** Running on http://localhost:3000
 
 ---
 
 ## Executive Summary
 
-Phase 3 focuses on diagram editing, linking systems, and change propagation. **Two major features are complete**, with three remaining for full Phase 3 completion.
+Phase 3 focuses on diagram editing, linking systems, and change propagation. **Three major features are complete (60%)**, with two high-priority features remaining for full Phase 3 completion.
 
-### ✅ Completed Features (40%)
+### ✅ Completed Features (60%)
 1. **Block Diagram Editor Integration** - Full-featured editor with 998 lines
 2. **Pan/Zoom in View-Only Mode** - Works for all diagram types
+3. **Sequence Diagram Editor** - Mermaid code editor with live preview (359 lines)
 
-### 🚧 Remaining Features (60%)
-3. **Sequence/Flow Diagram Editors** - Mermaid code editors with live preview
-4. **Link Resolution System** - `{{fig:...}}` and `{{ref:...}}` auto-resolution
-5. **Change Propagation** - AI-assisted consistency across artifacts
+### 🚧 Remaining Features (40%)
+4. **Link Resolution System** - `{{fig:...}}` and `{{ref:...}}` auto-resolution (HIGH PRIORITY)
+5. **Auto-Numbering** - Figure and reference numbering (HIGH PRIORITY)
+6. **Flow Diagram Editor** - Optional separate editor (OPTIONAL - currently reusing SequenceDiagramEditor)
+7. **Change Propagation** - AI-assisted consistency across artifacts (LOW PRIORITY)
 
 ---
 
@@ -104,31 +106,61 @@ const handleMouseDown = (e: React.MouseEvent) => {
 
 ---
 
-## 🚧 3. Sequence/Flow Diagram Editors (TODO)
+## ✅ 3. Sequence Diagram Editor (COMPLETE)
 
-**Goal:** Create Mermaid code editors with live preview for sequence and flow diagrams.
+**Component:** [src/components/editors/SequenceDiagramEditor.tsx](src/components/editors/SequenceDiagramEditor.tsx) (359 lines)
 
-### Planned Components:
+**Implementation Date:** Prior to 2025-11-10 (already existed, verified complete)
 
-**SequenceDiagramEditor.tsx:**
-- Mermaid code editor (Monaco or CodeMirror)
-- Live preview pane (split view)
-- Syntax validation
-- Common pattern templates (e.g., "Basic Call Flow", "Error Handling")
-- Save to Zustand: `updateMermaidDiagram(id, mermaidCode)`
+### Features:
+- ✅ **Split Pane Layout** - Code editor (left) + live preview (right)
+- ✅ **Mermaid Code Editor** - Textarea with syntax support
+- ✅ **Live Preview** - 500ms debounced rendering with Mermaid.js
+- ✅ **Syntax Validation** - Error display with clear messages
+- ✅ **4 Telecom Templates** - Basic Call Flow, Error Handling, Authentication, Handover
+- ✅ **Template Dropdown** - Quick insertion of common patterns
+- ✅ **Dirty State Tracking** - "Unsaved changes" indicator
+- ✅ **Keyboard Shortcuts** - Tab for indent, Ctrl/Cmd+S to save
+- ✅ **Line Count Display** - Shows number of lines in code
+- ✅ **Dark Mode Support** - Follows application theme
+- ✅ **Zustand Integration** - Uses `updateMermaidDiagram(id, updates)`
+- ✅ **Serves Both Types** - Used for both sequence AND flow diagrams
 
-**FlowDiagramEditor.tsx:**
-- Similar to sequence editor but for flowcharts/state machines
-- Template library (e.g., "State Machine", "Decision Tree")
+### Key Implementation Details:
 
-### Integration Points:
-- Add to DiagramViewer edit mode toggle
-- Use existing `MermaidDiagramRenderer` for preview
-- Store: `updateMermaidDiagram(id, updates)`
+**Template System:**
+```typescript
+const TEMPLATES = {
+  basicCallFlow: `sequenceDiagram...`,
+  errorHandling: `sequenceDiagram...`,
+  authentication: `sequenceDiagram...`,
+  handover: `sequenceDiagram...`
+};
+```
+
+**Integration with DiagramViewer:**
+- Lines 358-362: Used for both sequence and flow diagram types
+- Edit mode: Uses `SequenceDiagramEditor` for full editing
+- View mode: Uses `MermaidDiagramRenderer` with pan/zoom
+
+**Store Actions Used:**
+- `updateMermaidDiagram(id, updates)` - Save changes
+
+### Flow Diagram Editor Status:
+
+**Current Approach:** ✅ Reusing SequenceDiagramEditor for flow diagrams
+- Mermaid syntax works for both sequence and flow/state diagrams
+- Same code editor + live preview pattern applies
+- Templates can be extended with flow-specific patterns
+
+**Optional Enhancement:** Create separate `FlowDiagramEditor.tsx`
+- Would be similar structure to SequenceDiagramEditor
+- Different template library (State Machine, Decision Tree, Process Flow)
+- Currently not needed - SequenceDiagramEditor handles both well
 
 ---
 
-## 🚧 4. Link Resolution System (TODO)
+## 🚧 4. Link Resolution System (TODO - HIGH PRIORITY)
 
 **Goal:** Auto-resolve `{{fig:...}}` and `{{ref:...}}` syntax in markdown.
 
@@ -170,7 +202,49 @@ const handleMouseDown = (e: React.MouseEvent) => {
 
 ---
 
-## 🚧 5. Change Propagation (TODO)
+## 🚧 5. Auto-Numbering System (TODO - HIGH PRIORITY)
+
+**Goal:** Automatically number all diagrams and update references.
+
+### Planned Features:
+
+**Figure Numbering:**
+- Auto-assign numbers based on section and order (e.g., 4-1, 4-2)
+- Update numbers when diagrams are reordered
+- Store in diagram metadata: `figureNumber: "4-1"`
+
+**Reference Resolution:**
+- Parse markdown to find diagram positions
+- Calculate section-based numbering
+- Generate figure list/table of figures
+
+### Implementation Tasks:
+
+1. **Store Utilities:**
+   ```typescript
+   getDiagramNumber(id: string): string {
+     // Calculate figure number based on position and section
+     // Example: "4-1" for first diagram in section 4
+   }
+
+   getAllDiagramsOrdered(): DiagramReference[] {
+     // Return all diagrams in document order
+   }
+   ```
+
+2. **Markdown Parser:**
+   - Extract section headings (# Section 4: Architecture)
+   - Determine diagram positions relative to sections
+   - Auto-assign numbers
+
+3. **UI Updates:**
+   - Display figure numbers in DiagramViewer
+   - Update references in MarkdownEditor preview
+   - Show figure list in sidebar
+
+---
+
+## 🚧 6. Change Propagation (TODO - LOW PRIORITY)
 
 **Goal:** AI-assisted consistency when editing specs or diagrams.
 
@@ -217,8 +291,8 @@ src/components/
 ├── editors/
 │   ├── BlockDiagramEditor.tsx     ✅ COMPLETE (998 lines)
 │   ├── MarkdownEditor.tsx         ✅ COMPLETE (with AI integration)
-│   ├── SequenceDiagramEditor.tsx  🚧 TODO
-│   └── FlowDiagramEditor.tsx      🚧 TODO
+│   ├── SequenceDiagramEditor.tsx  ✅ COMPLETE (359 lines) - serves sequence & flow
+│   └── FlowDiagramEditor.tsx      🚧 OPTIONAL (currently using SequenceDiagramEditor)
 ├── DiagramViewer.tsx              ✅ COMPLETE (with view/edit modes)
 ├── PanZoomWrapper.tsx             ✅ COMPLETE (82 lines)
 └── Workspace.tsx                  ✅ COMPLETE (tab navigation)
@@ -226,27 +300,26 @@ src/components/
 
 ### Store Integration:
 - ✅ `updateBlockDiagram(id, updates)` - Working
-- ✅ `updateMermaidDiagram(id, updates)` - Type exists, needs editor
+- ✅ `updateMermaidDiagram(id, updates)` - Working (used by SequenceDiagramEditor)
 - ✅ `getAllDiagrams()` - Utility for linking
 - 🚧 `getDiagramNumber(id)` - TODO for auto-numbering
-- 🚧 `detectRelatedChanges(...)` - TODO for propagation
+- 🚧 `detectRelatedChanges(...)` - TODO for propagation (low priority)
 
 ---
 
 ## Next Steps (Priority Order)
 
-### High Priority:
-1. **Sequence Diagram Editor** - Most requested for call flows
-2. **Link Resolution** - Critical for professional documents
-3. **Auto-numbering** - Part of link resolution
+### High Priority (Required for Phase 3 Completion):
+1. **Link Resolution** - Critical for professional documents ({{fig:...}} and {{ref:...}})
+2. **Auto-numbering** - Part of link resolution (figure numbering system)
 
-### Medium Priority:
-4. **Flow Diagram Editor** - Less used than sequence
-5. **Change Propagation** - Nice-to-have for consistency
+### Optional Enhancements:
+3. **Flow Diagram Editor** - Separate editor with flow-specific templates (currently reusing SequenceDiagramEditor)
+4. **Change Propagation** - AI-assisted consistency (nice-to-have)
 
-### Low Priority:
-6. **Template Library** - Common patterns for diagrams
-7. **Export Enhancements** - Phase 4 dependency
+### Low Priority (Phase 4):
+5. **Template Library Expansion** - More diagram patterns
+6. **Export Enhancements** - DOCX generation dependencies
 
 ---
 
@@ -262,7 +335,7 @@ src/components/
 ### Remaining Issues:
 - ⚠️ Mermaid syntax errors in stored diagrams (from earlier AI generation)
   - **Solution:** Delete broken diagrams or regenerate with fixed prompts
-- ⚠️ No editor for sequence/flow diagrams yet (view-only)
+- ⚠️ Link resolution not implemented ({{fig:...}} syntax doesn't resolve)
 
 ---
 
@@ -272,8 +345,8 @@ src/components/
 1. ✅ Create block diagram → Edit mode → Drag, resize, pan, zoom
 2. ✅ View block diagram → Pan/zoom works everywhere
 3. ✅ View sequence diagram → Pan/zoom works
-4. ⚠️ Edit sequence diagram → NOT IMPLEMENTED (needs editor)
-5. ⚠️ Add `{{fig:...}}` to spec → Preview doesn't resolve yet
+4. ✅ Edit sequence diagram → SequenceDiagramEditor works with templates and live preview
+5. ⚠️ Add `{{fig:...}}` to spec → Preview doesn't resolve yet (TODO)
 
 ### Automated Tests (Future):
 - Unit tests for link resolution parser
@@ -284,22 +357,26 @@ src/components/
 
 ## Documentation Status
 
-### Updated Files:
-- ✅ [CLAUDE.md](CLAUDE.md) - Added pan/zoom, updated Phase 3 status
-- ✅ [PHASE3_PROGRESS.md](PHASE3_PROGRESS.md) - This document
-
-### Needs Update:
-- 🚧 [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) - Still shows Phase 3 as "FUTURE"
-- 🚧 [README.md](README.md) - May need user-facing updates
+### Updated Files (2025-11-10):
+- ✅ [CLAUDE.md](CLAUDE.md) - Added Git workflow, repository info, Phase 3 status
+- ✅ [PHASE3_PROGRESS.md](PHASE3_PROGRESS.md) - This document (updated to 60% complete)
+- ✅ [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) - Updated to reflect 60% completion
+- ✅ [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) - Updated Phase 3 status and priorities
+- ✅ [README.md](README.md) - Added Git workflow and clone instructions
 
 ---
 
 ## Summary
 
-**Phase 3 is 40% complete** with the hardest parts (BlockDiagramEditor extraction) already done. The remaining work focuses on:
+**Phase 3 is 60% complete** with all major editor components done:
+- ✅ BlockDiagramEditor (998 lines)
+- ✅ SequenceDiagramEditor (359 lines)
+- ✅ PanZoomWrapper for view mode
 
-1. **Mermaid editors** (straightforward - code + preview)
-2. **Link resolution** (medium complexity - parser + autocomplete)
-3. **Change propagation** (complex - AI integration)
+The remaining work focuses on:
 
-**Recommendation:** Prioritize sequence diagram editor next, as it's most useful for telecom call flows.
+1. **Link resolution** (HIGH PRIORITY - medium complexity - parser + autocomplete)
+2. **Auto-numbering** (HIGH PRIORITY - part of link resolution)
+3. **Change propagation** (LOW PRIORITY - complex - AI integration)
+
+**Recommendation:** Prioritize link resolution next, as it's critical for professional document generation and export workflows.

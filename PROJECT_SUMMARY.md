@@ -48,19 +48,19 @@ Think: "GitHub Copilot for Technical Documentation"
 3. **Version History** - Automatic snapshots with rollback
 4. **Placeholder Detection** - Fail-fast validation of AI output
 
-### 🟡 In Progress (Phase 3: Diagram Editing - 40% Complete)
+### 🟡 In Progress (Phase 3: Diagram Editing - 60% Complete)
 
 **Completed:**
 1. ✅ **BlockDiagramEditor** ([src/components/editors/BlockDiagramEditor.tsx](src/components/editors/BlockDiagramEditor.tsx)) - 998 lines, fully extracted from App.tsx
 2. ✅ **PanZoomWrapper** ([src/components/PanZoomWrapper.tsx](src/components/PanZoomWrapper.tsx)) - Pan/zoom for all diagram types in view mode
 3. ✅ **usePanZoom Hook** ([src/hooks/usePanZoom.ts](src/hooks/usePanZoom.ts)) - Reusable pan/zoom logic
+4. ✅ **SequenceDiagramEditor** ([src/components/editors/SequenceDiagramEditor.tsx](src/components/editors/SequenceDiagramEditor.tsx)) - 359 lines, Mermaid code editor with live preview, 4 telecom templates
 
-**In Progress:**
-4. 🚧 **SequenceDiagramEditor** - Mermaid code editor with live preview
-5. 🚧 **FlowDiagramEditor** - Mermaid flowchart/state diagram editor
-6. 🚧 **Link Resolution** - {{fig:...}} and {{ref:...}} auto-resolution
-7. 🚧 **Change Propagation** - AI-assisted consistency across artifacts
-8. 🚧 **Auto-numbering** - Figure and reference numbering
+**Remaining:**
+5. 🚧 **Link Resolution** - {{fig:...}} and {{ref:...}} auto-resolution (HIGH PRIORITY)
+6. 🚧 **Auto-numbering** - Figure and reference numbering (HIGH PRIORITY)
+7. 🚧 **FlowDiagramEditor** - Optional (currently reusing SequenceDiagramEditor)
+8. 🚧 **Change Propagation** - AI-assisted consistency across artifacts (LOW PRIORITY)
 
 ### ⏳ Next (Phase 4: Export & Finalization)
 1. DOCX generation with template styling
@@ -253,8 +253,8 @@ All stored in Zustand + auto-persisted to localStorage.
 │   │   └── editors/
 │   │       ├── MarkdownEditor.tsx # ✅ Edit/Split/Preview modes
 │   │       ├── BlockDiagramEditor.tsx # ✅ 998 lines (Phase 3)
-│   │       ├── SequenceDiagramEditor.tsx # 🚧 TODO
-│   │       └── FlowDiagramEditor.tsx # 🚧 TODO
+│   │       ├── SequenceDiagramEditor.tsx # ✅ 359 lines (Phase 3) - serves sequence & flow
+│   │       └── FlowDiagramEditor.tsx # 🚧 OPTIONAL (currently using SequenceDiagramEditor)
 ├── public/
 ├── draft-technical-specification  # ✅ Sample spec (520 lines)
 ├── package.json                   # ✅ Dependencies configured
@@ -283,11 +283,10 @@ source /usr/local/share/nvm/nvm.sh && npm run dev
 ## Next Steps
 
 ### Immediate (Phase 3 Completion)
-1. **SequenceDiagramEditor** - Mermaid code editor with live preview
-2. **FlowDiagramEditor** - Flowchart/state machine editor
-3. **Link Resolution** - {{fig:...}} and {{ref:...}} auto-resolution
-4. **Change Propagation** - AI-assisted consistency across artifacts
-5. **Auto-numbering** - Figure and reference numbering
+1. **Link Resolution** - {{fig:...}} and {{ref:...}} auto-resolution (HIGH PRIORITY)
+2. **Auto-numbering** - Figure and reference numbering (HIGH PRIORITY)
+3. **FlowDiagramEditor** - Optional separate editor (currently reusing SequenceDiagramEditor)
+4. **Change Propagation** - AI-assisted consistency across artifacts (LOW PRIORITY)
 
 ### Phase 4 (Export & Finalization)
 1. Link resolution ({{fig:...}} → Figure 4-1)

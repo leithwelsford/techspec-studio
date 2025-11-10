@@ -212,7 +212,7 @@ Orchestration layer with complete API:
 - ✅ Sort by provider/name/context size
 - ✅ Smart UI (only shows controls when 10+ models)
 
-## 🟡 Phase 3: Diagram Editing & Integration (40% COMPLETE)
+## 🟡 Phase 3: Diagram Editing & Integration (60% COMPLETE)
 
 ### 3.1 Block Diagram Editor ✅ COMPLETE
 - ✅ Extracted `BlockDiagramEditor.tsx` from App.tsx (998 lines)
@@ -233,14 +233,26 @@ Orchestration layer with complete API:
 - ✅ Works for all diagram types (block, sequence, flow)
 - ✅ Visual instructions overlay
 
-### 3.3 Sequence/Flow Diagram Editors 🚧 TODO
-- [ ] `SequenceDiagramEditor.tsx` - Mermaid code editor + live preview
-- [ ] `FlowDiagramEditor.tsx` - Flowchart/state diagram editor
-- [ ] Mermaid syntax validation
-- [ ] Common pattern templates (e.g., "Basic Call Flow", "Error Handling")
-- [ ] Save to Zustand: `updateMermaidDiagram(id, mermaidCode)`
+### 3.3 Sequence Diagram Editor ✅ COMPLETE
+- ✅ `SequenceDiagramEditor.tsx` - Mermaid code editor + live preview (359 lines)
+- ✅ Split pane layout (code editor + live preview)
+- ✅ Mermaid syntax validation with error display
+- ✅ 4 telecom-specific templates (Basic Call Flow, Error Handling, Authentication, Handover)
+- ✅ Template dropdown with insertion
+- ✅ Save to Zustand: `updateMermaidDiagram(id, mermaidCode)`
+- ✅ Dirty state tracking with "Unsaved changes" indicator
+- ✅ Keyboard shortcuts (Tab = indent, Ctrl/Cmd+S = save)
+- ✅ 500ms debounced live preview
+- ✅ Line count display
+- ✅ Dark mode support
+- ✅ Integrated into DiagramViewer for both sequence AND flow diagrams
 
-### 3.4 Link Resolution System 🚧 TODO
+### 3.4 Flow Diagram Editor 🚧 OPTIONAL
+- ℹ️ Currently using SequenceDiagramEditor for flow diagrams (Mermaid syntax works for both)
+- [ ] Optional: Create separate `FlowDiagramEditor.tsx` with flow-specific templates
+- [ ] Flow-specific templates (e.g., "State Machine", "Decision Tree", "Process Flow")
+
+### 3.5 Link Resolution System 🚧 TODO
 - [ ] Parse {{fig:diagram-id}} syntax in markdown
 - [ ] Parse {{ref:reference-id}} syntax in markdown
 - [ ] Auto-complete for diagram IDs in editor
@@ -252,13 +264,13 @@ Orchestration layer with complete API:
 - [ ] `getDiagramNumber(id)` utility for figure numbering
 - [ ] `getReferenceNumber(id)` utility for citation numbering
 
-### 3.5 Auto-Numbering 🚧 TODO
+### 3.6 Auto-Numbering 🚧 TODO
 - [ ] Auto-number all diagrams (section-based: 4-1, 4-2)
 - [ ] Update references when diagrams reorder
 - [ ] Generate figure list/table of figures
 - [ ] Track figure positions in document
 
-### 3.6 Change Propagation 🚧 TODO
+### 3.7 Change Propagation 🚧 TODO
 - [ ] AI service: `detectRelatedChanges()` method
 - [ ] User edits specification → AI detects affected diagrams
 - [ ] User edits diagram → AI detects affected spec sections
@@ -293,14 +305,13 @@ Orchestration layer with complete API:
 
 ## 🎯 Current Focus
 
-### Phase 3 Completion (40% → 100%)
+### Phase 3 Completion (60% → 100%)
 
 **Priority Order:**
-1. **SequenceDiagramEditor** (High) - Most requested for call flows
-2. **Link Resolution** (High) - Critical for professional documents
-3. **Auto-numbering** (Medium) - Part of link resolution
-4. **FlowDiagramEditor** (Medium) - Less used than sequence
-5. **Change Propagation** (Low) - Nice-to-have for consistency
+1. **Link Resolution** (High) - Critical for professional documents
+2. **Auto-numbering** (High) - Part of link resolution
+3. **FlowDiagramEditor** (Optional) - Currently reusing SequenceDiagramEditor
+4. **Change Propagation** (Low) - Nice-to-have for consistency
 
 ### Current File Structure:
 ```
@@ -320,8 +331,8 @@ src/components/
 └── editors/
     ├── MarkdownEditor.tsx # ✅ Edit/Split/Preview modes
     ├── BlockDiagramEditor.tsx  # ✅ 998 lines (Phase 3)
-    ├── SequenceDiagramEditor.tsx  # 🚧 TODO
-    └── FlowDiagramEditor.tsx      # 🚧 TODO
+    ├── SequenceDiagramEditor.tsx  # ✅ 359 lines (Phase 3) - serves both sequence & flow
+    └── FlowDiagramEditor.tsx      # 🚧 OPTIONAL (currently using SequenceDiagramEditor)
 
 src/hooks/
 └── usePanZoom.ts          # ✅ Reusable pan/zoom logic

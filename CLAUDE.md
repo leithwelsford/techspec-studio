@@ -74,7 +74,7 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 
 ### Current State
 
-🟡 **Phase 3 IN PROGRESS** (40% Complete) - Diagram Editing & Integration
+🟡 **Phase 3 IN PROGRESS** (60% Complete) - Diagram Editing & Integration
 - Phase 1: Foundation ✅
 - Phase 1.5: AI service layer ✅
 - Phase 2A: Core AI Experience ✅ (Chat, Config, Markdown Editor)
@@ -104,13 +104,14 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 - ✅ **Pan/zoom in view-only mode** for all diagram types (Phase 3 - 2025-11-09)
 - ✅ **Block diagram editor** - Full edit mode with drag, resize, pan/zoom (Phase 3 - BlockDiagramEditor.tsx 998 lines)
 
-**Phase 3 Status (40% COMPLETE):**
+**Phase 3 Status (60% COMPLETE):**
 - ✅ Block diagram editor integration (COMPLETE - BlockDiagramEditor.tsx 998 lines, fully Zustand-integrated)
 - ✅ Pan/zoom in view-only mode (COMPLETE - PanZoomWrapper.tsx wraps all diagram types)
-- 🚧 Sequence/Flow diagram editors (Mermaid code + preview) - TODO
-- 🚧 Link resolution ({{fig:...}} and {{ref:...}}) - TODO
-- 🚧 Change propagation (edit in one place → update related artifacts) - TODO
-- 🚧 Auto-numbering for figures and references - TODO
+- ✅ Sequence diagram editor (COMPLETE - SequenceDiagramEditor.tsx 359 lines, serves sequence & flow diagrams)
+- 🚧 Link resolution ({{fig:...}} and {{ref:...}}) - HIGH PRIORITY TODO
+- 🚧 Auto-numbering for figures and references - HIGH PRIORITY TODO
+- 🚧 Flow diagram editor - OPTIONAL (currently reusing SequenceDiagramEditor)
+- 🚧 Change propagation (edit in one place → update related artifacts) - LOW PRIORITY TODO
 
 ### End Goal Capabilities
 
@@ -510,8 +511,8 @@ src/
 │   ├── editors/
 │   │   ├── BlockDiagramEditor.tsx  # ✅ COMPLETE (998 lines, Phase 3)
 │   │   ├── MarkdownEditor.tsx      # ✅ Markdown editor with AI actions + approvals
-│   │   ├── SequenceDiagramEditor.tsx  # 🚧 TODO (Phase 3)
-│   │   └── FlowDiagramEditor.tsx      # 🚧 TODO (Phase 3)
+│   │   ├── SequenceDiagramEditor.tsx  # ✅ COMPLETE (359 lines, Phase 3) - serves sequence & flow
+│   │   └── FlowDiagramEditor.tsx      # 🚧 OPTIONAL (currently using SequenceDiagramEditor)
 │   └── BRSUpload.tsx        # ✅ BRS document upload (Phase 2B)
 └── data/                    # Sample data/templates (empty)
 ```
@@ -925,12 +926,14 @@ See [PHASE2C_TROUBLESHOOTING.md](PHASE2C_TROUBLESHOOTING.md) for common issues:
    - Track changes with `PendingApproval` state
    - Automatic version snapshots on approval
 
-5. **Diagram Editor Integration** ✅ **PARTIAL COMPLETE** (Phase 3)
+5. **Diagram Editor Integration** ✅ **60% COMPLETE** (Phase 3)
    - ✅ Extract block diagram editor from App.tsx → `BlockDiagramEditor.tsx` (COMPLETE - 998 lines)
    - ✅ Pan/zoom in view-only mode → `PanZoomWrapper.tsx` (COMPLETE - 82 lines)
    - ✅ Integrate with Zustand (replace localStorage hooks) (COMPLETE)
-   - 🚧 Create `SequenceDiagramEditor.tsx` (Mermaid code + preview) - TODO
-   - 🚧 Create `FlowDiagramEditor.tsx` (Mermaid code + preview) - TODO
+   - ✅ Create `SequenceDiagramEditor.tsx` (Mermaid code + preview) (COMPLETE - 359 lines, serves both sequence & flow)
+   - 🚧 Link resolution system ({{fig:...}} and {{ref:...}}) - HIGH PRIORITY TODO
+   - 🚧 Auto-numbering for figures - HIGH PRIORITY TODO
+   - 🚧 Create `FlowDiagramEditor.tsx` (Mermaid code + preview) - OPTIONAL (currently reusing SequenceDiagramEditor)
 
 ### Future Phases
 
