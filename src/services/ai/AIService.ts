@@ -548,7 +548,157 @@ export class AIService {
   }
 
   /**
-   * Auto-generate diagrams from BRS analysis
+   * Auto-generate diagrams from Technical Specification
+   * Creates block diagrams for architecture and sequence diagrams for procedures
+   * Extracts content from spec sections (Architecture, Procedures) for diagram generation
+   */
+  async generateDiagramsFromSpec(
+    specificationMarkdown: string,
+    onProgress?: (current: number, total: number, diagramTitle: string) => void
+  ): Promise<{
+    blockDiagrams: BlockDiagram[];
+    sequenceDiagrams: MermaidDiagram[];
+    errors: string[];
+    warnings: string[];
+  }> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    const blockDiagrams: BlockDiagram[] = [];
+    const sequenceDiagrams: MermaidDiagram[] = [];
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Extract sections from specification
+    const {
+      extractArchitectureSection,
+      extractProcedureSubsections,
+      extractAllSections
+    } = await import('../../utils/markdownSectionExtractor');
+
+    // Debug: Show all available sections
+    console.log('📄 Analyzing specification markdown...');
+    console.log('  Total length:', specificationMarkdown.length, 'characters');
+    const allSections = extractAllSections(specificationMarkdown);
+    console.log('  Total sections found:', allSections.length);
+    if (allSections.length > 0) {
+      console.log('  All sections:', allSections.map(s => `${s.sectionNumber}. ${s.title}`).join(', '));
+    } else {
+      console.warn('  ⚠️ NO SECTIONS FOUND! First 500 chars of markdown:', specificationMarkdown.substring(0, 500));
+    }
+
+    const architectureSection = extractArchitectureSection(specificationMarkdown);
+    const procedureSubsections = extractProcedureSubsections(specificationMarkdown);
+
+    console.log('📄 Specification analysis:');
+    console.log('  Architecture section:', architectureSection ? `Found (${architectureSection.content.length} chars)` : 'Not found');
+    console.log('  Procedure subsections:', procedureSubsections.length);
+
+    // Generate block diagram from Architecture section
+    if (architectureSection && architectureSection.content.trim().length > 0) {
+      if (onProgress) {
+        onProgress(1, 1 + procedureSubsections.length, `Section ${architectureSection.sectionNumber}: ${architectureSection.title}`);
+      }
+
+      console.log(`📐 Generating block diagram from Architecture section ${architectureSection.sectionNumber}...`);
+
+      // Use appropriate token limits for block diagram generation
+      const { isReasoningModel } = await import('../../utils/aiModels');
+      const isReasoning = isReasoningModel(this.config.model || '');
+      const maxTokens = isReasoning ? 64000 : 4000;
+
+      const blockOptions: any = { maxTokens };
+      if (isReasoning) {
+        blockOptions.reasoning = { effort: 'high' };
+      }
+
+      const blockResult = await this.generateBlockDiagram(
+        architectureSection.content,
+        architectureSection.title,
+        `${architectureSection.sectionNumber}-1`,
+        blockOptions
+      );
+
+      if (blockResult.diagram) {
+        blockDiagrams.push(blockResult.diagram);
+        console.log(`✅ Block diagram generated: ${architectureSection.title}`);
+      }
+      errors.push(...blockResult.errors);
+      warnings.push(...blockResult.warnings);
+    } else {
+      warnings.push('No Architecture section found in specification. Block diagram generation skipped.');
+      console.warn('⚠️ No Architecture section found in specification');
+    }
+
+    // Generate sequence diagrams from Procedure subsections
+    if (procedureSubsections.length > 0) {
+      console.log(`📊 Generating ${procedureSubsections.length} sequence diagrams from Procedures sections...`);
+
+      for (let i = 0; i < procedureSubsections.length; i++) {
+        const procedure = procedureSubsections[i];
+        console.log(`\n🔄 Processing procedure ${i + 1}/${procedureSubsections.length}: ${procedure.sectionNumber}. ${procedure.title}`);
+
+        if (onProgress) {
+          onProgress(2 + i, 1 + procedureSubsections.length, `Section ${procedure.sectionNumber}: ${procedure.title}`);
+        }
+
+        try {
+          // Use appropriate token limits for sequence diagram generation
+          const { isReasoningModel } = await import('../../utils/aiModels');
+          const isReasoning = isReasoningModel(this.config.model || '');
+          const maxTokens = isReasoning ? 64000 : 4000;
+
+          const seqOptions: any = { maxTokens };
+          if (isReasoning) {
+            seqOptions.reasoning = { effort: 'high' };
+          }
+
+          const seqResult = await this.generateSequenceDiagram(
+            procedure.content,
+            procedure.title,
+            [], // Let AI extract participants from procedure content
+            `${procedure.sectionNumber}-1`,
+            seqOptions
+          );
+
+          console.log('✅ Sequence diagram result:', {
+            hasDiagram: !!seqResult.diagram,
+            errors: seqResult.errors,
+            warnings: seqResult.warnings
+          });
+
+          if (seqResult.diagram) {
+            sequenceDiagrams.push(seqResult.diagram);
+            console.log(`✅ Added sequence diagram: ${procedure.title}`);
+          } else {
+            console.error(`❌ No diagram generated for: ${procedure.title}`, seqResult.errors);
+          }
+          errors.push(...seqResult.errors);
+          warnings.push(...seqResult.warnings);
+        } catch (err) {
+          console.error(`❌ Error generating sequence diagram for ${procedure.title}:`, err);
+          errors.push(`Failed to generate diagram for ${procedure.title}: ${err}`);
+        }
+      }
+
+      console.log(`\n📊 Final results: ${sequenceDiagrams.length} sequence diagrams generated`);
+    } else {
+      warnings.push('No Procedure subsections found in specification. Sequence diagram generation skipped.');
+      console.warn('⚠️ No Procedure subsections found in specification');
+    }
+
+    return {
+      blockDiagrams,
+      sequenceDiagrams,
+      errors,
+      warnings
+    };
+  }
+
+  /**
+   * DEPRECATED: Auto-generate diagrams from BRS analysis
+   * @deprecated Use generateDiagramsFromSpec() instead for sequential workflow
    * Creates block diagrams for architecture and sequence diagrams for procedures
    */
   async generateDiagramsFromBRS(

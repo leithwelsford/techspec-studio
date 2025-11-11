@@ -95,6 +95,40 @@ await aiService.chat(message, history, context);
 
 ## Common Issues & Solutions
 
+### Issue: Persisted Data from Previous Session
+
+**Symptom:** After deleting diagrams/specification through the UI, errors or old data still appear when starting fresh (e.g., Mermaid syntax errors, old diagrams appearing).
+
+**Root Cause:** The application uses Zustand with localStorage persistence. Deleting items through the UI doesn't clear the underlying localStorage storage, so data persists across browser sessions.
+
+**Solutions:**
+
+**Method 1: Use the "Clear Data" Button (Recommended)**
+1. Click the red "Clear Data" button in the header (top-right, trash icon)
+2. Confirm the warning dialog
+3. Page will automatically reload with a clean slate
+
+**Method 2: Browser DevTools Console**
+1. Open browser DevTools (F12)
+2. Go to Console tab
+3. Run: `localStorage.removeItem('tech-spec-project')`
+4. Run: `location.reload()`
+
+**Method 3: Clear All localStorage**
+1. Open browser DevTools (F12)
+2. Go to Console tab
+3. Run: `localStorage.clear()`
+4. Run: `location.reload()`
+
+**Method 4: Browser Settings**
+1. Open browser settings
+2. Clear browsing data → Select "Cookies and site data"
+3. Reload the page
+
+**Note:** The "Clear Data" button (Method 1) is the safest approach as it properly resets the store state before clearing localStorage.
+
+---
+
 ### Issue: AI Config doesn't save
 
 **Check:**

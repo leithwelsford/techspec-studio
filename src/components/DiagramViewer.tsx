@@ -11,6 +11,7 @@ import SequenceDiagramEditor from './editors/SequenceDiagramEditor';
 import { GenerateDiagramsModal } from './ai/GenerateDiagramsModal';
 import { GenerateDiagramFromTextModal } from './ai/GenerateDiagramFromTextModal';
 import { PanZoomWrapper } from './PanZoomWrapper';
+import { MermaidHealingModal } from './MermaidHealingModal';
 
 type DiagramType = 'all' | 'block' | 'sequence' | 'flow';
 
@@ -607,6 +608,8 @@ function BlockDiagramRenderer({ diagram }: { diagram: any }) {
 function MermaidDiagramRenderer({ diagram }: { diagram: any }) {
   const [svgContent, setSvgContent] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [showHealingModal, setShowHealingModal] = useState(false);
+  const updateMermaidDiagram = useProjectStore(state => state.updateMermaidDiagram);
 
   useEffect(() => {
     let mounted = true;
@@ -636,14 +639,48 @@ function MermaidDiagramRenderer({ diagram }: { diagram: any }) {
     };
   }, [diagram.id, diagram.mermaidCode]);
 
+  const handleFixApplied = (fixedCode: string) => {
+    console.log('✅ Applying fixed Mermaid code to diagram:', diagram.id);
+    updateMermaidDiagram(diagram.id, { mermaidCode: fixedCode });
+    setShowHealingModal(false);
+    setError(''); // Clear error after fix
+  };
+
+  const handleManualEdit = () => {
+    // TODO: Switch to edit mode for this diagram
+    console.log('User chose manual edit for diagram:', diagram.id);
+    setShowHealingModal(false);
+    alert('Manual editing: Please use the Edit button in the diagram list to edit this diagram.');
+  };
+
   if (error) {
     return (
-      <div className="flex justify-center items-center h-64 p-4">
-        <div className="text-red-500 dark:text-red-400 text-sm">
-          <div className="font-semibold mb-2">Failed to render diagram</div>
-          <div className="text-xs opacity-80">{error}</div>
+      <>
+        <div className="flex flex-col justify-center items-center h-64 p-4 gap-4">
+          <div className="text-red-500 dark:text-red-400 text-sm text-center">
+            <div className="font-semibold mb-2">❌ Failed to render diagram</div>
+            <div className="text-xs opacity-80 mb-4 whitespace-pre-wrap max-w-2xl">{error}</div>
+            <button
+              onClick={() => setShowHealingModal(true)}
+              className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700"
+            >
+              🔧 Try Self-Healing
+            </button>
+          </div>
         </div>
-      </div>
+
+        {/* Healing Modal */}
+        <MermaidHealingModal
+          isOpen={showHealingModal}
+          onClose={() => setShowHealingModal(false)}
+          invalidCode={diagram.mermaidCode}
+          diagramId={diagram.id}
+          diagramTitle={diagram.title}
+          error={error}
+          onFixed={handleFixApplied}
+          onManualEdit={handleManualEdit}
+        />
+      </>
     );
   }
 

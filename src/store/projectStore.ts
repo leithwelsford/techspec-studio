@@ -126,6 +126,17 @@ interface ProjectState {
   // Utilities
   getAllDiagrams: () => Array<{ id: string; type: string; title: string; figureNumber?: string }>;
   autoNumberFigures: () => void;
+
+  // Link Resolution utilities
+  getDiagramById: (id: string) => (BlockDiagram | MermaidDiagram) & { type: 'block' | 'sequence' | 'flow' } | null;
+  getDiagramNumber: (id: string) => string | null;
+  getAllFigureReferences: () => Array<{ id: string; number: string; title: string; type: string }>;
+  getAllCitationReferences: () => Array<{ id: string; number: string; title: string }>;
+  getValidFigureIds: () => string[];
+  getValidReferenceIds: () => string[];
+
+  // Store management
+  resetStore: () => void;
 }
 
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -777,6 +788,93 @@ export const useProjectStore = create<ProjectState>()(
 
       clearHistory: () => {
         set({
+          versionHistory: {
+            snapshots: [],
+            currentSnapshotId: null,
+          },
+        });
+      },
+
+      // Link Resolution utilities
+      getDiagramById: (id) => {
+        const state = get();
+        if (!state.project) return null;
+
+        const blockDiagram = state.project.blockDiagrams.find(d => d.id === id);
+        if (blockDiagram) return { ...blockDiagram, type: 'block' as const };
+
+        const sequenceDiagram = state.project.sequenceDiagrams.find(d => d.id === id);
+        if (sequenceDiagram) return { ...sequenceDiagram, type: 'sequence' as const };
+
+        const flowDiagram = state.project.flowDiagrams.find(d => d.id === id);
+        if (flowDiagram) return { ...flowDiagram, type: 'flow' as const };
+
+        return null;
+      },
+
+      getDiagramNumber: (id) => {
+        const diagram = get().getDiagramById(id);
+        return diagram?.figureNumber || null;
+      },
+
+      getAllFigureReferences: () => {
+        const state = get();
+        if (!state.project) return [];
+
+        return state.getAllDiagrams().map(d => ({
+          id: d.id,
+          number: d.figureNumber || 'X-X',
+          title: d.title,
+          type: d.type,
+        }));
+      },
+
+      getAllCitationReferences: () => {
+        const state = get();
+        if (!state.project) return [];
+
+        return state.project.references.map((ref, index) => ({
+          id: ref.id,
+          number: String(index + 1),
+          title: ref.title,
+        }));
+      },
+
+      getValidFigureIds: () => {
+        const state = get();
+        if (!state.project) return [];
+        return state.getAllDiagrams().map(d => d.id);
+      },
+
+      getValidReferenceIds: () => {
+        const state = get();
+        if (!state.project) return [];
+        return state.project.references.map(r => r.id);
+      },
+
+      // Store management
+      resetStore: () => {
+        set({
+          project: null,
+          activeTab: 'document',
+          activeBlockDiagramId: null,
+          activeMermaidDiagramId: null,
+          sidebarOpen: true,
+          previewMode: 'split',
+          darkMode: false,
+          aiConfig: null,
+          chatHistory: [],
+          activeTasks: [],
+          pendingApprovals: [],
+          isGenerating: false,
+          currentTaskId: null,
+          chatPanelOpen: false,
+          usageStats: {
+            totalTokens: 0,
+            totalCost: 0,
+            requestCount: 0,
+            lastReset: new Date(),
+          },
           versionHistory: {
             snapshots: [],
             currentSnapshotId: null,

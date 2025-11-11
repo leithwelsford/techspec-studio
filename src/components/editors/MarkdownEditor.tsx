@@ -3,7 +3,8 @@ import { useProjectStore } from '../../store/projectStore';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { aiService } from '../../services/ai';
-import type { AIContext } from '../../types';
+import type { AIContext, WorkspaceTab } from '../../types';
+import { remarkLinkResolver } from '../../utils/remarkLinkResolver';
 
 export default function MarkdownEditor() {
   const project = useProjectStore((state) => state.project);
@@ -12,6 +13,9 @@ export default function MarkdownEditor() {
   const setGenerating = useProjectStore((state) => state.setGenerating);
   const isGenerating = useProjectStore((state) => state.isGenerating);
   const createApproval = useProjectStore((state) => state.createApproval);
+  const getAllFigureReferences = useProjectStore((state) => state.getAllFigureReferences);
+  const getAllCitationReferences = useProjectStore((state) => state.getAllCitationReferences);
+  const setActiveTab = useProjectStore((state) => state.setActiveTab);
 
   const [viewMode, setViewMode] = useState<'split' | 'edit' | 'preview'>('split');
   const [generatingSection, setGeneratingSection] = useState(false);
@@ -322,7 +326,59 @@ Use {{fig:diagram-id}} to reference diagrams."
           <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900`}>
             <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 shadow-sm rounded-lg p-8">
               <article className="prose prose-sm max-w-none dark:prose-invert">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown
+                  remarkPlugins={[
+                    remarkGfm,
+                    [remarkLinkResolver, {
+                      figures: getAllFigureReferences(),
+                      citations: getAllCitationReferences(),
+                      onNavigate: (type: 'figure' | 'reference', _id: string) => {
+                        // Navigate to diagram or reference
+                        if (type === 'figure') {
+                          setActiveTab('diagrams' as WorkspaceTab);
+                        } else {
+                          setActiveTab('references' as WorkspaceTab);
+                        }
+                      }
+                    }]
+                  ]}
+                  components={{
+                    a: ({ node, className, children, href, ...props }) => {
+                      // Check if this is a figure or citation reference link
+                      const isFigureRef = className?.includes('figure-reference');
+                      const isCitationRef = className?.includes('citation-reference');
+
+                      if (isFigureRef || isCitationRef) {
+                        return (
+                          <a
+                            href={href}
+                            className={className}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              // Use correct WorkspaceTab values
+                              const targetTab = isFigureRef ? 'block-diagrams' : 'references';
+                              console.log('Link clicked:', {
+                                className,
+                                href,
+                                targetTab,
+                                navigating: true
+                              });
+
+                              setActiveTab(targetTab as WorkspaceTab);
+                              console.log('setActiveTab called with:', targetTab);
+                            }}
+                            {...props}
+                          >
+                            {children}
+                          </a>
+                        );
+                      }
+
+                      // Regular links
+                      return <a href={href} className={className} {...props}>{children}</a>;
+                    }
+                  }}
+                >
                   {markdown}
                 </ReactMarkdown>
               </article>

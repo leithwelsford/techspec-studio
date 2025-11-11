@@ -1,9 +1,9 @@
 /**
  * GenerateDiagramsModal Component
- * Modal dialog for auto-generating diagrams from BRS analysis
+ * Modal dialog for auto-generating diagrams from Technical Specification
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { aiService } from '../../services/ai';
 import { decrypt } from '../../utils/encryption';
@@ -15,7 +15,7 @@ interface GenerateDiagramsModalProps {
 
 export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ isOpen, onClose }) => {
   const aiConfig = useProjectStore(state => state.aiConfig);
-  const brsDocument = useProjectStore(state => state.getBRSDocument());
+  const specification = useProjectStore(state => state.project?.specification);
   const addBlockDiagram = useProjectStore(state => state.addBlockDiagram);
   const addMermaidDiagram = useProjectStore(state => state.addMermaidDiagram);
   const updateUsageStats = useProjectStore(state => state.updateUsageStats);
@@ -25,14 +25,14 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
   // Debug logging
   console.log('=== MODAL STATE ===');
   console.log('isOpen:', isOpen);
-  console.log('brsDocument:', brsDocument ? `Loaded: ${brsDocument.title}` : 'NULL');
+  console.log('specification:', specification ? `Loaded: ${specification.title}` : 'NULL');
+  console.log('spec length:', specification?.markdown.length || 0);
   console.log('aiConfig:', aiConfig ? 'Configured' : 'NULL');
   console.log('==================');
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 1, diagram: '' });
   const [error, setError] = useState<string | null>(null);
-  const [brsAnalysis, setBrsAnalysis] = useState<any>(null);
   const [requireApproval, setRequireApproval] = useState(true); // Default: require approval
   const [generationResults, setGenerationResults] = useState<{
     blockDiagrams: number;
@@ -42,142 +42,18 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
   } | null>(null);
   const [modelWarning, setModelWarning] = useState<string | null>(null);
 
-  // Check if we need to analyze BRS first
-  const needsAnalysis = brsDocument && !brsDocument.structuredData;
-
   // Validation
-  const canGenerate = brsDocument && aiConfig && aiConfig.apiKey;
-
-  // Auto-analyze BRS when modal opens if needed
-  useEffect(() => {
-    if (isOpen && brsDocument && aiConfig && !brsAnalysis) {
-      console.log('=== MODAL OPENED - AUTO-ANALYZING BRS ===');
-      analyzeBRS();
-    }
-  }, [isOpen, brsDocument, aiConfig]);
-
-  const analyzeBRS = async () => {
-    console.log('=== ANALYZE BRS FUNCTION CALLED ===');
-    console.log('brsDocument exists:', !!brsDocument);
-    console.log('aiConfig exists:', !!aiConfig);
-
-    if (!brsDocument || !aiConfig) {
-      console.log('Early return: missing brsDocument or aiConfig');
-      return;
-    }
-
-    console.log('Starting BRS analysis...');
-    setIsGenerating(true);
-    setError(null);
-    setProgress({ current: 0, total: 1, diagram: 'Analyzing BRS document...' });
-
-    try {
-      console.log('Decrypting API key...');
-      // Decrypt API key and initialize AI service
-      const decryptedKey = decrypt(aiConfig.apiKey);
-      console.log('API key decrypted, initializing AI service...');
-
-      await aiService.initialize({
-        ...aiConfig,
-        apiKey: decryptedKey
-      });
-      console.log('AI service initialized');
-
-      // Build BRS analysis prompt
-      console.log('Building BRS analysis prompt...');
-      const { buildBRSAnalysisPrompt } = await import('../../services/ai/prompts/documentPrompts');
-      const analysisPrompt = buildBRSAnalysisPrompt(brsDocument.markdown);
-      console.log('Prompt built, length:', analysisPrompt.length);
-      console.log('BRS markdown length:', brsDocument.markdown.length);
-
-      // Check if current model is a reasoning model
-      const { isReasoningModel, formatModelName } = await import('../../utils/aiModels');
-      const currentModel = aiConfig.model || 'anthropic/claude-3.5-sonnet';
-      const isReasoning = isReasoningModel(currentModel);
-
-      // Reasoning models use internal reasoning before generating output
-      // Set appropriate token limit based on benchmarking: ~9k reasoning + ~3.6k output = ~12.6k total
-      const maxTokens = isReasoning ? 32000 : 4000;
-
-      const chatOptions: any = { maxTokens };
-
-      if (isReasoning) {
-        chatOptions.reasoning = { effort: 'high' };
-        setModelWarning(`${formatModelName(currentModel)} uses reasoning mode for enhanced analysis quality.`);
-      } else {
-        setModelWarning(null);
-      }
-
-      // Get AI analysis with appropriate token limit
-      // Pass undefined for context (3rd param), chatOptions as 4th param (options)
-      const result = await aiService.chat(analysisPrompt, [], undefined, chatOptions);
-      console.log('AI service returned result');
-
-      // Parse JSON response
-      let analysis: any = {};
-      try {
-        console.log('=== MODAL: RAW BRS ANALYSIS RESPONSE ===');
-        console.log(result.content);
-        console.log('=== END RAW RESPONSE ===');
-
-        const jsonMatch = result.content.match(/```json\n([\s\S]*?)\n```/);
-        if (jsonMatch) {
-          console.log('Found JSON in code block');
-          analysis = JSON.parse(jsonMatch[1]);
-        } else {
-          console.log('Trying to parse entire response as JSON');
-          analysis = JSON.parse(result.content);
-        }
-
-        console.log('=== MODAL: PARSED BRS ANALYSIS ===');
-        console.log(JSON.stringify(analysis, null, 2));
-        console.log('Components:', analysis.components?.length || 0);
-        console.log('Interfaces:', analysis.interfaces?.length || 0);
-        console.log('Procedures:', analysis.procedures?.length || 0);
-        console.log('Standards:', analysis.standards?.length || 0);
-        console.log('=== END PARSED ANALYSIS ===');
-      } catch (parseError) {
-        console.warn('Failed to parse BRS analysis JSON:', parseError);
-        console.error('Parse error details:', parseError);
-        analysis = {
-          components: [],
-          interfaces: [],
-          requirementCategories: {},
-          procedures: [],
-          standards: []
-        };
-      }
-
-      setBrsAnalysis(analysis);
-
-      // Update usage stats
-      if (result.tokens) {
-        updateUsageStats(result.tokens.total, result.cost || 0);
-      }
-    } catch (err: any) {
-      console.error('Failed to analyze BRS:', err);
-      setError(err.message || 'Failed to analyze BRS document.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+  const canGenerate = specification && specification.markdown.trim().length > 0 && aiConfig && aiConfig.apiKey;
 
   const handleGenerate = async () => {
-    if (!canGenerate || !brsDocument || !aiConfig) {
-      return;
-    }
-
-    // Use existing analysis or the one we just created
-    const analysis = brsAnalysis || brsDocument.structuredData;
-    if (!analysis) {
-      setError('No BRS analysis available. Please try closing and reopening this dialog.');
+    if (!canGenerate || !specification || !aiConfig) {
       return;
     }
 
     setIsGenerating(true);
     setError(null);
     setGenerationResults(null);
-    setProgress({ current: 0, total: 1, diagram: 'Preparing to generate diagrams...' });
+    setProgress({ current: 0, total: 1, diagram: 'Analyzing specification sections...' });
 
     try {
       // Decrypt API key and initialize AI service
@@ -187,9 +63,20 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
         apiKey: decryptedKey
       });
 
-      // Generate diagrams from BRS analysis
-      const result = await aiService.generateDiagramsFromBRS(
-        analysis,
+      // Check if current model is a reasoning model
+      const { isReasoningModel, formatModelName } = await import('../../utils/aiModels');
+      const currentModel = aiConfig.model || 'anthropic/claude-3.5-sonnet';
+      const isReasoning = isReasoningModel(currentModel);
+
+      if (isReasoning) {
+        setModelWarning(`${formatModelName(currentModel)} uses reasoning mode for enhanced diagram quality.`);
+      } else {
+        setModelWarning(null);
+      }
+
+      // Generate diagrams from Technical Specification
+      const result = await aiService.generateDiagramsFromSpec(
+        specification.markdown,
         (current, total, diagramTitle) => {
           setProgress({ current, total, diagram: diagramTitle });
         }
@@ -229,7 +116,7 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
         // Create snapshot
         createSnapshot(
           'diagram-add',
-          `AI-generated ${result.blockDiagrams.length} block diagram(s) and ${result.sequenceDiagrams.length} sequence diagram(s) from BRS`,
+          `AI-generated ${result.blockDiagrams.length} block diagram(s) and ${result.sequenceDiagrams.length} sequence diagram(s) from Technical Specification`,
           'ai'
         );
       }
@@ -264,10 +151,10 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
-            Generate Diagrams from BRS
+            Generate Diagrams from Technical Specification
           </h2>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-            AI-powered diagram generation from Business Requirements
+            AI-powered diagram generation from Architecture and Procedures sections
           </p>
         </div>
 
@@ -285,15 +172,27 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
             </div>
           )}
 
-          {/* BRS Info */}
-          {brsDocument && (
+          {/* Specification Info */}
+          {specification && (
             <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <h3 className="text-sm font-medium text-blue-900 mb-2">Source BRS Document</h3>
+              <h3 className="text-sm font-medium text-blue-900 mb-2">Source Technical Specification</h3>
               <div className="text-sm text-blue-800 space-y-1">
-                <p><strong>Title:</strong> {brsDocument.title}</p>
-                <p><strong>Customer:</strong> {brsDocument.metadata.customer || 'Not specified'}</p>
-                <p><strong>Project:</strong> {brsDocument.metadata.projectName || 'Not specified'}</p>
+                <p><strong>Title:</strong> {specification.title}</p>
+                <p><strong>Version:</strong> {specification.metadata.version || 'Not specified'}</p>
+                <p><strong>Length:</strong> {specification.markdown.length} characters</p>
               </div>
+            </div>
+          )}
+
+          {/* Workflow Explanation */}
+          {!generationResults && (
+            <div className="bg-purple-50 border border-purple-200 rounded-md p-4">
+              <h3 className="text-sm font-medium text-purple-900 mb-2">How it works</h3>
+              <ul className="text-sm text-purple-800 space-y-1 list-disc list-inside">
+                <li>Extracts <strong>Architecture</strong> section (typically Section 4) → generates <strong>Block Diagram</strong></li>
+                <li>Extracts <strong>Procedure</strong> subsections (typically Section 6.x) → generates <strong>Sequence Diagrams</strong></li>
+                <li>Diagrams will match terminology and component names from your specification text</li>
+              </ul>
             </div>
           )}
 
@@ -318,39 +217,6 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
                     : 'Generated diagrams will be added immediately without review.'}
                 </p>
               </div>
-            </div>
-          )}
-
-          {/* BRS Analysis Status */}
-          {brsAnalysis && (
-            <div className="bg-green-50 border border-green-200 rounded-md p-4">
-              <h3 className="text-sm font-medium text-green-900 mb-2">BRS Analysis Complete</h3>
-              <div className="text-sm text-green-800 space-y-1">
-                <p><strong>Components:</strong> {brsAnalysis.components?.length || 0} identified</p>
-                <p><strong>Interfaces:</strong> {brsAnalysis.interfaces?.length || 0} identified</p>
-                <p><strong>Procedures:</strong> {brsAnalysis.procedures?.length || 0} identified</p>
-                <p><strong>Standards:</strong> {brsAnalysis.standards?.length || 0} referenced</p>
-              </div>
-            </div>
-          )}
-
-          {/* What will be generated */}
-          {brsAnalysis && !generationResults && (
-            <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 rounded-md p-4">
-              <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Diagrams to be generated</h3>
-              <ul className="text-sm text-gray-700 space-y-1">
-                {brsAnalysis.components && brsAnalysis.interfaces && (
-                  <li>✓ <strong>Block Diagram:</strong> System Architecture Overview (components & interfaces)</li>
-                )}
-                {brsAnalysis.procedures?.map((proc: any, idx: number) => (
-                  <li key={idx}>
-                    ✓ <strong>Sequence Diagram:</strong> {proc.name || `Procedure ${idx + 1}`}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
-                Estimated time: 30-60 seconds per diagram
-              </p>
             </div>
           )}
 
@@ -408,15 +274,23 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
           )}
 
           {/* Warnings */}
-          {!canGenerate && !brsDocument && (
+          {!canGenerate && !specification && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
               <p className="text-sm text-yellow-800">
-                <strong>No BRS document loaded.</strong> Please upload a BRS document first from the BRS tab.
+                <strong>No Technical Specification found.</strong> Please generate a technical specification first from the Document tab.
               </p>
             </div>
           )}
 
-          {!canGenerate && brsDocument && !aiConfig?.apiKey && (
+          {!canGenerate && specification && specification.markdown.trim().length === 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+              <p className="text-sm text-yellow-800">
+                <strong>Specification is empty.</strong> Please add content to your technical specification before generating diagrams.
+              </p>
+            </div>
+          )}
+
+          {!canGenerate && specification && !aiConfig?.apiKey && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
               <p className="text-sm text-yellow-800">
                 <strong>AI not configured.</strong> Please configure your AI provider and API key in Settings.
@@ -437,7 +311,7 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
           {!generationResults && (
             <button
               onClick={handleGenerate}
-              disabled={!canGenerate || isGenerating || !brsAnalysis}
+              disabled={!canGenerate || isGenerating}
               className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isGenerating ? 'Generating...' : 'Generate Diagrams'}

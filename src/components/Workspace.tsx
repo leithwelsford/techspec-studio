@@ -17,7 +17,11 @@ export default function Workspace() {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showGenerateDiagramsModal, setShowGenerateDiagramsModal] = useState(false);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>('brs');
+
+  // Use Zustand store for activeTab instead of local state
+  const activeTab = useProjectStore((state) => state.activeTab);
+  const setActiveTab = useProjectStore((state) => state.setActiveTab);
+
   const project = useProjectStore((state) => state.project);
   const aiConfig = useProjectStore((state) => state.aiConfig);
   const chatPanelOpen = useProjectStore((state) => state.chatPanelOpen);
@@ -26,9 +30,18 @@ export default function Workspace() {
   const darkMode = useProjectStore((state) => state.darkMode);
   const toggleDarkMode = useProjectStore((state) => state.toggleDarkMode);
   const pendingApprovals = useProjectStore((state) => state.pendingApprovals);
+  const resetStore = useProjectStore((state) => state.resetStore);
 
   // Show AI config on first load if not configured (but allow dismissal)
   const needsConfig = (!aiConfig?.apiKey || !aiConfig.apiKey.trim()) && !hasDismissedConfig;
+
+  const handleClearData = () => {
+    if (confirm('⚠️ WARNING: This will permanently delete ALL data including:\n\n• Your project\n• All diagrams\n• Technical specification\n• BRS document\n• AI chat history\n• Version history\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?')) {
+      resetStore();
+      alert('✅ All data has been cleared. The page will now reload.');
+      window.location.reload();
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
@@ -75,34 +88,34 @@ export default function Workspace() {
 
           {/* Generate Spec Button */}
           {brsDocument && (
-            <>
-              <button
-                onClick={() => setShowGenerateModal(true)}
-                disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim()}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md ${
-                  aiConfig?.apiKey && aiConfig.apiKey.trim()
-                    ? 'text-white bg-green-600 hover:bg-green-700'
-                    : 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                }`}
-                title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Generate technical specification from BRS'}
-              >
-                Generate Spec
-              </button>
+            <button
+              onClick={() => setShowGenerateModal(true)}
+              disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim()}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md ${
+                aiConfig?.apiKey && aiConfig.apiKey.trim()
+                  ? 'text-white bg-green-600 hover:bg-green-700'
+                  : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+              }`}
+              title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Generate technical specification from BRS'}
+            >
+              Generate Spec
+            </button>
+          )}
 
-              {/* Generate Diagrams Button */}
-              <button
-                onClick={() => setShowGenerateDiagramsModal(true)}
-                disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim()}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md ${
-                  aiConfig?.apiKey && aiConfig.apiKey.trim()
-                    ? 'text-white bg-purple-600 hover:bg-purple-700'
-                    : 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                }`}
-                title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Generate diagrams from BRS'}
-              >
-                Generate Diagrams
-              </button>
-            </>
+          {/* Generate Diagrams Button - requires specification */}
+          {project?.specification && project.specification.markdown.trim().length > 0 && (
+            <button
+              onClick={() => setShowGenerateDiagramsModal(true)}
+              disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim()}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md ${
+                aiConfig?.apiKey && aiConfig.apiKey.trim()
+                  ? 'text-white bg-purple-600 hover:bg-purple-700'
+                  : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+              }`}
+              title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Generate diagrams from Technical Specification'}
+            >
+              Generate Diagrams
+            </button>
           )}
 
           {/* Review Panel Button with Badge */}
@@ -137,6 +150,18 @@ export default function Workspace() {
             }`}
           >
             {chatPanelOpen ? 'Hide Chat' : 'Show Chat'}
+          </button>
+
+          {/* Clear Data Button */}
+          <button
+            onClick={handleClearData}
+            className="px-3 py-1.5 text-sm font-medium text-red-700 dark:text-red-400 bg-white dark:bg-gray-700 border border-red-300 dark:border-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20"
+            title="Clear all data and start fresh"
+          >
+            <svg className="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Clear Data
           </button>
         </div>
       </header>
@@ -198,7 +223,7 @@ export default function Workspace() {
                   <button
                     onClick={() => setActiveTab('diagrams')}
                     className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      activeTab === 'diagrams'
+                      (activeTab === 'diagrams' || activeTab === 'block-diagrams' || activeTab === 'sequence-diagrams' || activeTab === 'flow-diagrams')
                         ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
@@ -222,7 +247,7 @@ export default function Workspace() {
               <div className="flex-1 overflow-hidden">
                 {activeTab === 'brs' && <BRSUpload />}
                 {activeTab === 'document' && <MarkdownEditor />}
-                {activeTab === 'diagrams' && <DiagramViewer />}
+                {(activeTab === 'diagrams' || activeTab === 'block-diagrams' || activeTab === 'sequence-diagrams' || activeTab === 'flow-diagrams') && <DiagramViewer />}
                 {activeTab === 'references' && (
                   <div className="h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
                     3GPP reference management coming soon...

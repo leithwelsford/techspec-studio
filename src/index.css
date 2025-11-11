@@ -13,3 +13,58 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Figure and Citation Reference Styles */
+.figure-reference {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px dotted #3b82f6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.figure-reference:hover {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+.figure-reference-invalid {
+  color: #ef4444;
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px dotted #ef4444;
+  cursor: not-allowed;
+}
+
+.figure-reference-invalid:hover {
+  color: #dc2626;
+  border-bottom-color: #dc2626;
+}
+
+.citation-reference {
+  color: #8b5cf6;
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px dotted #8b5cf6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.citation-reference:hover {
+  color: #7c3aed;
+  border-bottom-color: #7c3aed;
+}
+
+.citation-reference-invalid {
+  color: #ef4444;
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px dotted #ef4444;
+  cursor: not-allowed;
+}
+
+.citation-reference-invalid:hover {
+  color: #dc2626;
+  border-bottom-color: #dc2626;
+}

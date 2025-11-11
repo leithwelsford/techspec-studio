@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**⚠️ Note:** This file is comprehensive (1500+ lines). For quick orientation, read these sections in order:
+
+**Essential Reading (5 min):**
+1. [Quick Start for Claude Code](#quick-start-for-claude-code) - Get productive immediately
+2. [Import Path Patterns](#import-path-patterns) - CRITICAL: No `@/` aliases configured
+3. [State Store Patterns](#state-store-patterns) - How to use Zustand correctly
+
+**When Working with AI Features:**
+4. [AI Service Usage](#ai-service-usage) - MUST initialize before use
+5. [Common Pitfalls & Solutions](#common-pitfalls--solutions) - Debug common errors
+
+**Reference as Needed:**
+- [Architecture](#architecture) - State management, data flow, AI service
+- [Development Commands](#development-commands) - npm scripts
+- [Component Development Guidelines](#component-development-guidelines) - Best practices
+
+---
+
 ## Repository Information
 
 **GitHub Repository**: https://github.com/leithwelsford/techspec-studio
@@ -80,7 +98,7 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 - Phase 2A: Core AI Experience ✅ (Chat, Config, Markdown Editor)
 - Phase 2B: BRS-to-TechSpec Pipeline ✅ **COMPLETE**
 - Phase 2C: Approval Workflow & Version History ✅ **COMPLETE**
-- Phase 3: Diagram Editing & Integration 🟡 **40% COMPLETE**
+- Phase 3: Diagram Editing & Integration 🟡 **60% COMPLETE**
 
 **What's Working Now:**
 - ✅ Configure AI provider (OpenRouter) with encrypted API key storage
@@ -141,6 +159,19 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 - `src/components/` - Working UI components (Workspace, ChatPanel, AIConfigPanel, MarkdownEditor, BRSUpload, DiagramViewer, ReviewPanel, DiffViewer, BlockDiagramEditor, PanZoomWrapper)
 - `src/hooks/` - Custom React hooks (usePanZoom for pan/zoom functionality)
 - `sample-brs.md` - Example BRS document for testing (318 lines, realistic 5G use case)
+
+## ⚠️ Critical Don'ts (Read This First!)
+
+**Before you write ANY code, remember these rules:**
+
+1. ❌ **NEVER use `@/` path aliases** - They are NOT configured. Use relative imports only.
+2. ❌ **NEVER mutate Zustand state directly** - Always use store actions.
+3. ❌ **NEVER use AI service without initializing** - Decrypt API key first.
+4. ❌ **NEVER commit API keys** - Always encrypt before storing.
+5. ❌ **NEVER pass encrypted keys to AI service** - Decrypt them first.
+6. ❌ **NEVER include current message in chat history** - Use `.slice(0, -1)`.
+7. ❌ **NEVER create new types without checking** - `src/types/index.ts` is comprehensive.
+8. ❌ **NEVER use localStorage directly for shared data** - Use Zustand store instead.
 
 ## Quick Start for Claude Code
 
@@ -624,7 +655,7 @@ All types are defined, including comprehensive AI types. **Check this file FIRST
 
 ### Import Path Patterns
 
-**CRITICAL**: This codebase uses **relative imports** - path aliases (`@/`) are NOT configured.
+**CRITICAL**: This codebase uses **relative imports** - path aliases (`@/`) are NOT configured in tsconfig.json or vite.config.ts.
 
 ```typescript
 // ✅ CORRECT - Relative imports
@@ -633,10 +664,12 @@ import type { Project, AIConfig } from '../../types';
 import { useProjectStore } from '../../store/projectStore';
 import { aiService } from '../../services/ai';
 
-// ❌ WRONG - Path aliases NOT configured
+// ❌ WRONG - Path aliases NOT configured (will cause TypeScript errors)
 import { encrypt } from '@/utils/encryption';  // WILL FAIL
 import type { Project } from '@/types';         // WILL FAIL
 ```
+
+**Note:** Some code examples in this file use `@/` for illustration purposes, but you MUST use relative imports in actual code.
 
 To add path aliases (if needed), update both:
 ```typescript
@@ -715,8 +748,9 @@ createSnapshot(
 **Correct Pattern (used in all components):**
 
 ```typescript
-import { aiService } from '@/services/ai';
-import { decrypt } from '@/utils/encryption';
+// Note: Use relative imports in actual code, not @/ aliases
+import { aiService } from '../../services/ai';
+import { decrypt } from '../../utils/encryption';
 
 // ✅ CORRECT - Initialize before use
 const decryptedKey = decrypt(aiConfig.apiKey);
@@ -765,7 +799,8 @@ const result = await aiService.generateSection({ sectionTitle, context });
 ### Encryption Utilities (`src/utils/encryption.ts`)
 
 ```typescript
-import { encrypt, decrypt, maskApiKey } from '@/utils/encryption';
+// Note: Use relative imports in actual code
+import { encrypt, decrypt, maskApiKey } from '../../utils/encryption';
 
 // Encrypt API key before storing
 const encrypted = encrypt(apiKey);
@@ -1125,7 +1160,7 @@ VITE_OPENROUTER_API_KEY=sk-or-v1-...  # Optional: pre-configured key
 
 1. **Always encrypt API keys before storage**
    ```typescript
-   import { encrypt } from '@/utils/encryption';
+   import { encrypt } from '../../utils/encryption';
    const encrypted = encrypt(apiKey);
    ```
 
@@ -1227,6 +1262,16 @@ From code review (README.md):
 
 ## Common Pitfalls & Solutions
 
+### Quick Debugging Checklist
+
+When encountering errors, check these in order:
+1. Is `npm run dev` running? (Check http://localhost:3000)
+2. Are there TypeScript errors? (Run `npm run lint`)
+3. Is the API key configured? (Check AI Config panel)
+4. Are you using relative imports (not `@/` aliases)?
+5. Check browser console for runtime errors
+6. Check zustand store state via React DevTools
+
 ### 1. "AI service not initialized" Error
 **Problem:** Calling AI service methods without initialization
 **Solution:** Always decrypt API key and initialize before use (see AI Service Usage section above)
@@ -1287,6 +1332,44 @@ const context = {
 3. Error message suggests retrying or switching to Claude Opus
 **User Action:** If error occurs, click "Refine Selection" again or use a more capable model
 **Files:** [src/services/ai/prompts/systemPrompts.ts](src/services/ai/prompts/systemPrompts.ts:135-200), [src/services/ai/AIService.ts](src/services/ai/AIService.ts:48-67)
+
+### 7. TypeScript Import Errors
+**Problem:** `Cannot find module '@/...'` or similar import errors
+**Root Cause:** Using `@/` path aliases when they're not configured
+**Solution:** Replace all `@/` imports with relative paths
+```typescript
+// ❌ WRONG
+import { useProjectStore } from '@/store/projectStore';
+
+// ✅ CORRECT
+import { useProjectStore } from '../../store/projectStore';
+```
+
+### 8. Mermaid Diagram Not Rendering
+**Problem:** Mermaid diagram shows blank or error in preview
+**Root Cause:** Invalid Mermaid syntax from AI generation
+**Solutions:**
+1. Check browser console for Mermaid parsing errors
+2. Validate syntax at https://mermaid.live
+3. Use SequenceDiagramEditor templates as starting point
+4. Delete broken diagram and regenerate with fixed prompts
+
+### 9. State Not Persisting
+**Problem:** Changes disappear after page refresh
+**Root Cause:** localStorage not saving or quota exceeded
+**Solutions:**
+1. Check browser console for localStorage errors
+2. Clear old data: `localStorage.clear()` in console
+3. Check localStorage quota (usually 5-10MB)
+4. Verify Zustand persist middleware is working
+
+### 10. Development Server Won't Start
+**Problem:** `npm run dev` fails or port already in use
+**Solutions:**
+1. Check if port 3000 is already in use: `lsof -i :3000` (Mac/Linux) or `netstat -ano | findstr :3000` (Windows)
+2. Kill existing process or change port in vite.config.ts
+3. Delete node_modules and reinstall: `rm -rf node_modules && npm install`
+4. If in Docker/NVM: Source NVM first: `source /usr/local/share/nvm/nvm.sh && npm run dev`
 
 ## Technical Specification Standards (3GPP Context)
 

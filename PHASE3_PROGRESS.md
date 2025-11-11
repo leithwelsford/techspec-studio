@@ -332,10 +332,17 @@ src/components/
 - ✅ Pan only worked on background (not diagram elements)
 - ✅ Cursor didn't change to "grabbing" when dragging
 
+### Fixed in Session (2025-11-10):
+- ✅ Link resolution system ({{fig:...}} and {{ref:...}}) - COMPLETE
+- ✅ Click navigation from links to diagrams/references
+- ✅ Workspace tab state management (local → Zustand)
+- ✅ Persisted data issue - Added "Clear Data" button in header
+
 ### Remaining Issues:
 - ⚠️ Mermaid syntax errors in stored diagrams (from earlier AI generation)
-  - **Solution:** Delete broken diagrams or regenerate with fixed prompts
-- ⚠️ Link resolution not implemented ({{fig:...}} syntax doesn't resolve)
+  - **Solution:** Use the "Clear Data" button in the header (red trash icon)
+  - **Alternative:** Browser console: `localStorage.removeItem('tech-spec-project')` then reload
+  - See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed instructions
 
 ---
 
