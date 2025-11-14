@@ -128,6 +128,22 @@ export default function MarkdownEditor() {
     const instructions = prompt('How should I refine this text? (e.g., "make it more technical", "simplify", "add examples")');
     if (!instructions) return;
 
+    // Ask user which refinement type they want
+    const refinementType = prompt(
+      'Choose refinement type:\n\n' +
+      '1 = Simple Refinement (faster, fewer tokens)\n' +
+      '   - Only refines the selected text\n\n' +
+      '2 = Cascade Refinement (slower, 2-3x tokens)\n' +
+      '   - Refines selection AND analyzes impact on other sections\n' +
+      '   - Suggests related changes for consistency\n\n' +
+      'Enter 1 for Simple, 2 for Cascade:',
+      '1'
+    );
+
+    if (!refinementType) return;
+
+    const useCascade = refinementType.trim() === '2';
+
     setGeneratingSection(true);
     setGenerating(true);
 
@@ -146,29 +162,61 @@ export default function MarkdownEditor() {
       });
 
       const context = buildContext();
-      const chatHistory = useProjectStore.getState().chatHistory;
 
-      const result = await aiService.refineContent(selectedText, instructions, context);
+      if (useCascade) {
+        // Cascade refinement workflow
+        console.log('🔄 Starting cascade refinement workflow...');
 
-      // Replace selected text
-      const before = textarea.value.substring(0, textarea.selectionStart);
-      const after = textarea.value.substring(textarea.selectionEnd);
-      const newContent = before + result.content + after;
+        const result = await aiService.refineCascade(
+          selectedText,
+          instructions,
+          textarea.value,
+          context
+        );
 
-      // Create approval for review
-      const createApproval = useProjectStore.getState().createApproval;
-      const approvalId = createApproval({
-        taskId: `refine-${Date.now()}`,
-        type: 'refinement',
-        status: 'pending',
-        originalContent: textarea.value, // Full document before change
-        generatedContent: newContent, // Full document after change
-      });
+        // Create cascaded refinement approval
+        const createApproval = useProjectStore.getState().createApproval;
+        const approvalId = createApproval({
+          taskId: `cascade-refine-${Date.now()}`,
+          type: 'cascaded-refinement',
+          status: 'pending',
+          originalContent: textarea.value,
+          generatedContent: result, // This is the full cascade result object
+        });
 
-      alert(
-        `Content refined! ${result.tokens?.total || 0} tokens used.\n\n` +
-        `Please review the changes in the Review Panel before applying.`
-      );
+        alert(
+          `Cascade refinement complete!\n\n` +
+          `✅ Primary change generated\n` +
+          `📊 ${result.propagatedChanges?.length || 0} related sections analyzed\n` +
+          `⚠️ ${result.validation?.issues?.length || 0} validation issues found\n\n` +
+          `Tokens used: ${result.tokensUsed || 0}\n` +
+          `Cost: $${result.costIncurred?.toFixed(3) || '0.000'}\n\n` +
+          `Please review the changes in the Review Panel.`
+        );
+      } else {
+        // Simple refinement workflow
+        const result = await aiService.refineContent(selectedText, instructions, context);
+
+        // Replace selected text
+        const before = textarea.value.substring(0, textarea.selectionStart);
+        const after = textarea.value.substring(textarea.selectionEnd);
+        const newContent = before + result.content + after;
+
+        // Create approval for review
+        const createApproval = useProjectStore.getState().createApproval;
+        const approvalId = createApproval({
+          taskId: `refine-${Date.now()}`,
+          type: 'refinement',
+          status: 'pending',
+          originalContent: textarea.value, // Full document before change
+          generatedContent: newContent, // Full document after change
+        });
+
+        alert(
+          `Content refined! ${result.tokens?.total || 0} tokens used.\n\n` +
+          `Please review the changes in the Review Panel before applying.`
+        );
+      }
     } catch (error) {
       alert(`Error refining content: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {

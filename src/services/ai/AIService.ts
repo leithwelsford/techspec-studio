@@ -206,26 +206,90 @@ export class AIService {
   async refineContent(
     originalContent: string,
     feedback: string,
-    options?: GenerationOptions
+    options?: GenerationOptions & { isPartialSelection?: boolean }
   ): Promise<GenerationResult> {
     if (!this.provider || !this.config) {
       throw new Error('AI service not initialized');
     }
 
-    const prompt = buildRefinementPrompt(originalContent, feedback);
+    const prompt = buildRefinementPrompt(originalContent, feedback, options?.isPartialSelection || false);
 
     const messages = [
       { role: 'user', content: prompt }
     ];
 
+    // For reasoning models (o1, GPT-5), use much higher output token limit
+    // For large document refinements, we need even more tokens
+    const isReasoningModel = this.config.model.toLowerCase().includes('o1') ||
+                             this.config.model.toLowerCase().includes('gpt-5');
+
+    // Calculate appropriate token limit based on input size
+    const inputLines = originalContent.split('\n').length;
+    let refinementMaxTokens: number;
+
+    if (isReasoningModel) {
+      // For reasoning models: scale with input size
+      if (inputLines > 500) {
+        refinementMaxTokens = 64000; // Very large documents
+      } else if (inputLines > 200) {
+        refinementMaxTokens = 32000; // Large documents
+      } else {
+        refinementMaxTokens = 16000; // Medium documents
+      }
+    } else {
+      // For non-reasoning models
+      refinementMaxTokens = options?.maxTokens ?? this.config.maxTokens ?? 8000;
+    }
+
+    console.log(`🎯 Refining content with maxTokens: ${refinementMaxTokens}`, {
+      isReasoningModel,
+      inputLines,
+      inputChars: originalContent.length,
+    });
+
     const result = await this.provider.generate(messages, {
       model: this.config.model,
       temperature: options?.temperature ?? this.config.temperature,
-      maxTokens: options?.maxTokens ?? this.config.maxTokens
+      maxTokens: refinementMaxTokens
     });
+
+    // Debug logging for LLM output
+    const finishReason = (result as any).finishReason || 'unknown';
+    console.log('🤖 AI Refinement Result:', {
+      model: this.config.model,
+      originalLength: originalContent.length,
+      originalLines: originalContent.split('\n').length,
+      generatedLength: result.content.length,
+      generatedLines: result.content.split('\n').length,
+      sizeDelta: result.content.length - originalContent.length,
+      tokens: result.tokens,
+      cost: result.cost,
+      finishReason,
+    });
+
+    console.log('📝 Original Content (first 500 chars):', originalContent.substring(0, 500));
+    console.log('✨ Generated Content (first 500 chars):', result.content.substring(0, 500));
+    console.log('📄 Full Generated Content:', result.content);
+
+    // Warn if output was truncated
+    if (finishReason === 'length' || finishReason === 'max_output_tokens') {
+      console.error('❌ CRITICAL: Refinement output was TRUNCATED due to token limit!');
+      console.error(`   Generated only ${result.content.length} chars (${result.content.split('\n').length} lines)`);
+      console.error(`   Original was ${originalContent.length} chars (${originalContent.split('\n').length} lines)`);
+      console.error(`   Used maxTokens: ${refinementMaxTokens}`);
+      console.error(`   This means content after the truncation point is LOST!`);
+
+      throw new Error(
+        `AI refinement was truncated due to token limit! ` +
+        `Generated ${result.content.split('\n').length} lines but original had ${originalContent.split('\n').length} lines. ` +
+        `Content after line ${result.content.split('\n').length} was lost. ` +
+        `Try refining smaller sections at a time, or switch to a model with larger output capacity.`
+      );
+    }
 
     // Check for placeholder text - if found, throw error with helpful message
     if (hasPlaceholderText(result.content)) {
+      console.error('❌ Placeholder text detected in AI output!');
       throw new Error(
         'AI generated incomplete content with placeholders. ' +
         'This usually means the AI model is being lazy. ' +
@@ -277,13 +341,13 @@ export class AIService {
     description: string,
     title: string,
     figureNumber?: string,
-    options?: GenerationOptions
+    options?: GenerationOptions & { userGuidance?: string }
   ): Promise<{ diagram?: BlockDiagram; errors: string[]; warnings: string[] }> {
     if (!this.provider || !this.config) {
       throw new Error('AI service not initialized');
     }
 
-    const prompt = buildBlockDiagramPrompt(description, title, figureNumber);
+    const prompt = buildBlockDiagramPrompt(description, title, figureNumber, options?.userGuidance);
 
     const messages = [
       { role: 'user', content: prompt }
@@ -329,13 +393,13 @@ export class AIService {
     title: string,
     participants: string[] = [],
     figureNumber?: string,
-    options?: GenerationOptions
+    options?: GenerationOptions & { userGuidance?: string }
   ): Promise<{ diagram?: MermaidDiagram; errors: string[]; warnings: string[] }> {
     if (!this.provider || !this.config) {
       throw new Error('AI service not initialized');
     }
 
-    const prompt = buildSequenceDiagramPrompt(description, title, participants, figureNumber);
+    const prompt = buildSequenceDiagramPrompt(description, title, participants, figureNumber, options?.userGuidance);
 
     console.log('🎨 Sending sequence diagram prompt:', {
       title,
@@ -554,7 +618,8 @@ export class AIService {
    */
   async generateDiagramsFromSpec(
     specificationMarkdown: string,
-    onProgress?: (current: number, total: number, diagramTitle: string) => void
+    onProgress?: (current: number, total: number, diagramTitle: string) => void,
+    userGuidance?: string
   ): Promise<{
     blockDiagrams: BlockDiagram[];
     sequenceDiagrams: MermaidDiagram[];
@@ -608,7 +673,7 @@ export class AIService {
       const isReasoning = isReasoningModel(this.config.model || '');
       const maxTokens = isReasoning ? 64000 : 4000;
 
-      const blockOptions: any = { maxTokens };
+      const blockOptions: any = { maxTokens, userGuidance };
       if (isReasoning) {
         blockOptions.reasoning = { effort: 'high' };
       }
@@ -649,7 +714,7 @@ export class AIService {
           const isReasoning = isReasoningModel(this.config.model || '');
           const maxTokens = isReasoning ? 64000 : 4000;
 
-          const seqOptions: any = { maxTokens };
+          const seqOptions: any = { maxTokens, userGuidance };
           if (isReasoning) {
             seqOptions.reasoning = { effort: 'high' };
           }
@@ -945,7 +1010,8 @@ export class AIService {
     },
     specTitle: string,
     context?: AIContext,
-    onProgress?: (section: number, total: number, sectionTitle: string) => void
+    onProgress?: (section: number, total: number, sectionTitle: string) => void,
+    userGuidance?: string
   ): Promise<{
     markdown: string;
     sections: Array<{ title: string; content: string }>;
@@ -963,7 +1029,7 @@ export class AIService {
 
     // Step 1: Analyze BRS to extract structured requirements
     const { buildBRSAnalysisPrompt } = await import('./prompts/documentPrompts');
-    const analysisPrompt = buildBRSAnalysisPrompt(brsDocument.markdown);
+    const analysisPrompt = buildBRSAnalysisPrompt(brsDocument.markdown, userGuidance);
 
     // Check if current model is a reasoning model - they need much higher token limits
     const { isReasoningModel } = await import('../../utils/aiModels');
@@ -1040,35 +1106,35 @@ export class AIService {
     const sectionGenerators = [
       {
         title: '1 Scope',
-        promptBuilder: () => build3GPPScopePrompt(specTitle, brsAnalysis, brsDocument.metadata)
+        promptBuilder: () => build3GPPScopePrompt(specTitle, brsAnalysis, brsDocument.metadata, userGuidance)
       },
       {
         title: '2 References',
-        promptBuilder: () => build3GPPReferencesPrompt(brsAnalysis.standards || [], context)
+        promptBuilder: () => build3GPPReferencesPrompt(brsAnalysis.standards || [], context, userGuidance)
       },
       {
         title: '3 Definitions, Symbols, and Abbreviations',
-        promptBuilder: () => build3GPPDefinitionsPrompt(brsAnalysis.components || [], brsDocument.markdown)
+        promptBuilder: () => build3GPPDefinitionsPrompt(brsAnalysis.components || [], brsDocument.markdown, userGuidance)
       },
       {
         title: '4 Architecture',
-        promptBuilder: () => build3GPPArchitecturePrompt(brsAnalysis, context)
+        promptBuilder: () => build3GPPArchitecturePrompt(brsAnalysis, context, userGuidance)
       },
       {
         title: '5 Functional Requirements',
-        promptBuilder: () => build3GPPFunctionalRequirementsPrompt(brsAnalysis)
+        promptBuilder: () => build3GPPFunctionalRequirementsPrompt(brsAnalysis, userGuidance)
       },
       {
         title: '6 Procedures',
-        promptBuilder: () => build3GPPProceduresPrompt(brsAnalysis)
+        promptBuilder: () => build3GPPProceduresPrompt(brsAnalysis, userGuidance)
       },
       {
         title: '7 Information Elements',
-        promptBuilder: () => build3GPPInformationElementsPrompt(brsAnalysis)
+        promptBuilder: () => build3GPPInformationElementsPrompt(brsAnalysis, userGuidance)
       },
       {
         title: '8 Error Handling',
-        promptBuilder: () => build3GPPErrorHandlingPrompt(brsAnalysis)
+        promptBuilder: () => build3GPPErrorHandlingPrompt(brsAnalysis, userGuidance)
       }
     ];
 
@@ -1082,17 +1148,52 @@ export class AIService {
 
       // Generate section
       const sectionPrompt = promptBuilder();
+
+      // For reasoning models (o1, GPT-5), use much higher output token limit
+      // Reasoning tokens are separate and unlimited; maxTokens only applies to output
+      const isReasoningModel = this.config.model.toLowerCase().includes('o1') ||
+                               this.config.model.toLowerCase().includes('gpt-5');
+      const sectionMaxTokens = isReasoningModel ? 16000 : (this.config.maxTokens || 4000);
+
+      console.log(`🎯 Generating section with maxTokens: ${sectionMaxTokens} (reasoning model: ${isReasoningModel})`);
+
       const sectionResult = await this.provider.generate(
         [{ role: 'user', content: sectionPrompt }],
         {
           model: this.config.model,
           temperature: this.config.temperature,
-          maxTokens: this.config.maxTokens
+          maxTokens: sectionMaxTokens
         }
       );
 
       totalTokens += sectionResult.tokens?.total || 0;
       totalCost += sectionResult.cost || 0;
+
+      // Debug logging for section generation
+      console.log(`📄 Generated Section ${i + 1}/${sectionGenerators.length}: ${title}`, {
+        contentLength: sectionResult.content.length,
+        contentLines: sectionResult.content.split('\n').length,
+        tokens: sectionResult.tokens?.total || 0,
+        cost: sectionResult.cost || 0,
+        firstLine: sectionResult.content.split('\n')[0],
+        lastLine: sectionResult.content.split('\n').slice(-1)[0],
+        finishReason: (sectionResult as any).finishReason || 'unknown',
+      });
+
+      console.log(`📝 Section ${i + 1} content preview (first 300 chars):`, sectionResult.content.substring(0, 300));
+
+      // Warn if section was truncated due to token limit
+      if ((sectionResult as any).finishReason === 'length' || (sectionResult as any).finishReason === 'max_output_tokens') {
+        console.warn(`⚠️ WARNING: Section ${i + 1} "${title}" was TRUNCATED due to token limit!`);
+        console.warn(`   Content length: ${sectionResult.content.length} chars, Lines: ${sectionResult.content.split('\n').length}`);
+        console.warn(`   This section is INCOMPLETE. Consider increasing maxTokens or using a different model.`);
+      }
+
+      // Warn if section is suspiciously short or empty
+      if (sectionResult.content.length < 200 && title !== '2 References') {
+        console.warn(`⚠️ WARNING: Section ${i + 1} "${title}" is very short or empty (${sectionResult.content.length} chars)!`);
+        console.warn(`   This may indicate generation failure. Check finish_reason.`);
+      }
 
       sections.push({
         title,
@@ -1119,12 +1220,328 @@ export class AIService {
 
     const combinedMarkdown = documentHeader + sections.map(s => s.content).join('\n\n---\n\n');
 
+    // Debug logging for final document
+    console.log('📚 Final Document Assembly:', {
+      totalSections: sections.length,
+      sectionTitles: sections.map(s => s.title),
+      documentLength: combinedMarkdown.length,
+      documentLines: combinedMarkdown.split('\n').length,
+      totalTokens,
+      totalCost,
+    });
+
+    // Log each section's position in final document
+    sections.forEach((section, idx) => {
+      const sectionStart = combinedMarkdown.indexOf(section.content);
+      console.log(`  Section ${idx + 1} "${section.title}": starts at char ${sectionStart}, length ${section.content.length}`);
+    });
+
+    // Check if Section 7 is present in final markdown
+    const section7Present = combinedMarkdown.includes('## 7 Information Elements') ||
+                           combinedMarkdown.includes('##7 Information Elements') ||
+                           combinedMarkdown.includes('# 7 Information Elements');
+    console.log('🔍 Section 7 present in final markdown?', section7Present);
+
+    if (!section7Present && sections.length === 8) {
+      console.warn('⚠️ WARNING: Section 7 was generated but not found in final markdown!');
+      console.log('Section 7 content:', sections[6]?.content?.substring(0, 500));
+    }
+
     return {
       markdown: combinedMarkdown,
       sections,
       totalTokens,
       totalCost,
       brsAnalysis
+    };
+  }
+
+  /**
+   * ========== CASCADED REFINEMENT METHODS ==========
+   */
+
+  /**
+   * Analyze the impact of a section refinement on other sections
+   * Returns list of affected sections with impact analysis
+   */
+  async analyzeRefinementImpact(
+    originalSection: string,
+    refinedSection: string,
+    sectionTitle: string,
+    fullDocument: string,
+    instruction: string
+  ): Promise<import('../../types').ImpactAnalysis> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    const { buildImpactAnalysisPrompt } = await import('./prompts/refinementPrompts');
+
+    const prompt = buildImpactAnalysisPrompt(
+      originalSection,
+      refinedSection,
+      sectionTitle,
+      fullDocument,
+      instruction
+    );
+
+    const messages = [
+      { role: 'system', content: 'You are an expert technical writer analyzing document changes.' },
+      { role: 'user', content: prompt }
+    ];
+
+    const result = await this.provider.generate(messages, {
+      model: this.config.model,
+      temperature: 0.2, // Low temperature for analytical task
+      maxTokens: 16000 // High limit for reasoning models (GPT-5, o1) which use tokens for reasoning + output
+    });
+
+    try {
+      const analysis = JSON.parse(result.content);
+      console.log('📊 Impact Analysis Result:', analysis);
+      return analysis;
+    } catch (error) {
+      console.error('Failed to parse impact analysis:', result.content);
+      throw new Error('Failed to parse impact analysis JSON');
+    }
+  }
+
+  /**
+   * Generate propagated changes for affected sections
+   * Returns array of proposed changes for each affected section
+   */
+  async generatePropagatedChanges(
+    impactAnalysis: import('../../types').ImpactAnalysis,
+    fullDocument: string,
+    primaryChange: {
+      sectionTitle: string;
+      originalContent: string;
+      refinedContent: string;
+      instruction: string;
+    },
+    onProgress?: (current: number, total: number, sectionTitle: string) => void
+  ): Promise<import('../../types').PropagatedChange[]> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    const { buildPropagationPrompt, extractSection } = await import('./prompts/refinementPrompts');
+
+    const propagatedChanges: import('../../types').PropagatedChange[] = [];
+    const affectedSections = impactAnalysis.affectedSections.filter(
+      s => s.impactType !== 'NONE'
+    );
+
+    for (let i = 0; i < affectedSections.length; i++) {
+      const affectedSection = affectedSections[i];
+
+      if (onProgress) {
+        onProgress(i + 1, affectedSections.length, affectedSection.sectionTitle);
+      }
+
+      console.log(`🔄 Generating propagated change ${i + 1}/${affectedSections.length}: ${affectedSection.sectionTitle}`);
+
+      // Extract the section content from full document
+      const sectionContent = extractSection(
+        fullDocument,
+        affectedSection.sectionId,
+        affectedSection.sectionTitle
+      );
+
+      if (!sectionContent) {
+        console.warn(`⚠️ Could not find section: ${affectedSection.sectionId} ${affectedSection.sectionTitle}`);
+        continue;
+      }
+
+      const primaryChangeContext = `
+Original: ${primaryChange.sectionTitle}
+Instruction: "${primaryChange.instruction}"
+Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange.refinedContent.length} characters
+`;
+
+      const prompt = buildPropagationPrompt(
+        affectedSection,
+        sectionContent,
+        primaryChangeContext,
+        fullDocument
+      );
+
+      const messages = [
+        { role: 'system', content: 'You are an expert technical writer generating consistent document updates.' },
+        { role: 'user', content: prompt }
+      ];
+
+      try {
+        const result = await this.provider.generate(messages, {
+          model: this.config.model,
+          temperature: 0.3,
+          maxTokens: 4000
+        });
+
+        // Handle REMOVE action (JSON response)
+        if (affectedSection.impactType === 'REMOVE') {
+          try {
+            const removeResult = JSON.parse(result.content);
+            propagatedChanges.push({
+              sectionId: affectedSection.sectionId,
+              sectionTitle: affectedSection.sectionTitle,
+              actionType: 'REMOVE_SECTION',
+              originalContent: sectionContent,
+              proposedContent: '', // Empty for removal
+              reasoning: removeResult.reasoning,
+              impactLevel: affectedSection.impactLevel,
+              confidence: removeResult.confidence || 0.9,
+              isSelected: true, // Default to selected
+            });
+          } catch (error) {
+            console.error(`Failed to parse REMOVE response for ${affectedSection.sectionTitle}:`, result.content);
+          }
+        } else {
+          // MODIFY action (markdown response)
+          propagatedChanges.push({
+            sectionId: affectedSection.sectionId,
+            sectionTitle: affectedSection.sectionTitle,
+            actionType: 'MODIFY_SECTION',
+            originalContent: sectionContent,
+            proposedContent: result.content.trim(),
+            reasoning: affectedSection.reasoning,
+            impactLevel: affectedSection.impactLevel,
+            confidence: 0.85,
+            isSelected: true, // Default to selected
+          });
+        }
+      } catch (error) {
+        console.error(`Error generating propagated change for ${affectedSection.sectionTitle}:`, error);
+      }
+    }
+
+    console.log(`✅ Generated ${propagatedChanges.length} propagated changes`);
+    return propagatedChanges;
+  }
+
+  /**
+   * Validate consistency across all cascaded changes
+   * Checks for contradictions, orphaned references, and terminology mismatches
+   */
+  async validateCascadedChanges(
+    primaryChange: {
+      sectionTitle: string;
+      originalContent: string;
+      refinedContent: string;
+    },
+    propagatedChanges: import('../../types').PropagatedChange[],
+    fullDocument: string
+  ): Promise<import('../../types').ValidationResult> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    const { buildConsistencyValidationPrompt } = await import('./prompts/refinementPrompts');
+
+    const prompt = buildConsistencyValidationPrompt(
+      primaryChange,
+      propagatedChanges,
+      fullDocument
+    );
+
+    const messages = [
+      { role: 'system', content: 'You are an expert technical editor validating document consistency.' },
+      { role: 'user', content: prompt }
+    ];
+
+    try {
+      const result = await this.provider.generate(messages, {
+        model: this.config.model,
+        temperature: 0.1, // Very low temperature for validation
+        maxTokens: 8000 // Increased for reasoning models and comprehensive validation reports
+      });
+
+      const validation = JSON.parse(result.content);
+      console.log('🔍 Validation Result:', validation);
+      return validation;
+    } catch (error) {
+      console.error('Failed to parse validation result:', error);
+      // Return safe default
+      return {
+        isConsistent: true,
+        issues: [],
+        warnings: ['Validation check failed - please review changes manually']
+      };
+    }
+  }
+
+  /**
+   * Complete cascaded refinement workflow
+   * Performs impact analysis, generates propagated changes, and validates consistency
+   */
+  async performCascadedRefinement(
+    originalSection: string,
+    refinedSection: string,
+    sectionTitle: string,
+    fullDocument: string,
+    instruction: string,
+    onProgress?: (stage: string, current: number, total: number, detail?: string) => void
+  ): Promise<{
+    impactAnalysis: import('../../types').ImpactAnalysis;
+    propagatedChanges: import('../../types').PropagatedChange[];
+    validation: import('../../types').ValidationResult;
+    totalTokens: number;
+    totalCost: number;
+  }> {
+    console.log('🔄 Starting cascaded refinement workflow...');
+    let totalTokens = 0;
+    let totalCost = 0;
+
+    // Step 1: Analyze Impact
+    if (onProgress) onProgress('impact-analysis', 1, 4, 'Analyzing document impact...');
+    const impactAnalysis = await this.analyzeRefinementImpact(
+      originalSection,
+      refinedSection,
+      sectionTitle,
+      fullDocument,
+      instruction
+    );
+
+    // Step 2: Generate Propagated Changes
+    if (onProgress) onProgress('propagation', 2, 4, 'Generating propagated changes...');
+    const propagatedChanges = await this.generatePropagatedChanges(
+      impactAnalysis,
+      fullDocument,
+      {
+        sectionTitle,
+        originalContent: originalSection,
+        refinedContent: refinedSection,
+        instruction
+      },
+      (current, total, sectionTitle) => {
+        if (onProgress) {
+          onProgress('propagation', 2, 4, `${current}/${total}: ${sectionTitle}`);
+        }
+      }
+    );
+
+    // Step 3: Validate Consistency
+    if (onProgress) onProgress('validation', 3, 4, 'Validating consistency...');
+    const validation = await this.validateCascadedChanges(
+      {
+        sectionTitle,
+        originalContent: originalSection,
+        refinedContent: refinedSection
+      },
+      propagatedChanges,
+      fullDocument
+    );
+
+    // Step 4: Complete
+    if (onProgress) onProgress('complete', 4, 4, 'Cascaded refinement complete');
+
+    console.log('✅ Cascaded refinement workflow complete');
+    return {
+      impactAnalysis,
+      propagatedChanges,
+      validation,
+      totalTokens,
+      totalCost
     };
   }
 }

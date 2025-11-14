@@ -26,6 +26,7 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
     const projectName = brsDocument?.metadata?.projectName || project?.name || 'Untitled';
     return `${projectName} - Technical Specification`;
   });
+  const [userGuidance, setUserGuidance] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 8, section: '' });
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +46,23 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
 
     try {
       // Decrypt API key and initialize AI service
-      const decryptedKey = decrypt(aiConfig.apiKey);
+      // Check if key is already plain text (starts with sk-or-)
+      const isPlainText = aiConfig.apiKey?.startsWith('sk-or-');
+      const decryptedKey = isPlainText ? aiConfig.apiKey : decrypt(aiConfig.apiKey);
+
+      console.log('🔑 API Key Debug:', {
+        hasEncryptedKey: !!aiConfig.apiKey,
+        isPlainText,
+        encryptedLength: aiConfig.apiKey?.length,
+        hasDecryptedKey: !!decryptedKey,
+        decryptedLength: decryptedKey?.length,
+        decryptedPrefix: decryptedKey?.substring(0, 10),
+      });
+
+      if (!decryptedKey) {
+        throw new Error('Failed to decrypt API key. Please reconfigure your AI settings.');
+      }
+
       await aiService.initialize({
         ...aiConfig,
         apiKey: decryptedKey
@@ -87,7 +104,8 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
         context,
         (current, total, sectionTitle) => {
           setProgress({ current, total, section: sectionTitle });
-        }
+        },
+        userGuidance.trim() || undefined // Pass user guidance if provided
       );
 
       // Update usage stats
@@ -172,6 +190,25 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
               placeholder="Enter specification title..."
             />
+          </div>
+
+          {/* User Guidance */}
+          <div>
+            <label htmlFor="user-guidance" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Additional Guidance for AI <span className="text-gray-500 font-normal">(Optional)</span>
+            </label>
+            <textarea
+              id="user-guidance"
+              value={userGuidance}
+              onChange={(e) => setUserGuidance(e.target.value)}
+              disabled={isGenerating}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 resize-none"
+              placeholder="Provide context or clarifications for the AI. For example:&#10;• The deployment uses 5G-NSA (Non-Standalone) architecture&#10;• Focus on eMBB (Enhanced Mobile Broadband) use cases&#10;• Customer requires dual-stack IPv4/IPv6 support&#10;• Use vendor-specific terminology from Ericsson"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Use this field to clarify ambiguities in the BRS, specify deployment details, or provide additional context that will help the AI generate a more accurate specification.
+            </p>
           </div>
 
           {/* Approval Option */}

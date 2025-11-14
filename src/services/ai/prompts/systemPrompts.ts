@@ -132,9 +132,52 @@ Ensure your output feels like a natural continuation of the existing document.`;
 /**
  * Prompt for iterative refinement based on feedback
  */
-export function buildRefinementPrompt(originalContent: string, feedback: string): string {
+export function buildRefinementPrompt(originalContent: string, feedback: string, isPartialSelection: boolean = false): string {
   const contentLength = originalContent.split('\n').length;
 
+  // For partial selections (e.g., just one section), use different instructions
+  if (isPartialSelection) {
+    return `You are refining a SELECTED PORTION of a larger document based on user feedback.
+
+Selected Content (${contentLength} lines):
+${originalContent}
+
+User Feedback:
+${feedback}
+
+Instructions:
+1. Carefully read the user's feedback and identify specific areas for improvement
+2. You are ONLY refining the selected portion - DO NOT add content from other sections
+3. Focus changes ONLY on addressing the feedback for this selection
+4. Maintain the structure and formatting of this section
+5. Keep or enhance any diagram/reference citations within this section
+6. For diagram references, use descriptive kebab-case IDs like {{fig:system-architecture}} NOT random IDs
+
+CRITICAL OUTPUT REQUIREMENTS:
+
+YOU MUST OUTPUT ONLY THE REFINED VERSION OF THE SELECTED CONTENT.
+- Do NOT include other sections or content that wasn't in the selection
+- Do NOT add introductory text like "Here is the refined section..."
+- Do NOT add explanatory notes or meta-commentary
+- Output ONLY the markdown content that should replace the selection
+
+ABSOLUTELY FORBIDDEN:
+❌ Adding sections that weren't in the original selection
+❌ "[Previous sections remain unchanged]" or similar placeholders
+❌ "[Note: ...]" or explanatory comments
+❌ Introductory phrases like "Here is the refined content:"
+❌ Anything other than the actual refined markdown content
+
+REQUIRED:
+✅ Output the refined selected content exactly as it should appear in the document
+✅ Apply the user's feedback to this section only
+✅ Maintain proper markdown formatting
+✅ The output must be production-ready and can directly replace the selection
+
+Output the refined selection now:`;
+  }
+
+  // For full document refinement
   return `You are refining existing content based on user feedback.
 
 Original Content (${contentLength} lines):

@@ -12,6 +12,7 @@
   "dependencies": {
     "@types/crypto-js": "^4.2.2",
     "crypto-js": "^4.2.0",
+    "diff": "^8.0.2",
     "docx": "^9.5.1",
     "mammoth": "^1.11.0",
     "mermaid": "^11.12.1",
@@ -24,6 +25,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@types/diff": "^7.0.2",
     "@types/mdast": "^4.0.4",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",

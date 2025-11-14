@@ -6,14 +6,35 @@
 import type { BlockDiagram, MermaidDiagram } from '../../../types';
 
 /**
+ * Helper function to append user guidance to prompts
+ */
+function appendUserGuidance(basePrompt: string, userGuidance?: string): string {
+  if (!userGuidance) return basePrompt;
+
+  return `${basePrompt}
+
+---
+
+**IMPORTANT USER GUIDANCE:**
+${userGuidance}
+
+Please take this guidance into account when generating this diagram. The guidance may specify:
+- Which components or interfaces to emphasize or de-emphasize
+- Specific architectural details or deployment scenarios
+- Terminology preferences or naming conventions
+- Which message flows or procedures to include/exclude`;
+}
+
+/**
  * Generate block diagram from description
  */
 export function buildBlockDiagramPrompt(
   description: string,
   title: string,
-  figureNumber?: string
+  figureNumber?: string,
+  userGuidance?: string
 ): string {
-  return `Generate a block diagram based on the following description:
+  const basePrompt = `Generate a block diagram based on the following description:
 
 Description: ${description}
 Title: ${title}
@@ -112,6 +133,8 @@ Example structure:
 }
 
 Now generate the block diagram JSON for the description provided above. Output ONLY valid JSON, no explanations.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }
 
 /**
@@ -121,9 +144,10 @@ export function buildSequenceDiagramPrompt(
   description: string,
   title: string,
   participants: string[] = [],
-  figureNumber?: string
+  figureNumber?: string,
+  userGuidance?: string
 ): string {
-  return `Generate a Mermaid sequence diagram based on the following description:
+  const basePrompt = `Generate a Mermaid sequence diagram based on the following description:
 
 Description: ${description}
 Title: ${title}
@@ -192,6 +216,8 @@ Guidelines:
 12. If you need to add multiple pieces of information, use commas or separate them with dashes.
 
 Now generate the Mermaid sequence diagram code for the description provided. Output the mermaid code block wrapped in \`\`\`mermaid ... \`\`\`.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }
 
 /**

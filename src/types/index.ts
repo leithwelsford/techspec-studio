@@ -295,7 +295,7 @@ export type AITaskOutput =
 export interface PendingApproval {
   id: string;
   taskId: string;
-  type: 'document' | 'section' | 'diagram' | 'refinement';
+  type: 'document' | 'section' | 'diagram' | 'refinement' | 'cascaded-refinement';
   status: 'pending' | 'approved' | 'rejected';
   originalContent?: string;
   generatedContent: any;
@@ -303,6 +303,61 @@ export interface PendingApproval {
   feedback?: string;
   createdAt: Date;
   reviewedAt?: Date;
+}
+
+// ========== Cascaded Refinement Types ==========
+
+export interface ImpactAnalysis {
+  affectedSections: AffectedSection[];
+  totalImpact: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
+  reasoning: string;
+}
+
+export interface AffectedSection {
+  sectionId: string;
+  sectionTitle: string;
+  impactLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  impactType: 'REMOVE' | 'MODIFY' | 'NONE';
+  reasoning: string;
+}
+
+export interface PropagatedChange {
+  sectionId: string;
+  sectionTitle: string;
+  actionType: 'REMOVE_SECTION' | 'MODIFY_SECTION' | 'NONE';
+  originalContent: string;
+  proposedContent: string;
+  reasoning: string;
+  impactLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  confidence: number; // 0-1, AI's confidence in this change
+  isSelected: boolean; // User can deselect changes they don't want
+}
+
+export interface CascadedRefinementApproval extends PendingApproval {
+  type: 'cascaded-refinement';
+  primaryChange: {
+    sectionId: string;
+    sectionTitle: string;
+    originalContent: string;
+    refinedContent: string;
+  };
+  propagatedChanges: PropagatedChange[];
+  instruction: string;
+  tokensUsed: number;
+  costIncurred: number;
+}
+
+export interface ValidationResult {
+  isConsistent: boolean;
+  issues: ValidationIssue[];
+  warnings: string[];
+}
+
+export interface ValidationIssue {
+  type: 'CONTRADICTION' | 'ORPHANED_REFERENCE' | 'TERMINOLOGY_MISMATCH';
+  description: string;
+  affectedSections: string[];
+  severity: 'ERROR' | 'WARNING';
 }
 
 export interface AIUsageStats {

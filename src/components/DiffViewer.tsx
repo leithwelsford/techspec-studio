@@ -6,9 +6,12 @@
  * - Red: Removed lines
  * - Green: Added lines
  * - Gray: Unchanged lines
+ *
+ * Uses the `diff` library for accurate diffing algorithms.
  */
 
 import React, { useMemo } from 'react';
+import * as Diff from 'diff';
 
 interface DiffLine {
   type: 'unchanged' | 'added' | 'removed';
@@ -26,91 +29,50 @@ interface DiffViewerProps {
 }
 
 /**
- * Simple line-by-line diff algorithm
- * For Phase 2C - basic implementation. Can be replaced with more sophisticated
- * libraries like `diff` or `react-diff-viewer-continued` in future phases.
+ * Compute line-by-line diff using the `diff` library
+ * This provides accurate diffing that handles repeated content correctly
  */
 function computeLineDiff(original: string, modified: string): DiffLine[] {
-  const originalLines = original.split('\n');
-  const modifiedLines = modified.split('\n');
   const result: DiffLine[] = [];
+  let originalLineNum = 1;
+  let modifiedLineNum = 1;
 
-  // Simple LCS-based diff (Longest Common Subsequence approach)
-  // This is a basic implementation - for production, consider using `diff` library
+  // Use diff library's line diff algorithm
+  const changes = Diff.diffLines(original, modified);
 
-  const lcs = getLCS(originalLines, modifiedLines);
-  let origIdx = 0;
-  let modIdx = 0;
-  let lcsIdx = 0;
-
-  while (origIdx < originalLines.length || modIdx < modifiedLines.length) {
-    if (lcsIdx < lcs.length && origIdx < originalLines.length && originalLines[origIdx] === lcs[lcsIdx]) {
-      // Line is unchanged
-      result.push({
-        type: 'unchanged',
-        content: originalLines[origIdx],
-        lineNumber: modIdx + 1,
-        originalLineNumber: origIdx + 1,
-      });
-      origIdx++;
-      modIdx++;
-      lcsIdx++;
-    } else if (origIdx < originalLines.length && (lcsIdx >= lcs.length || originalLines[origIdx] !== lcs[lcsIdx])) {
-      // Line was removed
-      result.push({
-        type: 'removed',
-        content: originalLines[origIdx],
-        originalLineNumber: origIdx + 1,
-      });
-      origIdx++;
-    } else {
-      // Line was added
-      result.push({
-        type: 'added',
-        content: modifiedLines[modIdx],
-        lineNumber: modIdx + 1,
-      });
-      modIdx++;
+  for (const change of changes) {
+    const lines = change.value.split('\n');
+    // Remove last empty line if value ends with newline
+    if (lines[lines.length - 1] === '') {
+      lines.pop();
     }
-  }
 
-  return result;
-}
-
-/**
- * Longest Common Subsequence (LCS) for diff computation
- */
-function getLCS(arr1: string[], arr2: string[]): string[] {
-  const m = arr1.length;
-  const n = arr2.length;
-  const dp: number[][] = Array(m + 1).fill(0).map(() => Array(n + 1).fill(0));
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (arr1[i - 1] === arr2[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
+    for (const line of lines) {
+      if (change.added) {
+        result.push({
+          type: 'added',
+          content: line,
+          lineNumber: modifiedLineNum++,
+        });
+      } else if (change.removed) {
+        result.push({
+          type: 'removed',
+          content: line,
+          originalLineNumber: originalLineNum++,
+        });
       } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        // Unchanged
+        result.push({
+          type: 'unchanged',
+          content: line,
+          lineNumber: modifiedLineNum++,
+          originalLineNumber: originalLineNum++,
+        });
       }
     }
   }
 
-  // Backtrack to find LCS
-  const lcs: string[] = [];
-  let i = m, j = n;
-  while (i > 0 && j > 0) {
-    if (arr1[i - 1] === arr2[j - 1]) {
-      lcs.unshift(arr1[i - 1]);
-      i--;
-      j--;
-    } else if (dp[i - 1][j] > dp[i][j - 1]) {
-      i--;
-    } else {
-      j--;
-    }
-  }
-
-  return lcs;
+  return result;
 }
 
 /**

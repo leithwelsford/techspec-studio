@@ -370,15 +370,38 @@ export interface FullSpecificationRequest {
 }
 
 /**
+ * Helper function to append user guidance to prompts
+ */
+function appendUserGuidance(basePrompt: string, userGuidance?: string): string {
+  if (!userGuidance) return basePrompt;
+
+  return `${basePrompt}
+
+---
+
+**IMPORTANT USER GUIDANCE:**
+${userGuidance}
+
+Please take this guidance into account when generating this section. This may clarify ambiguities, specify deployment details, or provide additional context.`;
+}
+
+/**
  * Build prompt for analyzing BRS and extracting structured requirements
  */
-export function buildBRSAnalysisPrompt(brsMarkdown: string): string {
+export function buildBRSAnalysisPrompt(brsMarkdown: string, userGuidance?: string): string {
   return `Analyze the following Business Requirements Specification (BRS) document and extract structured information.
 
 BRS Document:
 ${brsMarkdown}
 
-Extract and categorize the following information:
+${userGuidance ? `**IMPORTANT USER GUIDANCE:**
+${userGuidance}
+
+Please take the above guidance into account when analyzing the BRS. This may clarify ambiguities, specify deployment details, or provide additional context not explicit in the BRS document.
+
+---
+
+` : ''}Extract and categorize the following information:
 
 1. **Architecture Requirements** (REQ-ARCH-*):
    - List all network components/elements mentioned
@@ -441,9 +464,10 @@ Output the analysis in JSON format:
 export function build3GPPScopePrompt(
   specTitle: string,
   brsAnalysis: any,
-  metadata: any
+  metadata: any,
+  userGuidance?: string
 ): string {
-  return `Generate Section 1 (Scope) for a 3GPP-style technical specification.
+  const basePrompt = `Generate Section 1 (Scope) for a 3GPP-style technical specification.
 
 Document Title: ${specTitle}
 Project: ${metadata.projectName || 'Not specified'}
@@ -471,6 +495,8 @@ Section Requirements:
    - Professional tone for technical audience
 
 IMPORTANT: Generate ONLY the complete Section 1 content in markdown format. Do NOT add placeholder text like "[Other sections to follow]" or meta-commentary.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }
 
 /**
@@ -478,11 +504,12 @@ IMPORTANT: Generate ONLY the complete Section 1 content in markdown format. Do N
  */
 export function build3GPPReferencesPrompt(
   standards: Array<{ id: string; title: string }>,
-  context?: AIContext
+  context?: AIContext,
+  userGuidance?: string
 ): string {
   const existingRefs = context?.availableReferences || [];
 
-  return `Generate Section 2 (References) for a 3GPP-style technical specification.
+  const basePrompt = `Generate Section 2 (References) for a 3GPP-style technical specification.
 
 Standards from BRS:
 ${standards.map(s => `- **${s.id}**: "${s.title}"`).join('\n')}
@@ -511,6 +538,8 @@ Guidelines:
 - Use standard reference IDs like [1], [2], etc.
 
 Generate the complete Section 2 now in markdown format.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }
 
 /**
@@ -518,9 +547,10 @@ Generate the complete Section 2 now in markdown format.`;
  */
 export function build3GPPDefinitionsPrompt(
   components: string[],
-  brsMarkdown: string
+  brsMarkdown: string,
+  userGuidance?: string
 ): string {
-  return `Generate Section 3 (Definitions, Symbols, and Abbreviations) for a 3GPP-style technical specification.
+  const basePrompt = `Generate Section 3 (Definitions, Symbols, and Abbreviations) for a 3GPP-style technical specification.
 
 Key Components/Terms from BRS:
 ${components.join(', ')}
@@ -555,6 +585,8 @@ Guidelines:
 - Be comprehensive but concise
 
 Generate the complete Section 3 now in markdown format.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }
 
 /**
@@ -562,9 +594,10 @@ Generate the complete Section 3 now in markdown format.`;
  */
 export function build3GPPArchitecturePrompt(
   brsAnalysis: any,
-  context?: AIContext
+  context?: AIContext,
+  userGuidance?: string
 ): string {
-  return `Generate Section 4 (Architecture) for a 3GPP-style technical specification.
+  const basePrompt = `Generate Section 4 (Architecture) for a 3GPP-style technical specification.
 
 Architecture Requirements from BRS:
 ${JSON.stringify(brsAnalysis.requirementCategories?.architecture || [], null, 2)}
@@ -625,15 +658,18 @@ Guidelines:
 - Professional technical writing style
 
 IMPORTANT: Generate ONLY the complete Section 4 content in markdown format. Do NOT add placeholder text like "[Previous sections unchanged]" or meta-commentary.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }
 
 /**
  * Build prompt for 3GPP-compliant Section 5: Functional Requirements
  */
 export function build3GPPFunctionalRequirementsPrompt(
-  brsAnalysis: any
+  brsAnalysis: any,
+  userGuidance?: string
 ): string {
-  return `Generate Section 5 (Functional Requirements) for a 3GPP-style technical specification.
+  const basePrompt = `Generate Section 5 (Functional Requirements) for a 3GPP-style technical specification.
 
 Requirements from BRS:
 ${JSON.stringify({
@@ -688,15 +724,18 @@ Guidelines:
 - Make requirements testable and verifiable
 
 Generate the complete Section 5 now in markdown format.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }
 
 /**
  * Build prompt for 3GPP-compliant Section 6: Procedures
  */
 export function build3GPPProceduresPrompt(
-  brsAnalysis: any
+  brsAnalysis: any,
+  userGuidance?: string
 ): string {
-  return `Generate Section 6 (Procedures) for a 3GPP-style technical specification.
+  const basePrompt = `Generate Section 6 (Procedures) for a 3GPP-style technical specification.
 
 Procedures from BRS:
 ${JSON.stringify(brsAnalysis.procedures || [], null, 2)}
@@ -744,15 +783,18 @@ Guidelines:
 - Cover both success and failure paths
 
 IMPORTANT: Generate ONLY the complete Section 6 content in markdown format. Do NOT add placeholder text or meta-commentary.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }
 
 /**
  * Build prompt for 3GPP-compliant Section 7: Information Elements
  */
 export function build3GPPInformationElementsPrompt(
-  brsAnalysis: any
+  brsAnalysis: any,
+  userGuidance?: string
 ): string {
-  return `Generate Section 7 (Information Elements) for a 3GPP-style technical specification.
+  const basePrompt = `Generate Section 7 (Information Elements) for a 3GPP-style technical specification.
 
 Context from BRS:
 - Interfaces: ${JSON.stringify(brsAnalysis.interfaces || [])}
@@ -791,15 +833,18 @@ Guidelines:
 - Include examples where helpful
 
 Generate the complete Section 7 now in markdown format.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }
 
 /**
  * Build prompt for 3GPP-compliant Section 8: Error Handling
  */
 export function build3GPPErrorHandlingPrompt(
-  brsAnalysis: any
+  brsAnalysis: any,
+  userGuidance?: string
 ): string {
-  return `Generate Section 8 (Error Handling) for a 3GPP-style technical specification.
+  const basePrompt = `Generate Section 8 (Error Handling) for a 3GPP-style technical specification.
 
 Context from BRS:
 - Components: ${brsAnalysis.components?.join(', ') || 'Not specified'}
@@ -846,4 +891,6 @@ Guidelines:
 - Include fallback behaviors
 
 Generate the complete Section 8 now in markdown format.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
 }

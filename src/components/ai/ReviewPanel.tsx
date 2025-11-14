@@ -11,8 +11,9 @@
 
 import React, { useState } from 'react';
 import { useProjectStore } from '../../store/projectStore';
-import type { PendingApproval } from '../../types';
+import type { PendingApproval, CascadedRefinementApproval, PropagatedChange } from '../../types';
 import DiffViewer from '../DiffViewer';
+import { CascadedRefinementReviewPanel } from './CascadedRefinementReviewPanel';
 
 interface ReviewPanelProps {
   isOpen: boolean;
@@ -32,22 +33,36 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
   const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [showDiff, setShowDiff] = useState(true);
+  const [debugMode, setDebugMode] = useState(false);
 
   const selectedApproval = pendingApprovals.find((a) => a.id === selectedApprovalId);
 
   if (!isOpen) return null;
 
   const handleApprove = (approval: PendingApproval) => {
+    console.log('🔍 handleApprove called with:', {
+      approvalId: approval.id,
+      type: approval.type,
+      hasOriginalContent: !!approval.originalContent,
+      hasGeneratedContent: !!approval.generatedContent,
+      originalLength: approval.originalContent?.length,
+      generatedLength: typeof approval.generatedContent === 'string' ? approval.generatedContent.length : 'not-string',
+    });
+
     // Apply the generated content
-    if (approval.type === 'section' || approval.type === 'document') {
-      // For specification content
+    if (approval.type === 'section' || approval.type === 'document' || approval.type === 'refinement') {
+      console.log('✅ Type check passed, applying specification changes');
+      // For specification content (section generation, document generation, or refinement)
       const currentMarkdown = approval.originalContent || '';
       const newMarkdown = approval.generatedContent;
+
+      console.log('📝 Calling updateSpecification with', typeof newMarkdown === 'string' ? newMarkdown.length : 'not-string', 'characters');
       updateSpecification(newMarkdown);
+      console.log('✅ updateSpecification completed');
 
       // Create snapshot
       createSnapshot(
-        'ai-refinement',
+        approval.type === 'refinement' ? 'refinement' : 'ai-generation',
         `Applied AI-generated ${approval.type}`,
         'ai',
         { relatedApprovalId: approval.id }
@@ -118,6 +133,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
         return 'Diagram';
       case 'refinement':
         return 'Refinement';
+      case 'cascaded-refinement':
+        return 'Cascaded Refinement';
       default:
         return 'Content';
     }
@@ -133,6 +150,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
         return 'bg-green-100 text-green-700';
       case 'refinement':
         return 'bg-amber-100 text-amber-700';
+      case 'cascaded-refinement':
+        return 'bg-orange-100 text-orange-700';
       default:
         return 'bg-gray-100 text-gray-700';
     }
@@ -208,6 +227,71 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
           {/* Right panel: Content preview and actions */}
           <div className="flex-1 overflow-y-auto">
             {selectedApproval ? (
+              selectedApproval.type === 'cascaded-refinement' ? (
+                // Cascaded Refinement - Use specialized panel
+                <CascadedRefinementReviewPanel
+                  approval={selectedApproval as CascadedRefinementApproval}
+                  onApply={(selectedChanges: PropagatedChange[]) => {
+                    // Apply primary change and selected propagated changes
+                    const cascadeData = (selectedApproval as CascadedRefinementApproval).generatedContent;
+                    const { primaryChange } = cascadeData;
+
+                    let updatedMarkdown = selectedApproval.originalContent || '';
+
+                    // Apply primary change first
+                    updatedMarkdown = updatedMarkdown.replace(
+                      primaryChange.originalContent,
+                      primaryChange.refinedContent
+                    );
+
+                    // Apply selected propagated changes
+                    for (const change of selectedChanges) {
+                      if (change.actionType === 'REMOVE_SECTION') {
+                        // Remove the section from the document
+                        updatedMarkdown = updatedMarkdown.replace(change.originalContent, '');
+                      } else if (change.actionType === 'MODIFY_SECTION') {
+                        // Replace the section with the proposed content
+                        updatedMarkdown = updatedMarkdown.replace(
+                          change.originalContent,
+                          change.proposedContent
+                        );
+                      }
+                    }
+
+                    // Update specification
+                    updateSpecification(updatedMarkdown);
+
+                    // Create snapshot
+                    createSnapshot(
+                      'ai-refinement',
+                      `Applied cascaded refinement: ${primaryChange.sectionTitle}`,
+                      'ai',
+                      {
+                        relatedApprovalId: selectedApproval.id,
+                        tokensUsed: cascadeData.tokensUsed,
+                        costIncurred: cascadeData.costIncurred
+                      }
+                    );
+
+                    // Mark as approved and remove
+                    approveContent(selectedApproval.id);
+                    setTimeout(() => {
+                      removeApproval(selectedApproval.id);
+                      setSelectedApprovalId(null);
+                    }, 500);
+                  }}
+                  onReject={() => {
+                    rejectContent(selectedApproval.id, 'User rejected cascaded refinement');
+                    setTimeout(() => {
+                      removeApproval(selectedApproval.id);
+                      setSelectedApprovalId(null);
+                    }, 500);
+                  }}
+                  onCancel={() => {
+                    setSelectedApprovalId(null);
+                  }}
+                />
+              ) : (
               <div className="p-6 space-y-4">
                 {/* Approval header */}
                 <div className="flex items-start justify-between">
@@ -221,18 +305,157 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                       Created {new Date(selectedApproval.createdAt).toLocaleString()}
                     </p>
                   </div>
-                  {selectedApproval.originalContent && (
+                  <div className="flex gap-3">
+                    {selectedApproval.originalContent && (
+                      <button
+                        onClick={() => setShowDiff(!showDiff)}
+                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        {showDiff ? 'Hide Diff' : 'Show Diff'}
+                      </button>
+                    )}
                     <button
-                      onClick={() => setShowDiff(!showDiff)}
-                      className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                      onClick={() => setDebugMode(!debugMode)}
+                      className="text-sm text-purple-600 hover:text-purple-700 font-medium"
                     >
-                      {showDiff ? 'Hide Diff' : 'Show Diff'}
+                      {debugMode ? 'Hide Debug' : 'Show Debug Info'}
                     </button>
-                  )}
+                  </div>
                 </div>
 
+                {/* Debug Info Panel */}
+                {debugMode && (
+                  <div className="border-2 border-purple-300 rounded-lg p-4 bg-purple-50 space-y-4">
+                    <h4 className="text-sm font-bold text-purple-900 flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                      </svg>
+                      Debug Information
+                    </h4>
+
+                    {/* Statistics */}
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div className="bg-white p-3 rounded border border-purple-200">
+                        <div className="text-purple-600 font-semibold mb-1">Original Length</div>
+                        <div className="text-2xl font-bold text-gray-800">
+                          {selectedApproval.originalContent?.length || 0}
+                        </div>
+                        <div className="text-gray-500 mt-1">
+                          {selectedApproval.originalContent?.split('\n').length || 0} lines
+                        </div>
+                      </div>
+                      <div className="bg-white p-3 rounded border border-purple-200">
+                        <div className="text-purple-600 font-semibold mb-1">Generated Length</div>
+                        <div className="text-2xl font-bold text-gray-800">
+                          {typeof selectedApproval.generatedContent === 'string'
+                            ? selectedApproval.generatedContent.length
+                            : JSON.stringify(selectedApproval.generatedContent).length}
+                        </div>
+                        <div className="text-gray-500 mt-1">
+                          {typeof selectedApproval.generatedContent === 'string'
+                            ? selectedApproval.generatedContent.split('\n').length
+                            : 'N/A'} lines
+                        </div>
+                      </div>
+                      <div className="bg-white p-3 rounded border border-purple-200">
+                        <div className="text-purple-600 font-semibold mb-1">Size Change</div>
+                        <div className={`text-2xl font-bold ${
+                          (typeof selectedApproval.generatedContent === 'string'
+                            ? selectedApproval.generatedContent.length
+                            : 0) > (selectedApproval.originalContent?.length || 0)
+                            ? 'text-green-600'
+                            : 'text-red-600'
+                        }`}>
+                          {typeof selectedApproval.generatedContent === 'string' && selectedApproval.originalContent
+                            ? ((selectedApproval.generatedContent.length - selectedApproval.originalContent.length) > 0 ? '+' : '')
+                            + (selectedApproval.generatedContent.length - selectedApproval.originalContent.length)
+                            : 'N/A'}
+                        </div>
+                        <div className="text-gray-500 mt-1">characters</div>
+                      </div>
+                    </div>
+
+                    {/* Raw Content Tabs */}
+                    <div className="space-y-2">
+                      <div className="flex gap-2 text-xs font-semibold text-purple-800">
+                        <div className="flex-1 bg-purple-100 px-3 py-2 rounded">Original Content (Raw)</div>
+                        <div className="flex-1 bg-purple-100 px-3 py-2 rounded">Generated Content (Raw)</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Original Content */}
+                        <div className="bg-white border-2 border-purple-300 rounded p-3 max-h-96 overflow-auto">
+                          <pre className="font-mono text-xs whitespace-pre-wrap break-all text-gray-700">
+                            {selectedApproval.originalContent || '(No original content)'}
+                          </pre>
+                        </div>
+                        {/* Generated Content */}
+                        <div className="bg-white border-2 border-purple-300 rounded p-3 max-h-96 overflow-auto">
+                          <pre className="font-mono text-xs whitespace-pre-wrap break-all text-gray-700">
+                            {typeof selectedApproval.generatedContent === 'string'
+                              ? selectedApproval.generatedContent
+                              : JSON.stringify(selectedApproval.generatedContent, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Placeholder Detection */}
+                    {typeof selectedApproval.generatedContent === 'string' && (
+                      <div className="bg-white border border-purple-200 rounded p-3">
+                        <div className="text-xs font-semibold text-purple-900 mb-2">Placeholder Detection</div>
+                        <div className="space-y-1 text-xs">
+                          {[
+                            /\[Previous sections? remains? unchanged\]/gi,
+                            /\[Sections? \d+-\d+ remains? identical\]/gi,
+                            /\[The rest remains? as before\]/gi,
+                            /\[Note:.*?\]/gi,
+                            /\[Continue with previous content\]/gi,
+                            /\[Same as original\]/gi,
+                          ].map((pattern, idx) => {
+                            const matches = selectedApproval.generatedContent.match(pattern);
+                            return (
+                              <div key={idx} className={`flex items-center gap-2 ${matches ? 'text-red-700' : 'text-green-700'}`}>
+                                {matches ? (
+                                  <>
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                    </svg>
+                                    <span className="font-semibold">FOUND:</span> {pattern.source} ({matches.length} occurrence{matches.length > 1 ? 's' : ''})
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                    </svg>
+                                    <span>Clean: {pattern.source}</span>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Metadata */}
+                    <div className="bg-white border border-purple-200 rounded p-3">
+                      <div className="text-xs font-semibold text-purple-900 mb-2">Approval Metadata</div>
+                      <pre className="font-mono text-xs text-gray-700 whitespace-pre-wrap">
+                        {JSON.stringify({
+                          id: selectedApproval.id,
+                          taskId: selectedApproval.taskId,
+                          type: selectedApproval.type,
+                          status: selectedApproval.status,
+                          createdAt: selectedApproval.createdAt,
+                          metadata: selectedApproval.metadata,
+                        }, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+
                 {/* Diff viewer (if applicable) */}
-                {showDiff && selectedApproval.originalContent && (
+                {showDiff && selectedApproval.originalContent && !debugMode && (
                   <DiffViewer
                     original={selectedApproval.originalContent}
                     modified={
@@ -302,6 +525,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                   </button>
                 </div>
               </div>
+              )
             ) : (
               <div className="flex items-center justify-center h-full text-gray-400">
                 <div className="text-center">

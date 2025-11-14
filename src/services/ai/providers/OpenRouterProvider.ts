@@ -72,20 +72,34 @@ export class OpenRouterProvider {
       requestBody.reasoning = (config as any).reasoning;
     }
 
-    const response = await fetch(`${this.baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'TechSpec AI Authoring',
-      },
-      body: JSON.stringify(requestBody),
+    console.log('🔧 OpenRouter request:', {
+      url: `${this.baseURL}/chat/completions`,
+      model: requestBody.model,
+      hasApiKey: !!this.apiKey,
+      apiKeyPrefix: this.apiKey?.substring(0, 10) + '...',
     });
+
+    let response;
+    try {
+      response = await fetch(`${this.baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'TechSpec AI Authoring',
+        },
+        body: JSON.stringify(requestBody),
+      });
+    } catch (fetchError: any) {
+      console.error('🔥 Fetch failed:', fetchError);
+      throw new Error(`Network error: ${fetchError.message}. This could be a CORS issue, network connectivity problem, or invalid URL.`);
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(`OpenRouter API error: ${JSON.stringify(error)}`);
+      console.error('🔥 OpenRouter API error:', error);
+      throw new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(error)}`);
     }
 
     const data: OpenRouterResponse = await response.json();
@@ -109,7 +123,10 @@ export class OpenRouterProvider {
     // Estimate cost based on model (OpenRouter provides this in headers but we'll estimate)
     const cost = this.estimateCost(config.model || 'anthropic/claude-3.5-sonnet', tokens);
 
-    return { content, tokens, cost };
+    // Include finish_reason for debugging truncated output
+    const finishReason = data.choices[0]?.finish_reason || data.choices[0]?.native_finish_reason || 'unknown';
+
+    return { content, tokens, cost, finishReason } as any;
   }
 
   /**

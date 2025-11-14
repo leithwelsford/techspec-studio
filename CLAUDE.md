@@ -100,6 +100,8 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 - Phase 2C: Approval Workflow & Version History ✅ **COMPLETE**
 - Phase 3: Diagram Editing & Integration 🟡 **60% COMPLETE**
 
+**Session Summaries**: Daily development sessions are documented in `SESSION_YYYY-MM-DD_SUMMARY.md` files for historical reference and context.
+
 **What's Working Now:**
 - ✅ Configure AI provider (OpenRouter) with encrypted API key storage
 - ✅ **Dynamic model loading** from OpenRouter (50+ models) with search/filter/sort (Phase 2C)
@@ -121,6 +123,7 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 - ✅ **Diagram viewer** with unified interface (Phase 2B)
 - ✅ **Pan/zoom in view-only mode** for all diagram types (Phase 3 - 2025-11-09)
 - ✅ **Block diagram editor** - Full edit mode with drag, resize, pan/zoom (Phase 3 - BlockDiagramEditor.tsx 998 lines)
+- ✅ **Mermaid self-healing system** - AI-powered syntax error recovery (Phase 3 - 2025-11-10)
 
 **Phase 3 Status (60% COMPLETE):**
 - ✅ Block diagram editor integration (COMPLETE - BlockDiagramEditor.tsx 998 lines, fully Zustand-integrated)
@@ -146,6 +149,10 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 **Key Architecture Files**:
 - `PHASE2A_COMPLETE.md` - Complete Phase 2A report with features and workflows
 - `PHASE2B_STATUS.md` - **Phase 2B completion report with full BRS-to-TechSpec pipeline**
+- `REFINEMENT_FIX.md` - Partial selection refinement implementation (Phase 2C)
+- `REFINEMENT_APPROVAL_FIX.md` - **Critical bug fix: Refinement approvals now working** (2025-11-14)
+- `DIAGRAM_GENERATION_GUIDANCE_FEATURE.md` - User guidance for diagram generation (2025-11-13)
+- `FUTURE_CASCADED_REFINEMENT.md` - **Design doc for future cascading refinement feature**
 - `PHASE2C_COMPLETE.md` - **Phase 2C completion report with approval workflow and version history**
 - `PHASE2C_TROUBLESHOOTING.md` - Troubleshooting guide for Phase 2C features
 - `PHASE3_PROGRESS.md` - **Phase 3 progress report with diagram editing status** (40% complete)
@@ -315,17 +322,17 @@ git push origin main
 ## Development Commands
 
 ```bash
-# Development server
-npm run dev
+# Development server (with HMR)
+npm run dev          # Opens http://localhost:3000
 
-# Build for production
-npm run build
+# Type-check and build for production
+npm run build        # Outputs to dist/
 
-# Preview production build
-npm run preview
+# Preview production build locally
+npm run preview      # Test production build before deploy
 
-# Lint code
-npm run lint
+# Check for TypeScript/ESLint errors
+npm run lint         # Fix issues before committing
 ```
 
 **Docker Environment** (IMPORTANT):
@@ -334,7 +341,9 @@ npm run lint
 - HMR (Hot Module Reload) configured for Docker port mapping
 - Access from host browser at http://localhost:3000
 
-**Testing**: No test runner is currently configured. Manual tests exist in legacy App.tsx. Jest + React Testing Library setup is planned.
+**Testing**:
+- **Manual Tests**: Click "Run Tests" button in the UI (16 sanity checks in legacy App.tsx)
+- **Automated Tests**: No test runner configured yet. Jest + React Testing Library setup is planned.
 
 **Docker/NVM Context**: If using NVM in Docker, prefix commands:
 ```bash
@@ -532,6 +541,7 @@ src/
 │   ├── DiagramViewer.tsx    # ✅ Unified diagram viewer with view/edit modes (Phase 3)
 │   ├── PanZoomWrapper.tsx   # ✅ Reusable pan/zoom for view mode (82 lines, Phase 3)
 │   ├── DiffViewer.tsx       # ✅ Line-by-line diff comparison (Phase 2C)
+│   ├── MermaidHealingModal.tsx  # ✅ AI-powered Mermaid error recovery (Phase 3)
 │   ├── DebugPanel.tsx       # ✅ Debug info overlay (Phase 2C)
 │   ├── ai/
 │   │   ├── ChatPanel.tsx    # ✅ AI chat with streaming
@@ -1063,6 +1073,64 @@ VITE_OPENROUTER_API_KEY=sk-or-v1-...  # Optional: pre-configured key
   - `deleteEdge(diagramId, edgeIndex)` - Remove edges
 - **Usage**: Integrated into DiagramViewer for edit mode
 
+### Mermaid Self-Healing System (IMPLEMENTED 2025-11-10)
+- **Feature**: User-controlled iterative healing for Mermaid diagram syntax errors
+- **Trigger**: Click "Try Self-Healing" button when Mermaid diagram fails to render
+- **Implementation**:
+  - [src/components/MermaidHealingModal.tsx](src/components/MermaidHealingModal.tsx) - Modal UI for healing workflow
+  - [src/services/mermaidSelfHealer.ts](src/services/mermaidSelfHealer.ts) - AI-powered healing logic (9.8KB)
+  - Embedded Mermaid documentation for context-aware fixes
+- **Workflow**:
+  1. Automatic error detection with categorization
+  2. AI proposes fix with temperature 0.1 (precise, minimal changes)
+  3. Side-by-side diff view shows proposed changes
+  4. User chooses: Accept Fix, Reject & Try Again, Accept & Continue, Edit Manually, or Cancel
+  5. Maximum 3 iterations with user control at each step
+- **Key Features**:
+  - Offline Mermaid syntax reference embedded in app
+  - Fixes ONE error at a time (not all at once)
+  - Real-time validation of proposed fixes
+  - User maintains full control (not automatic)
+- **Status**: ✅ Complete and ready for testing
+- **Documentation**: [MERMAID_SELF_HEALING_COMPLETE.md](MERMAID_SELF_HEALING_COMPLETE.md)
+
+### Refinement Approval Bug (FIXED 2025-11-14)
+- **Problem**: Refinements created via "Refine Selection" were not being applied when user clicked "Approve & Apply"
+- **User Report**: "None of the changes I requested were actually implemented"
+- **Root Cause**: ReviewPanel.tsx line 43 only checked for `type === 'section' || type === 'document'`, but MarkdownEditor creates refinement approvals with `type: 'refinement'`
+- **Impact**: Clicking "Approve & Apply" removed the approval but did NOT update the document
+- **Solution**: Added `|| approval.type === 'refinement'` to the type check
+- **Files Fixed**:
+  - [src/components/ai/ReviewPanel.tsx:52](src/components/ai/ReviewPanel.tsx#L52) - handleApprove function now handles all three types
+- **Status**: ✅ Fixed and verified working (document length changed from 100,127 → 95,572 chars after approval)
+- **Documentation**: [REFINEMENT_APPROVAL_FIX.md](REFINEMENT_APPROVAL_FIX.md)
+- **Testing**: Console logs confirm type check passes and updateSpecification is called correctly
+
+### User Guidance for AI Generation (IMPLEMENTED 2025-11-13)
+- **Feature**: Users can now provide context and guidance when generating specifications and diagrams
+- **Implementation**:
+  - [src/components/ai/GenerateSpecModal.tsx](src/components/ai/GenerateSpecModal.tsx) - User guidance textarea for spec generation
+  - [src/components/ai/GenerateDiagramsModal.tsx](src/components/ai/GenerateDiagramsModal.tsx) - User guidance + view source text for diagrams
+  - [src/services/ai/prompts/diagramPrompts.ts](src/services/ai/prompts/diagramPrompts.ts) - appendUserGuidance helper function
+- **Features**:
+  - Optional guidance textarea in both spec and diagram generation modals
+  - "View Source Text" toggle to see Architecture and Procedures sections used for diagram generation
+  - Guidance passed through entire AI pipeline to influence output
+- **Use Cases**:
+  - Clarify deployment scenarios (5G-NSA vs 5G-SA)
+  - Specify vendor terminology preferences
+  - Focus on specific components or interfaces
+  - Guide diagram simplification or emphasis
+- **Status**: ✅ Complete and working
+- **Documentation**: [DIAGRAM_GENERATION_GUIDANCE_FEATURE.md](DIAGRAM_GENERATION_GUIDANCE_FEATURE.md)
+
+### Cascading Refinement (PLANNED - FUTURE)
+- **Status**: Design complete, implementation planned for future phase
+- **Purpose**: When refining a section, AI analyzes impact on other sections and proposes cascading changes
+- **Example**: Remove HSS/AuC from Architecture → AI proposes removing HSS procedures, parameters, references
+- **Documentation**: [FUTURE_CASCADED_REFINEMENT.md](FUTURE_CASCADED_REFINEMENT.md) - Complete design with UX mockups, architecture, implementation plan
+- **User Request**: Saved for future development per user's instruction (2025-11-14)
+
 ### BRS Document Source Verification (CONFIRMED 2025-11-08)
 - **Question**: Is diagram generation using BRS or Technical Specification document?
 - **Answer**: ✅ CONFIRMED - Diagram generation correctly uses BRS document (not specification)
@@ -1270,7 +1338,10 @@ When encountering errors, check these in order:
 3. Is the API key configured? (Check AI Config panel)
 4. Are you using relative imports (not `@/` aliases)?
 5. Check browser console for runtime errors
-6. Check zustand store state via React DevTools
+6. Check Zustand store state via React DevTools:
+   - Install React DevTools browser extension
+   - Components tab → find any component using `useProjectStore`
+   - Inspect hooks → see current store state and actions
 
 ### 1. "AI service not initialized" Error
 **Problem:** Calling AI service methods without initialization
