@@ -167,7 +167,7 @@ export default function MarkdownEditor() {
         // Cascade refinement workflow
         console.log('🔄 Starting cascade refinement workflow...');
 
-        const result = await aiService.refineCascade(
+        const result = await aiService.performCascadedRefinement(
           selectedText,
           instructions,
           textarea.value,
