@@ -231,32 +231,66 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                 // Cascaded Refinement - Use specialized panel
                 <CascadedRefinementReviewPanel
                   approval={selectedApproval as CascadedRefinementApproval}
-                  onApply={(selectedChanges: PropagatedChange[]) => {
+                  onApply={async (selectedChanges: PropagatedChange[]) => {
                     // Apply primary change and selected propagated changes
                     const cascadeData = (selectedApproval as CascadedRefinementApproval).generatedContent;
                     const { primaryChange } = cascadeData;
 
                     let updatedMarkdown = selectedApproval.originalContent || '';
 
-                    // Apply primary change first
-                    updatedMarkdown = updatedMarkdown.replace(
-                      primaryChange.originalContent,
+                    console.log('🔄 Starting cascade refinement application...');
+                    console.log('📄 Original document:', updatedMarkdown.length, 'chars');
+                    console.log('🎯 Primary change section:', primaryChange.sectionId);
+                    console.log('🔀 Propagated changes selected:', selectedChanges.length);
+
+                    // Import safe replacement functions
+                    const { replaceSectionById, removeSectionById } = await import('../../services/ai/prompts/refinementPrompts');
+
+                    // Apply primary change first using SAFE section replacement
+                    const primaryReplaced = replaceSectionById(
+                      updatedMarkdown,
+                      primaryChange.sectionId,
                       primaryChange.refinedContent
                     );
 
-                    // Apply selected propagated changes
+                    if (!primaryReplaced) {
+                      alert(`Failed to apply primary change to section ${primaryChange.sectionId}. The section may not exist in the document.`);
+                      return;
+                    }
+
+                    updatedMarkdown = primaryReplaced;
+                    console.log('✅ Primary change applied. Document now:', updatedMarkdown.length, 'chars');
+
+                    // Apply selected propagated changes using SAFE section operations
                     for (const change of selectedChanges) {
                       if (change.actionType === 'REMOVE_SECTION') {
-                        // Remove the section from the document
-                        updatedMarkdown = updatedMarkdown.replace(change.originalContent, '');
+                        console.log(`🗑️  Removing section ${change.sectionId}: ${change.sectionTitle}`);
+                        const removed = removeSectionById(updatedMarkdown, change.sectionId);
+                        if (!removed) {
+                          console.error(`❌ Failed to remove section ${change.sectionId}`);
+                          alert(`Failed to remove section ${change.sectionId}: ${change.sectionTitle}. Continuing with other changes.`);
+                          continue;
+                        }
+                        updatedMarkdown = removed;
+                        console.log(`✅ Section ${change.sectionId} removed. Document now:`, updatedMarkdown.length, 'chars');
                       } else if (change.actionType === 'MODIFY_SECTION') {
-                        // Replace the section with the proposed content
-                        updatedMarkdown = updatedMarkdown.replace(
-                          change.originalContent,
+                        console.log(`📝 Modifying section ${change.sectionId}: ${change.sectionTitle}`);
+                        const replaced = replaceSectionById(
+                          updatedMarkdown,
+                          change.sectionId,
                           change.proposedContent
                         );
+                        if (!replaced) {
+                          console.error(`❌ Failed to modify section ${change.sectionId}`);
+                          alert(`Failed to modify section ${change.sectionId}: ${change.sectionTitle}. Continuing with other changes.`);
+                          continue;
+                        }
+                        updatedMarkdown = replaced;
+                        console.log(`✅ Section ${change.sectionId} modified. Document now:`, updatedMarkdown.length, 'chars');
                       }
                     }
+
+                    console.log('✅ All changes applied successfully. Final document:', updatedMarkdown.length, 'chars');
 
                     // Update specification
                     updateSpecification(updatedMarkdown);

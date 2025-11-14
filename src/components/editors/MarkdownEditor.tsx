@@ -133,9 +133,11 @@ export default function MarkdownEditor() {
       'Choose refinement type:\n\n' +
       '1 = Simple Refinement (faster, fewer tokens)\n' +
       '   - Only refines the selected text\n\n' +
-      '2 = Cascade Refinement (slower, 2-3x tokens)\n' +
+      '2 = Cascade Refinement (slower, 2-3x tokens) ⚠️  BETA\n' +
       '   - Refines selection AND analyzes impact on other sections\n' +
-      '   - Suggests related changes for consistency\n\n' +
+      '   - Suggests related changes for consistency\n' +
+      '   - ⚠️  IMPORTANT: Carefully review ALL changes before approving\n' +
+      '   - Cascade changes are shown in the Review Panel\n\n' +
       'Enter 1 for Simple, 2 for Cascade:',
       '1'
     );

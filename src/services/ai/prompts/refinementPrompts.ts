@@ -343,3 +343,60 @@ export function parseMarkdownSections(markdown: string): Array<{
 
   return sections;
 }
+
+/**
+ * Replace a section in markdown document safely using section boundaries
+ *
+ * This function uses proper section parsing instead of naive string replacement
+ * to avoid data loss when multiple sections have similar content.
+ *
+ * @param fullDocument - The complete markdown document
+ * @param sectionId - Section ID to replace (e.g., "2", "3.1", "6.3")
+ * @param newContent - New content for the section (including heading)
+ * @returns Updated document, or null if section not found
+ */
+export function replaceSectionById(
+  fullDocument: string,
+  sectionId: string,
+  newContent: string
+): string | null {
+  const sections = parseMarkdownSections(fullDocument);
+  const sectionToReplace = sections.find(s => s.id === sectionId);
+
+  if (!sectionToReplace) {
+    console.error(`[replaceSectionById] Section ${sectionId} not found in document`);
+    return null;
+  }
+
+  // Replace the section content using index-based replacement (safe)
+  const before = fullDocument.substring(0, sectionToReplace.startIndex);
+  const after = fullDocument.substring(sectionToReplace.endIndex);
+
+  return before + newContent + after;
+}
+
+/**
+ * Remove a section from markdown document safely using section boundaries
+ *
+ * @param fullDocument - The complete markdown document
+ * @param sectionId - Section ID to remove (e.g., "2", "3.1", "6.3")
+ * @returns Updated document, or null if section not found
+ */
+export function removeSectionById(
+  fullDocument: string,
+  sectionId: string
+): string | null {
+  const sections = parseMarkdownSections(fullDocument);
+  const sectionToRemove = sections.find(s => s.id === sectionId);
+
+  if (!sectionToRemove) {
+    console.error(`[removeSectionById] Section ${sectionId} not found in document`);
+    return null;
+  }
+
+  // Remove the section using index-based replacement (safe)
+  const before = fullDocument.substring(0, sectionToRemove.startIndex);
+  const after = fullDocument.substring(sectionToRemove.endIndex);
+
+  return before + after;
+}
