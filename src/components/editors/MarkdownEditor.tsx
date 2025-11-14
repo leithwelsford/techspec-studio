@@ -167,30 +167,53 @@ export default function MarkdownEditor() {
         // Cascade refinement workflow
         console.log('🔄 Starting cascade refinement workflow...');
 
-        const result = await aiService.performCascadedRefinement(
-          selectedText,
-          instructions,
-          textarea.value,
-          context
+        // Step 1: First refine the selected text
+        const refinementResult = await aiService.refineContent(selectedText, instructions, context);
+        const refinedSection = refinementResult.content;
+
+        // Step 2: Extract section title from selected text (first heading)
+        const headingMatch = selectedText.match(/^#{1,4}\s+(.+?)$/m);
+        const sectionTitle = headingMatch ? headingMatch[1].trim() : 'Selected Section';
+
+        // Step 3: Perform cascaded refinement analysis
+        const cascadeResult = await aiService.performCascadedRefinement(
+          selectedText,           // originalSection
+          refinedSection,         // refinedSection
+          sectionTitle,           // sectionTitle
+          textarea.value,         // fullDocument
+          instructions            // instruction
         );
 
-        // Create cascaded refinement approval
+        // Create cascaded refinement approval with combined data
         const createApproval = useProjectStore.getState().createApproval;
         const approvalId = createApproval({
           taskId: `cascade-refine-${Date.now()}`,
           type: 'cascaded-refinement',
           status: 'pending',
           originalContent: textarea.value,
-          generatedContent: result, // This is the full cascade result object
+          generatedContent: {
+            primaryChange: {
+              sectionId: 'selected',
+              sectionTitle: sectionTitle,
+              originalContent: selectedText,
+              refinedContent: refinedSection,
+            },
+            propagatedChanges: cascadeResult.propagatedChanges,
+            validation: cascadeResult.validation,
+            impactAnalysis: cascadeResult.impactAnalysis,
+            instruction: instructions,
+            tokensUsed: refinementResult.tokens?.total + cascadeResult.totalTokens,
+            costIncurred: (refinementResult.cost || 0) + cascadeResult.totalCost,
+          },
         });
 
         alert(
           `Cascade refinement complete!\n\n` +
           `✅ Primary change generated\n` +
-          `📊 ${result.propagatedChanges?.length || 0} related sections analyzed\n` +
-          `⚠️ ${result.validation?.issues?.length || 0} validation issues found\n\n` +
-          `Tokens used: ${result.tokensUsed || 0}\n` +
-          `Cost: $${result.costIncurred?.toFixed(3) || '0.000'}\n\n` +
+          `📊 ${cascadeResult.propagatedChanges?.length || 0} related sections analyzed\n` +
+          `⚠️ ${cascadeResult.validation?.issues?.length || 0} validation issues found\n\n` +
+          `Tokens used: ${refinementResult.tokens?.total + cascadeResult.totalTokens}\n` +
+          `Cost: $${((refinementResult.cost || 0) + cascadeResult.totalCost).toFixed(3)}\n\n` +
           `Please review the changes in the Review Panel.`
         );
       } else {
