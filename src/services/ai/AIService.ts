@@ -1398,12 +1398,30 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
           }
         } else {
           // MODIFY action (markdown response)
+
+          // Validate that AI response includes section heading
+          // Extract original heading from section content (first line)
+          const originalHeading = sectionContent.split('\n')[0];
+          let proposedContent = result.content.trim();
+
+          // Check if AI response starts with a heading marker (##, ###, ####)
+          const hasHeading = /^#{2,4}\s+\d+/.test(proposedContent);
+
+          if (!hasHeading) {
+            // AI omitted the heading - restore it to prevent section lookup failures
+            console.warn(
+              `⚠️ AI omitted heading for section ${affectedSection.sectionId}: ${affectedSection.sectionTitle}. ` +
+              `Restoring original heading: "${originalHeading}"`
+            );
+            proposedContent = originalHeading + '\n\n' + proposedContent;
+          }
+
           propagatedChanges.push({
             sectionId: affectedSection.sectionId,
             sectionTitle: affectedSection.sectionTitle,
             actionType: 'MODIFY_SECTION',
             originalContent: sectionContent,
-            proposedContent: result.content.trim(),
+            proposedContent: proposedContent,
             reasoning: affectedSection.reasoning,
             impactLevel: affectedSection.impactLevel,
             confidence: 0.85,
