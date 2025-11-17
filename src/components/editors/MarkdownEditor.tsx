@@ -173,9 +173,11 @@ export default function MarkdownEditor() {
         const refinementResult = await aiService.refineContent(selectedText, instructions, context);
         const refinedSection = refinementResult.content;
 
-        // Step 2: Extract section title from selected text (first heading)
-        const headingMatch = selectedText.match(/^#{1,4}\s+(.+?)$/m);
-        const sectionTitle = headingMatch ? headingMatch[1].trim() : 'Selected Section';
+        // Step 2: Extract section ID and title from selected text (first heading)
+        // Heading format: "## 6.3 Title" or "### 6.3.1 Subtitle"
+        const headingMatch = selectedText.match(/^#{1,4}\s+(\d+(?:\.\d+)*)\s+(.+?)$/m);
+        const sectionId = headingMatch ? headingMatch[1] : 'unknown';
+        const sectionTitle = headingMatch ? headingMatch[2].trim() : 'Selected Section';
 
         // Step 3: Perform cascaded refinement analysis
         const cascadeResult = await aiService.performCascadedRefinement(
@@ -195,7 +197,7 @@ export default function MarkdownEditor() {
           originalContent: textarea.value,
           generatedContent: {
             primaryChange: {
-              sectionId: 'selected',
+              sectionId: sectionId,
               sectionTitle: sectionTitle,
               originalContent: selectedText,
               refinedContent: refinedSection,
