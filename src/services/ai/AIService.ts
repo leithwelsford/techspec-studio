@@ -1520,6 +1520,37 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       instruction
     );
 
+    // Step 1.5: Validate and correct section titles
+    // Impact analysis sees truncated document (15k chars), so AI may infer wrong section titles
+    // We validate against actual document and correct any mismatches to prevent wrong heading restoration
+    console.log('🔍 Validating section titles from impact analysis...');
+    const { parseMarkdownSections } = await import('./prompts/refinementPrompts');
+    const actualSections = parseMarkdownSections(fullDocument);
+
+    let correctionCount = 0;
+    impactAnalysis.affectedSections.forEach(affected => {
+      const actualSection = actualSections.find(s => s.id === affected.sectionId);
+      if (actualSection) {
+        if (actualSection.title !== affected.sectionTitle) {
+          console.warn(
+            `⚠️ Correcting section ${affected.sectionId} title:\n` +
+            `   AI inferred: "${affected.sectionTitle}"\n` +
+            `   Actual title: "${actualSection.title}"`
+          );
+          affected.sectionTitle = actualSection.title;
+          correctionCount++;
+        }
+      } else {
+        console.warn(`⚠️ Section ${affected.sectionId} not found in document (AI may have inferred from truncated context)`);
+      }
+    });
+
+    if (correctionCount > 0) {
+      console.log(`✅ Corrected ${correctionCount} section title(s) to match actual document`);
+    } else {
+      console.log('✅ All section titles validated successfully');
+    }
+
     // Step 2: Generate Propagated Changes
     if (onProgress) onProgress('propagation', 2, 4, 'Generating propagated changes...');
     const propagatedChanges = await this.generatePropagatedChanges(
