@@ -400,7 +400,7 @@ Use {{fig:diagram-id}} to reference diagrams."
         {(viewMode === 'preview' || viewMode === 'split') && (
           <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900`}>
             <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 shadow-sm rounded-lg p-8">
-              <article className="prose prose-sm max-w-none dark:prose-invert">
+              <article className="prose prose-sm max-w-none dark:prose-invert dark:text-gray-100">
                 <ReactMarkdown
                   remarkPlugins={[
                     remarkGfm,
