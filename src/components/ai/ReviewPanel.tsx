@@ -90,12 +90,13 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
     // Mark as approved in store
     approveContent(approval.id, feedback || undefined);
 
-    // Remove from pending list after a brief delay
-    setTimeout(() => {
-      removeApproval(approval.id);
-      setSelectedApprovalId(null);
-      setFeedback('');
-    }, 500);
+    // Remove from pending list immediately (no delay to prevent double-approval)
+    removeApproval(approval.id);
+    console.log(`✅ Removed approval ${approval.id} from pending list`);
+
+    // Clear selection and feedback
+    setSelectedApprovalId(null);
+    setFeedback('');
   };
 
   const handleReject = (approval: PendingApproval) => {
@@ -107,12 +108,13 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
     // Mark as rejected in store
     rejectContent(approval.id, feedback);
 
-    // Remove from pending list after a brief delay
-    setTimeout(() => {
-      removeApproval(approval.id);
-      setSelectedApprovalId(null);
-      setFeedback('');
-    }, 500);
+    // Remove from pending list immediately (no delay to prevent double-rejection)
+    removeApproval(approval.id);
+    console.log(`❌ Removed rejected approval ${approval.id} from pending list`);
+
+    // Clear selection and feedback
+    setSelectedApprovalId(null);
+    setFeedback('');
   };
 
   const handleDismiss = (approval: PendingApproval) => {

@@ -133,10 +133,11 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
       );
 
       if (requireApproval) {
-        // Create approvals for each diagram
+        // Create approvals for each diagram with unique taskIds
         for (const diagram of result.blockDiagrams) {
+          const uniqueId = Math.random().toString(36).substring(2, 11);
           createApproval({
-            taskId: `diagram-gen-${Date.now()}`,
+            taskId: `diagram-gen-${Date.now()}-${uniqueId}`,
             type: 'diagram',
             status: 'pending',
             generatedContent: diagram,
@@ -144,8 +145,9 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
         }
 
         for (const diagram of result.sequenceDiagrams) {
+          const uniqueId = Math.random().toString(36).substring(2, 11);
           createApproval({
-            taskId: `diagram-gen-${Date.now()}`,
+            taskId: `diagram-gen-${Date.now()}-${uniqueId}`,
             type: 'diagram',
             status: 'pending',
             generatedContent: diagram,
