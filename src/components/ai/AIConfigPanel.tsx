@@ -77,32 +77,37 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
         }
       }
 
-      // Load other settings from stored config
-      if (aiConfig.model) {
-        setModel(aiConfig.model);
-        settingsLoaded = true;
-      }
-      setTemperature(aiConfig.temperature);
-      setMaxTokens(aiConfig.maxTokens);
-      setEnableStreaming(aiConfig.enableStreaming);
-    }
+      // Load other settings from stored config, with env var fallback for each
+      setModel(aiConfig.model || (getEnvModel() as AIModel) || 'anthropic/claude-3.5-sonnet');
+      setTemperature(aiConfig.temperature ?? getEnvTemperature() ?? 0.7);
+      setMaxTokens(aiConfig.maxTokens ?? getEnvMaxTokens() ?? 4096);
+      setEnableStreaming(aiConfig.enableStreaming ?? getEnvEnableStreaming() ?? true);
 
-    // Fallback to environment variables if localStorage failed or is empty
-    if (!apiKeyLoaded) {
+      // Log when env vars are used
+      if (!aiConfig.model && getEnvModel()) {
+        console.log(`✅ Loaded model from environment: ${getEnvModel()}`);
+      }
+      if (aiConfig.temperature === undefined && getEnvTemperature() !== null) {
+        console.log(`✅ Loaded temperature from environment: ${getEnvTemperature()}`);
+      }
+      if (aiConfig.maxTokens === undefined && getEnvMaxTokens() !== null) {
+        console.log(`✅ Loaded maxTokens from environment: ${getEnvMaxTokens()}`);
+      }
+      if (aiConfig.enableStreaming === undefined && getEnvEnableStreaming() !== null) {
+        console.log(`✅ Loaded streaming from environment: ${getEnvEnableStreaming()}`);
+      }
+    } else {
+      // No stored config - load everything from environment variables or defaults
       const envApiKey = getEnvApiKey();
-      if (envApiKey) {
-        console.log('✅ Loaded API key from environment variable (VITE_OPENROUTER_API_KEY)');
-        setApiKey(envApiKey);
-      }
-    }
-
-    if (!settingsLoaded) {
-      // Load other settings from environment variables
       const envModel = getEnvModel();
       const envTemp = getEnvTemperature();
       const envMaxTokens = getEnvMaxTokens();
       const envStreaming = getEnvEnableStreaming();
 
+      if (envApiKey) {
+        console.log('✅ Loaded API key from environment variable (VITE_OPENROUTER_API_KEY)');
+        setApiKey(envApiKey);
+      }
       if (envModel) {
         console.log(`✅ Loaded model from environment: ${envModel}`);
         setModel(envModel as AIModel);
@@ -116,8 +121,17 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
         setMaxTokens(envMaxTokens);
       }
       if (envStreaming !== null) {
-        console.log(`✅ Loaded streaming setting from environment: ${envStreaming}`);
+        console.log(`✅ Loaded streaming from environment: ${envStreaming}`);
         setEnableStreaming(envStreaming);
+      }
+    }
+
+    // Final fallback to environment variable for API key if localStorage decryption failed
+    if (!apiKeyLoaded) {
+      const envApiKey = getEnvApiKey();
+      if (envApiKey) {
+        console.log('✅ Loaded API key from environment variable (localStorage decryption failed)');
+        setApiKey(envApiKey);
       }
     }
   }, [aiConfig]);
