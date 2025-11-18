@@ -1,0 +1,210 @@
+================================================================================
+        CASCADE REFINEMENT HEADING LOSS - FAILURE SEQUENCE DIAGRAM
+================================================================================
+
+STAGE 1: IMPACT ANALYSIS WITH TRUNCATION
+────────────────────────────────────────────────────────────────────────────
+
+    Original Document (100,000+ chars)
+    ┌─────────────────────────────────────────────────────────────────┐
+    │ ## 1 Scope                    [VISIBLE: chars 0-15,000]         │
+    │ ...                           [AI sees these]                   │
+    │ ## 4 Architecture             ✓                                 │
+    │ ...                                                             │
+    │ ## 6 Procedures               [CUT OFF HERE ❌]                │
+    │ ...                           [chars 15,001+ TRUNCATED]        │
+    │ ## 7 Information Elements     ← Heading HIDDEN from AI         │
+    │ Content about Policy...                                        │
+    │                                                                │
+    │ ## 8 Error Handling           ← Also HIDDEN                  │
+    │ ...                                                            │
+    └─────────────────────────────────────────────────────────────────┘
+
+    Impact Analysis Prompt:
+    ┌─────────────────────────────────────────────────────────────────┐
+    │ Analyze the impact of this refinement:                          │
+    │ ... [section 7 content shown but heading MISSING] ...           │
+    │                                                                │
+    │ Question: Which sections are affected?                        │
+    │                                                                │
+    │ For EACH section identify: sectionId and sectionTitle         │
+    └─────────────────────────────────────────────────────────────────┘
+
+STAGE 2: AI INFERS WRONG TITLES FROM PARTIAL CONTENT
+────────────────────────────────────────────────────────────────────────────
+
+    AI Analysis Process:
+    
+    Received content: "Content about Policy and Charging Control procedures..."
+                          ↑ This is from section 7, but...
+    
+    AI thinks: "This section is about Policy and Charging Control"
+               (because it inferred the title from the content, not from heading)
+    
+    AI's Response:
+    ┌─────────────────────────────────────────────────────────────────┐
+    │ "affectedSections": [                                           │
+    │   {                                                             │
+    │     "sectionId": "7",                                           │
+    │     "sectionTitle": "Policy and Charging Control"  ← WRONG! ❌  │
+    │   }                                                             │
+    │ ]                                                               │
+    └─────────────────────────────────────────────────────────────────┘
+    
+    Actual Document Header:
+    "## 7 Information Elements"                          ← ACTUAL ✓
+
+STAGE 3: EXTRACTION WITH FALLBACK PATTERN (MASKS THE BUG)
+────────────────────────────────────────────────────────────────────────────
+
+    generatePropagatedChanges() calls:
+    
+    extractSection(doc, "7", "Policy and Charging Control")
+                        ↑ ID correct
+                                              ↑ Title wrong
+    
+    Patterns tried:
+    ❌ ^## 7 Policy and Charging Control    (exact match fails)
+    ❌ ### 7 Policy and Charging Control
+    ❌ #### 7 Policy and Charging Control
+    ❌ ^## 7: Policy and Charging Control
+    ✅ ^## 7 .*$                             ← FALLBACK MATCHES!
+    
+    Result: Extracts correct content (## 7 Information Elements)
+    
+    BUT: Metadata remains: sectionTitle = "Policy and Charging Control"
+
+STAGE 4: HEADING RESTORATION (REVEALS MISMATCH)
+────────────────────────────────────────────────────────────────────────────
+
+    originalHeading = sectionContent.split('\n')[0]
+                    = "## 7 Information Elements"  ← CORRECT
+    
+    AI's response doesn't start with ##, so restoration happens:
+    
+    Console.warn:
+    "⚠️ AI omitted heading for section 7: Policy and Charging Control.
+     Restoring original heading: "## 7 Information Elements""
+    
+    Result: Heading restored correctly (for THIS section)
+            BUT confusion is visible in console
+
+STAGE 5: MULTIPLE CASCADED REPLACEMENTS (FAILURE CASCADES)
+────────────────────────────────────────────────────────────────────────────
+
+    Cascade affects sections 7, 8, 9:
+    
+    Iteration 1: replaceSectionById(doc, "7", newContent)
+                 ┌─────────────────────────────────────┐
+                 │ parseMarkdownSections(doc)          │
+                 │ - Finds: id="7", title="Info Elem"  │
+                 │ - Uses: boundaries to replace      │
+                 │ ✓ Success: ## 7 restored            │
+                 └─────────────────────────────────────┘
+                 Document now: ## 7 [section 7 content]
+    
+    Iteration 2: replaceSectionById(doc, "8", newContent)
+                 ┌─────────────────────────────────────┐
+                 │ parseMarkdownSections(doc)  ← FRESH │
+                 │ - Find: id="8", title="Error Handling"
+                 │ - Parse headings from doc          │
+                 │ - If doc is malformed from prev...│
+                 │ ⚠️ Regex might not match correctly  │
+                 └─────────────────────────────────────┘
+                 Document now: [might have lost heading]
+    
+    Iteration 3: replaceSectionById(doc, "9", newContent)
+                 ┌─────────────────────────────────────┐
+                 │ parseMarkdownSections(doc)          │
+                 │ - Boundaries offset from #2?        │
+                 │ - Heading match fails?              │
+                 │ - Wrong boundaries extracted?       │
+                 │ ❌ ## 9 heading lost                │
+                 └─────────────────────────────────────┘
+
+STAGE 6: FINAL RESULT (HEADINGS LOST)
+────────────────────────────────────────────────────────────────────────────
+
+    Before Cascade:
+    ┌─────────────────────────────────┐
+    │ ## 1 Scope                      │
+    │ ...                             │
+    │ ## 7 Information Elements       │
+    │ ...                             │
+    │ ## 8 Error Handling             │
+    │ ...                             │
+    │ ## 9 Appendix                   │
+    └─────────────────────────────────┘
+    
+    After Cascade:
+    ┌─────────────────────────────────┐
+    │ ## 1 Scope                      │
+    │ ...                             │
+    │ 7 Information Elements          ← MISSING ##  ❌
+    │ ...                             │
+    │ 8 Error Handling                ← MISSING ##  ❌
+    │ ...                             │
+    │ 9 Appendix                      ← MISSING ##  ❌
+    └─────────────────────────────────┘
+
+FAILURE ROOT CAUSE CHAIN
+────────────────────────────────────────────────────────────────────────────
+
+    15,000 char truncation
+             ↓
+    AI can't see section headings for sections beyond position 15,000
+             ↓
+    AI must INFER titles from content
+             ↓
+    AI's inferred titles don't match actual headings
+             ↓
+    Metadata contains WRONG section titles
+             ↓
+    extractSection() works by fallback (masks the real issue)
+             ↓
+    Multiple cascaded replacements happen
+             ↓
+    parseMarkdownSections() called repeatedly with inconsistent doc state
+             ↓
+    Boundaries get calculated wrong due to previous mutations
+             ↓
+    Some headings are lost in final output
+
+THE TWIST: THE CODE IS ACTUALLY WORKING
+────────────────────────────────────────────────────────────────────────────
+
+    extractSection()      ← Works correctly
+    replaceSectionById()  ← Works correctly
+    parseMarkdownSections() ← Works correctly
+    
+    The problem is SEMANTIC, not MECHANICAL:
+    
+    AI's understanding of WHICH section is WHICH doesn't match reality.
+    
+    Single operation: Everything works fine
+    Multiple operations: Cumulative confusion causes damage
+
+THE FIX
+────────────────────────────────────────────────────────────────────────────
+
+    Option 1: Don't let AI guess
+    ─────────────────────────────
+    Send explicit section list in prompt:
+    [1. Scope, 2. References, ..., 7. Information Elements, ...]
+    
+    Result: AI can't make mistakes about which section is what
+
+    Option 2: Validate the output
+    ─────────────────────────────
+    After AI responds, check: Does returned title match document?
+    If not: Correct it before proceeding
+    
+    Result: Mistakes are caught and fixed
+
+    Combined: Best of both
+    ────────────────────
+    Do both: AI has reference + output is validated
+    
+    Result: Defense in depth, very robust
+
+================================================================================

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { encrypt, decrypt, maskApiKey, isValidApiKey } from '../../utils/encryption';
+import { getEnvApiKey, hasEnvApiKey, getMaskedEnvApiKey, getEnvModel, getEnvTemperature, getEnvMaxTokens, getEnvEnableStreaming } from '../../utils/envConfig';
 import { aiService } from '../../services/ai';
 import type { AIModel } from '../../types';
 
@@ -60,20 +61,64 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
 
   // Load existing config
   useEffect(() => {
+    let apiKeyLoaded = false;
+    let settingsLoaded = false;
+
     if (aiConfig) {
-      // Decrypt API key if it exists
+      // Try to decrypt API key from stored config
       if (aiConfig.apiKey) {
         try {
           const decrypted = decrypt(aiConfig.apiKey);
           setApiKey(decrypted);
+          apiKeyLoaded = true;
         } catch (error) {
-          console.error('Failed to decrypt API key:', error);
+          console.error('Failed to decrypt API key from localStorage:', error);
+          console.log('ℹ️ This can happen if browser state changed (zoom, updates, etc.)');
         }
       }
-      setModel(aiConfig.model);
+
+      // Load other settings from stored config
+      if (aiConfig.model) {
+        setModel(aiConfig.model);
+        settingsLoaded = true;
+      }
       setTemperature(aiConfig.temperature);
       setMaxTokens(aiConfig.maxTokens);
       setEnableStreaming(aiConfig.enableStreaming);
+    }
+
+    // Fallback to environment variables if localStorage failed or is empty
+    if (!apiKeyLoaded) {
+      const envApiKey = getEnvApiKey();
+      if (envApiKey) {
+        console.log('✅ Loaded API key from environment variable (VITE_OPENROUTER_API_KEY)');
+        setApiKey(envApiKey);
+      }
+    }
+
+    if (!settingsLoaded) {
+      // Load other settings from environment variables
+      const envModel = getEnvModel();
+      const envTemp = getEnvTemperature();
+      const envMaxTokens = getEnvMaxTokens();
+      const envStreaming = getEnvEnableStreaming();
+
+      if (envModel) {
+        console.log(`✅ Loaded model from environment: ${envModel}`);
+        setModel(envModel as AIModel);
+      }
+      if (envTemp !== null) {
+        console.log(`✅ Loaded temperature from environment: ${envTemp}`);
+        setTemperature(envTemp);
+      }
+      if (envMaxTokens !== null) {
+        console.log(`✅ Loaded maxTokens from environment: ${envMaxTokens}`);
+        setMaxTokens(envMaxTokens);
+      }
+      if (envStreaming !== null) {
+        console.log(`✅ Loaded streaming setting from environment: ${envStreaming}`);
+        setEnableStreaming(envStreaming);
+      }
     }
   }, [aiConfig]);
 
@@ -260,6 +305,14 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
                 {showApiKey ? 'Hide' : 'Show'}
               </button>
             </div>
+            {hasEnvApiKey() && (
+              <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Using API key from environment variable ({getMaskedEnvApiKey()})
+              </p>
+            )}
             <p className="text-xs text-gray-500 mt-1">
               Get your API key from{' '}
               <a
@@ -270,6 +323,11 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
               >
                 openrouter.ai/keys
               </a>
+              {!hasEnvApiKey() && (
+                <span className="block mt-1">
+                  💡 Tip: Set <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">VITE_OPENROUTER_API_KEY</code> in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.env.local</code> to avoid re-entering
+                </span>
+              )}
             </p>
           </div>
 
