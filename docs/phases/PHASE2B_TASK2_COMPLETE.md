@@ -256,7 +256,7 @@ Generated text references 3GPP specs:
 
 3. **Upload BRS**
    - Go to "Business Requirements" tab
-   - Upload [sample-brs.md](sample-brs.md)
+   - Upload [sample-brs.md](../../sample-brs.md)
    - Verify metadata extraction (customer, version, project name)
    - Green checkmark appears on tab
 

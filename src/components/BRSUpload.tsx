@@ -6,6 +6,8 @@
  */
 
 import React, { useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useProjectStore } from '../store/projectStore';
 import type { BRSMetadata } from '../types';
 
@@ -16,6 +18,7 @@ export function BRSUpload() {
   const [error, setError] = useState<string | null>(null);
   const [previewContent, setPreviewContent] = useState<string>('');
   const [metadata, setMetadata] = useState<BRSMetadata>({});
+  const [viewMode, setViewMode] = useState<'edit' | 'split' | 'preview'>('split');
 
   const setBRSDocument = useProjectStore((state) => state.setBRSDocument);
   const brsDocument = useProjectStore((state) => state.project?.brsDocument);
@@ -132,34 +135,98 @@ export function BRSUpload() {
         </p>
       </div>
 
-      {/* Current BRS Status */}
+      {/* Current BRS Status & Content */}
       {brsDocument && (
-        <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="font-semibold text-green-900 dark:text-green-300">✓ BRS Loaded</p>
-              <p className="text-sm text-green-700 dark:text-green-400 mt-1">
-                <strong>{brsDocument.title}</strong>
-              </p>
-              <p className="text-xs text-green-600 dark:text-green-500 mt-1">
-                File: {brsDocument.filename} | Uploaded: {new Date(brsDocument.uploadedAt).toLocaleString()}
-              </p>
-              {brsDocument.metadata.customer && (
-                <p className="text-xs text-green-600 dark:text-green-500">Customer: {brsDocument.metadata.customer}</p>
-              )}
+        <>
+          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-semibold text-green-900 dark:text-green-300">✓ BRS Loaded</p>
+                <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+                  <strong>{brsDocument.title}</strong>
+                </p>
+                <p className="text-xs text-green-600 dark:text-green-500 mt-1">
+                  File: {brsDocument.filename} | Uploaded: {new Date(brsDocument.uploadedAt).toLocaleString()}
+                </p>
+                {brsDocument.metadata.customer && (
+                  <p className="text-xs text-green-600 dark:text-green-500">Customer: {brsDocument.metadata.customer}</p>
+                )}
+                <p className="text-xs text-green-600 dark:text-green-500">
+                  Size: {(brsDocument.markdown.length / 1024).toFixed(1)} KB ({brsDocument.markdown.split('\n').length} lines)
+                </p>
+              </div>
+              <button
+                onClick={() => useProjectStore.getState().clearBRSDocument()}
+                className="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 px-3 py-1 border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                Remove
+              </button>
             </div>
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="mb-4 flex gap-2">
             <button
-              onClick={() => useProjectStore.getState().clearBRSDocument()}
-              className="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 px-3 py-1 border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+              onClick={() => setViewMode('edit')}
+              className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                viewMode === 'edit'
+                  ? 'bg-blue-600 text-white dark:bg-blue-700'
+                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+              }`}
             >
-              Remove
+              Markdown
+            </button>
+            <button
+              onClick={() => setViewMode('split')}
+              className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                viewMode === 'split'
+                  ? 'bg-blue-600 text-white dark:bg-blue-700'
+                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+              }`}
+            >
+              Split
+            </button>
+            <button
+              onClick={() => setViewMode('preview')}
+              className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                viewMode === 'preview'
+                  ? 'bg-blue-600 text-white dark:bg-blue-700'
+                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+              }`}
+            >
+              Preview
             </button>
           </div>
-        </div>
+
+          {/* Content Display */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Markdown View */}
+            {(viewMode === 'edit' || viewMode === 'split') && (
+              <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-y-auto p-6 bg-white dark:bg-gray-800`}>
+                <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono leading-relaxed">
+                  {brsDocument.markdown}
+                </pre>
+              </div>
+            )}
+
+            {/* Preview */}
+            {(viewMode === 'preview' || viewMode === 'split') && (
+              <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900`}>
+                <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 shadow-sm rounded-lg p-8">
+                  <article className="prose prose-base max-w-none dark:prose-invert">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {brsDocument.markdown}
+                    </ReactMarkdown>
+                  </article>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Upload Area */}
-      {!previewContent && (
+      {!previewContent && !brsDocument && (
         <div
           onDrop={handleDrop}
           onDragOver={handleDragOver}

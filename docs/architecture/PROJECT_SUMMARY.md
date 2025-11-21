@@ -350,12 +350,12 @@ source /usr/local/share/nvm/nvm.sh && npm run dev
 
 ## Documentation
 
-- **[CLAUDE.md](CLAUDE.md)** - Complete guidance for AI assistants working on this codebase
-- **[PHASE3_PROGRESS.md](PHASE3_PROGRESS.md)** - Current Phase 3 status and progress
+- **[../../CLAUDE.md](../../CLAUDE.md)** - Complete guidance for AI assistants working on this codebase
+- **[../phases/PHASE3_PROGRESS.md](../phases/PHASE3_PROGRESS.md)** - Current Phase 3 status and progress
 - **[AI_COPILOT_ARCHITECTURE.md](AI_COPILOT_ARCHITECTURE.md)** - AI integration design
 - **[IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md)** - Detailed roadmap
-- **[QUICK_START.md](QUICK_START.md)** - 5-minute setup guide
-- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
+- **[../../QUICK_START.md](../../QUICK_START.md)** - 5-minute setup guide
+- **[../../TROUBLESHOOTING.md](../../TROUBLESHOOTING.md)** - Common issues and solutions
 
 ---
 

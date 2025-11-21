@@ -67,13 +67,22 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
     if (aiConfig) {
       // Try to decrypt API key from stored config
       if (aiConfig.apiKey) {
-        try {
-          const decrypted = decrypt(aiConfig.apiKey);
-          setApiKey(decrypted);
+        // Check if key is already unencrypted (from environment variable)
+        // Environment keys start with 'sk-or-' and are plain text
+        if (aiConfig.apiKey.startsWith('sk-or-')) {
+          console.log('✅ Using unencrypted API key from environment variable');
+          setApiKey(aiConfig.apiKey);
           apiKeyLoaded = true;
-        } catch (error) {
-          console.error('Failed to decrypt API key from localStorage:', error);
-          console.log('ℹ️ This can happen if browser state changed (zoom, updates, etc.)');
+        } else {
+          // Try to decrypt encrypted key from localStorage
+          try {
+            const decrypted = decrypt(aiConfig.apiKey);
+            setApiKey(decrypted);
+            apiKeyLoaded = true;
+          } catch (error) {
+            console.error('Failed to decrypt API key from localStorage:', error);
+            console.log('ℹ️ This can happen if browser state changed (zoom, updates, etc.)');
+          }
         }
       }
 

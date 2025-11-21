@@ -13,6 +13,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. [AI Service Usage](#ai-service-usage) - MUST initialize before use
 5. [Common Pitfalls & Solutions](#common-pitfalls--solutions) - Debug common errors
 
+**Latest Enhancements (November 2025):**
+6. [Diagram Preview in Review Panel](#diagram-preview-in-review-panel-implemented-2025-11-19) - See diagrams before approving (see [docs/features/DIAGRAM_REVIEW_ENHANCEMENT.md](docs/features/DIAGRAM_REVIEW_ENHANCEMENT.md))
+7. [Two-Tier Diagram Generation](#two-tier-diagram-generation-implemented-2025-11-19) - Mandatory vs suggested diagrams (see [docs/features/INTELLIGENT_DIAGRAM_GENERATION.md](docs/features/INTELLIGENT_DIAGRAM_GENERATION.md))
+8. [Section Content Aggregation](#section-content-aggregation-critical-fix-2025-11-19) - Critical fix for AI context (see [docs/bugs-and-fixes/SECTION_CONTENT_TRUNCATION_FIX.md](docs/bugs-and-fixes/SECTION_CONTENT_TRUNCATION_FIX.md))
+9. [Environment Configuration](#environment-configuration-srcutilsenvconfigts) - Pre-configure API keys and AI settings
+10. [IndexedDB Storage](#indexeddb-storage-srcutilsindexedbts) - High-capacity storage (50MB+)
+11. [Link Resolution](#link-resolution-srcutilslinkresolvertjs) - Parse and resolve {{fig:...}} syntax (see [docs/features/LINK_RESOLUTION_IMPLEMENTATION.md](docs/features/LINK_RESOLUTION_IMPLEMENTATION.md))
+
 **Reference as Needed:**
 - [Architecture](#architecture) - State management, data flow, AI service
 - [Development Commands](#development-commands) - npm scripts
@@ -92,15 +100,15 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 
 ### Current State
 
-🟡 **Phase 3 IN PROGRESS** (60% Complete) - Diagram Editing & Integration
+🟡 **Phase 3 IN PROGRESS** (75% Complete) - Diagram Editing & Integration
 - Phase 1: Foundation ✅
 - Phase 1.5: AI service layer ✅
 - Phase 2A: Core AI Experience ✅ (Chat, Config, Markdown Editor)
 - Phase 2B: BRS-to-TechSpec Pipeline ✅ **COMPLETE**
 - Phase 2C: Approval Workflow & Version History ✅ **COMPLETE**
-- Phase 3: Diagram Editing & Integration 🟡 **60% COMPLETE**
+- Phase 3: Diagram Editing & Integration 🟡 **75% COMPLETE**
 
-**Session Summaries**: Daily development sessions are documented in `SESSION_YYYY-MM-DD_SUMMARY.md` files for historical reference and context.
+**Session Summaries**: Daily development sessions are documented in the [docs/sessions/](docs/sessions/) folder for historical reference and context.
 
 **What's Working Now:**
 - ✅ Configure AI provider (OpenRouter) with encrypted API key storage
@@ -124,11 +132,20 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 - ✅ **Pan/zoom in view-only mode** for all diagram types (Phase 3 - 2025-11-09)
 - ✅ **Block diagram editor** - Full edit mode with drag, resize, pan/zoom (Phase 3 - BlockDiagramEditor.tsx 998 lines)
 - ✅ **Mermaid self-healing system** - AI-powered syntax error recovery (Phase 3 - 2025-11-10)
+- ✅ **Diagram preview in Review Panel** - Rendered diagrams with pan/zoom before approval (Phase 3 - 2025-11-19)
+- ✅ **Two-tier diagram generation** - Mandatory ({{fig:...}}) vs suggested (heuristic) diagrams (Phase 3 - 2025-11-19)
+- ✅ **TODO comment extraction** - Use TODO comments as diagram requirements (Phase 3 - 2025-11-19)
+- ✅ **Section content aggregation** - Include all subsection content for complete AI context (Phase 3 - 2025-11-19)
+- ✅ **Source section references** - Traceability between diagrams and spec sections (Phase 3 - 2025-11-19)
 
-**Phase 3 Status (60% COMPLETE):**
+**Phase 3 Status (75% COMPLETE):**
 - ✅ Block diagram editor integration (COMPLETE - BlockDiagramEditor.tsx 998 lines, fully Zustand-integrated)
 - ✅ Pan/zoom in view-only mode (COMPLETE - PanZoomWrapper.tsx wraps all diagram types)
 - ✅ Sequence diagram editor (COMPLETE - SequenceDiagramEditor.tsx 359 lines, serves sequence & flow diagrams)
+- ✅ Diagram preview in Review Panel (COMPLETE - 2025-11-19)
+- ✅ Two-tier diagram generation (COMPLETE - mandatory vs suggested, 2025-11-19)
+- ✅ TODO comment extraction (COMPLETE - diagram requirements from code comments, 2025-11-19)
+- ✅ Section content aggregation (COMPLETE - subsection content included, 2025-11-19)
 - 🚧 Link resolution ({{fig:...}} and {{ref:...}}) - HIGH PRIORITY TODO
 - 🚧 Auto-numbering for figures and references - HIGH PRIORITY TODO
 - 🚧 Flow diagram editor - OPTIONAL (currently reusing SequenceDiagramEditor)
@@ -147,25 +164,33 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 - **Export to DOCX**: Unified document with embedded diagrams
 
 **Key Architecture Files**:
-- `PHASE2A_COMPLETE.md` - Complete Phase 2A report with features and workflows
-- `PHASE2B_STATUS.md` - **Phase 2B completion report with full BRS-to-TechSpec pipeline**
-- `REFINEMENT_FIX.md` - Partial selection refinement implementation (Phase 2C)
-- `REFINEMENT_APPROVAL_FIX.md` - **Critical bug fix: Refinement approvals now working** (2025-11-14)
-- `DIAGRAM_GENERATION_GUIDANCE_FEATURE.md` - User guidance for diagram generation (2025-11-13)
-- `FUTURE_CASCADED_REFINEMENT.md` - **Design doc for future cascading refinement feature**
-- `PHASE2C_COMPLETE.md` - **Phase 2C completion report with approval workflow and version history**
-- `PHASE2C_TROUBLESHOOTING.md` - Troubleshooting guide for Phase 2C features
-- `PHASE3_PROGRESS.md` - **Phase 3 progress report with diagram editing status** (40% complete)
-- `QUICK_START.md` - 5-minute setup guide for new users
-- `TROUBLESHOOTING.md` - Common issues and solutions
-- `AI_COPILOT_ARCHITECTURE.md` - Complete AI integration design and workflows
-- `IMPLEMENTATION_PROGRESS.md` - Phase-by-phase roadmap with completion status
-- `src/types/index.ts` - Complete type system including AI types and version history
-- `src/store/projectStore.ts` - State management with AI state and version history
-- `src/services/ai/` - AI service layer (OpenRouter provider, prompts, parsers)
-- `src/components/` - Working UI components (Workspace, ChatPanel, AIConfigPanel, MarkdownEditor, BRSUpload, DiagramViewer, ReviewPanel, DiffViewer, BlockDiagramEditor, PanZoomWrapper)
-- `src/hooks/` - Custom React hooks (usePanZoom for pan/zoom functionality)
-- `sample-brs.md` - Example BRS document for testing (318 lines, realistic 5G use case)
+- [docs/README.md](docs/README.md) - **Documentation index** with organized categories
+- [docs/phases/PHASE2A_COMPLETE.md](docs/phases/PHASE2A_COMPLETE.md) - Complete Phase 2A report with features and workflows
+- [docs/phases/PHASE2B_STATUS.md](docs/phases/PHASE2B_STATUS.md) - **Phase 2B completion report with full BRS-to-TechSpec pipeline**
+- [docs/features/REFINEMENT_FIX.md](docs/features/REFINEMENT_FIX.md) - Partial selection refinement implementation (Phase 2C)
+- [docs/features/REFINEMENT_APPROVAL_FIX.md](docs/features/REFINEMENT_APPROVAL_FIX.md) - **Critical bug fix: Refinement approvals now working** (2025-11-14)
+- [docs/features/DIAGRAM_GENERATION_GUIDANCE_FEATURE.md](docs/features/DIAGRAM_GENERATION_GUIDANCE_FEATURE.md) - User guidance for diagram generation (2025-11-13)
+- [docs/architecture/FUTURE_CASCADED_REFINEMENT.md](docs/architecture/FUTURE_CASCADED_REFINEMENT.md) - **Design doc for future cascading refinement feature**
+- [docs/phases/PHASE2C_COMPLETE.md](docs/phases/PHASE2C_COMPLETE.md) - **Phase 2C completion report with approval workflow and version history**
+- [docs/phases/PHASE2C_TROUBLESHOOTING.md](docs/phases/PHASE2C_TROUBLESHOOTING.md) - Troubleshooting guide for Phase 2C features
+- [docs/phases/PHASE3_PROGRESS.md](docs/phases/PHASE3_PROGRESS.md) - **Phase 3 progress report with diagram editing status** (75% complete)
+- [docs/features/DIAGRAM_REVIEW_ENHANCEMENT.md](docs/features/DIAGRAM_REVIEW_ENHANCEMENT.md) - **Diagram preview in Review Panel** (2025-11-19)
+- [docs/features/INTELLIGENT_DIAGRAM_GENERATION.md](docs/features/INTELLIGENT_DIAGRAM_GENERATION.md) - **Two-tier diagram generation system** (2025-11-19)
+- [docs/features/TODO_COMMENT_EXTRACTION_FEATURE.md](docs/features/TODO_COMMENT_EXTRACTION_FEATURE.md) - **Extract diagram requirements from TODO comments** (2025-11-19)
+- [docs/features/TODO_PRIORITY_ENHANCEMENT.md](docs/features/TODO_PRIORITY_ENHANCEMENT.md) - **Give absolute priority to TODO comments** (2025-11-19)
+- [docs/bugs-and-fixes/SECTION_CONTENT_TRUNCATION_FIX.md](docs/bugs-and-fixes/SECTION_CONTENT_TRUNCATION_FIX.md) - **Critical fix: Include subsection content** (2025-11-19)
+- [docs/sessions/SESSION_2025-11-19_SUMMARY.md](docs/sessions/SESSION_2025-11-19_SUMMARY.md) - **Complete session summary** (2025-11-19)
+- [QUICK_START.md](QUICK_START.md) - 5-minute setup guide for new users
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common issues and solutions
+- [docs/architecture/AI_COPILOT_ARCHITECTURE.md](docs/architecture/AI_COPILOT_ARCHITECTURE.md) - Complete AI integration design and workflows
+- [docs/architecture/IMPLEMENTATION_PROGRESS.md](docs/architecture/IMPLEMENTATION_PROGRESS.md) - Phase-by-phase roadmap with completion status
+- [src/types/index.ts](src/types/index.ts) - Complete type system including AI types and version history
+- [src/store/projectStore.ts](src/store/projectStore.ts) - State management with AI state and version history
+- [src/services/ai/](src/services/ai/) - AI service layer (OpenRouter provider, prompts, parsers)
+- [src/services/ai/sectionAnalyzer.ts](src/services/ai/sectionAnalyzer.ts) - Section analysis with TODO extraction and subsection aggregation
+- [src/components/](src/components/) - Working UI components (Workspace, ChatPanel, AIConfigPanel, MarkdownEditor, BRSUpload, DiagramViewer, ReviewPanel, DiffViewer, BlockDiagramEditor, PanZoomWrapper)
+- [src/hooks/](src/hooks/) - Custom React hooks (usePanZoom for pan/zoom functionality)
+- [sample-brs.md](sample-brs.md) - Example BRS document for testing (318 lines, realistic 5G use case)
 
 ## ⚠️ Critical Don'ts (Read This First!)
 
@@ -185,15 +210,16 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 **First-time in this codebase?** Start here:
 
 1. **Run the app**: `npm run dev` (opens http://localhost:3000 automatically)
-2. **Key workflow**: BRS document → AI generates tech spec + diagrams → Iterative refinement
-3. **Key files to understand**:
+2. **Read documentation**: See [docs/README.md](docs/README.md) for organized documentation index
+3. **Key workflow**: BRS document → AI generates tech spec + diagrams → Iterative refinement
+4. **Key files to understand**:
    - [src/store/projectStore.ts](src/store/projectStore.ts) - All application state
    - [src/types/index.ts](src/types/index.ts) - Complete TypeScript type system
    - [src/services/ai/AIService.ts](src/services/ai/AIService.ts) - AI orchestration layer
-4. **AI features require**: OpenRouter API key (get at openrouter.ai)
-5. **Import style**: Use **relative paths** (NOT `@/` aliases - they're not configured)
-6. **State management**: Use Zustand store actions only (never mutate state directly)
-7. **Before coding**: Check [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) for planned architecture
+5. **AI features require**: OpenRouter API key (get at openrouter.ai)
+6. **Import style**: Use **relative paths** (NOT `@/` aliases - they're not configured)
+7. **State management**: Use Zustand store actions only (never mutate state directly)
+8. **Before coding**: Check [docs/architecture/IMPLEMENTATION_PROGRESS.md](docs/architecture/IMPLEMENTATION_PROGRESS.md) for planned architecture
 
 ## Git Workflow
 
@@ -533,7 +559,12 @@ src/
 │       ├── prompts/         # Prompt templates
 │       └── parsers/         # Output parsers
 ├── utils/
-│   └── encryption.ts        # ✅ API key encryption utilities
+│   ├── encryption.ts        # ✅ API key encryption utilities
+│   ├── envConfig.ts         # ✅ Environment variable access (2025-11-19)
+│   ├── indexedDB.ts         # ✅ High-capacity storage (50MB+, 2025-11-19)
+│   ├── indexedDBMiddleware.ts # ✅ Zustand middleware for IndexedDB
+│   ├── linkResolver.ts      # ✅ {{fig:...}} and {{ref:...}} resolution
+│   └── remarkLinkResolver.ts # ✅ Remark plugin for link resolution
 ├── hooks/                   # ✅ Custom React hooks
 │   └── usePanZoom.ts        # ✅ Reusable pan/zoom logic (95 lines, Phase 3)
 ├── components/              # ✅ Phase 2A-2C Components COMPLETE
@@ -829,6 +860,139 @@ const masked = maskApiKey(apiKey); // "sk-or-****-****-1234"
 - Never log or expose unencrypted API keys
 - Clear sensitive data on logout/config change
 
+### Environment Configuration (`src/utils/envConfig.ts`)
+
+**Purpose**: Provide access to environment variables for configuration with graceful fallbacks.
+
+```typescript
+// Note: Use relative imports in actual code
+import { getEnvApiKey, hasEnvApiKey, getEnvModel, getEnvTemperature } from '../../utils/envConfig';
+
+// Check if API key is configured via env var
+if (hasEnvApiKey()) {
+  const apiKey = getEnvApiKey(); // Returns decrypted key or null
+  const masked = getMaskedEnvApiKey(); // Returns "sk-or-****-****-1234"
+}
+
+// Get AI configuration defaults from env vars
+const model = getEnvModel(); // VITE_OPENROUTER_MODEL
+const temperature = getEnvTemperature(); // VITE_AI_TEMPERATURE
+const maxTokens = getEnvMaxTokens(); // VITE_AI_MAX_TOKENS
+const streaming = getEnvEnableStreaming(); // VITE_AI_ENABLE_STREAMING
+```
+
+**Available Environment Variables**:
+```bash
+# .env.local (not committed to git)
+VITE_OPENROUTER_API_KEY=sk-or-v1-...  # Pre-configured API key
+VITE_OPENROUTER_MODEL=anthropic/claude-3.5-sonnet  # Default model
+VITE_AI_TEMPERATURE=0.7  # Default temperature (0-2)
+VITE_AI_MAX_TOKENS=4000  # Default max tokens
+VITE_AI_ENABLE_STREAMING=true  # Enable streaming responses
+```
+
+**Key Features**:
+- **Validation**: OpenRouter keys must start with `sk-or-`
+- **Graceful Fallback**: Returns `null` if not set, allowing UI configuration
+- **Type Safety**: Validates numeric values (temperature, maxTokens)
+- **Security**: Keys are validated but still encrypted before storage
+
+### IndexedDB Storage (`src/utils/indexedDB.ts`)
+
+**Purpose**: High-capacity persistent storage (50MB+) as an upgrade from localStorage (5-10MB).
+
+```typescript
+// Note: Use relative imports in actual code
+import { getState, setState, clearState, migrateFromLocalStorage } from '../../utils/indexedDB';
+
+// Load state from IndexedDB
+const state = await getState(); // Returns ProjectState | null
+
+// Save state to IndexedDB
+await setState(projectState, version);
+
+// Clear all data
+await clearState();
+
+// Migrate from localStorage (automatic on first load)
+const migrated = await migrateFromLocalStorage();
+
+// Get storage statistics
+const stats = await getStorageStats();
+console.log(`Storage: ${stats.sizeMB} MB, Version: ${stats.version}`);
+```
+
+**Key Features**:
+- **Async API**: Non-blocking storage operations
+- **50MB+ Capacity**: ~10x larger than localStorage
+- **Automatic Migration**: Seamlessly moves data from localStorage on first load
+- **Version Tracking**: Stores version metadata with state
+- **Error Handling**: Graceful fallback if IndexedDB is unavailable
+
+**Integration with Zustand**:
+- Middleware configured in `projectStore.ts` automatically saves to IndexedDB
+- No manual save/load calls needed in components
+- See `src/utils/indexedDBMiddleware.ts` for implementation details
+
+### Link Resolution (`src/utils/linkResolver.ts`)
+
+**Purpose**: Parse, validate, and resolve `{{fig:...}}` and `{{ref:...}}` syntax in markdown.
+
+```typescript
+// Note: Use relative imports in actual code
+import {
+  parseLinks,
+  parseFigureReferences,
+  resolveFigureReference,
+  resolveAllLinks,
+  findInvalidLinks,
+  extractHeadings
+} from '../../utils/linkResolver';
+
+// Parse all links in markdown
+const links = parseLinks(markdown);
+// Returns: [{ type: 'figure', id: 'converged-edge', raw: '{{fig:converged-edge}}', start: 42, end: 67 }]
+
+// Extract figure reference IDs
+const figureIds = parseFigureReferences(markdown);
+// Returns: ['converged-edge', 'call-flow-diagram']
+
+// Resolve single reference
+const resolved = resolveFigureReference('converged-edge', figures);
+// Returns: "Figure 4-1"
+
+// Resolve all links in document
+const resolvedMarkdown = resolveAllLinks(markdown, figures, citations);
+// Converts: "See {{fig:converged-edge}}" -> "See Figure 4-1"
+
+// Find broken links
+const invalid = findInvalidLinks(markdown, validFigureIds, validReferenceIds);
+// Returns links that don't exist in the project
+
+// Extract headings with section numbers
+const headings = extractHeadings(markdown);
+// Returns: [{ level: 2, text: 'Architecture Overview', sectionNumber: '4', position: 42 }]
+```
+
+**Link Syntax Patterns**:
+```markdown
+{{fig:diagram-id}}  → Resolves to "Figure X-Y"
+{{ref:3gpp-ts-23-203}}  → Resolves to "3GPP TS 23.203 [1]"
+```
+
+**Key Features**:
+- **Regex-based Parsing**: Efficient pattern matching
+- **Validation**: Detect broken/invalid references
+- **Auto-numbering**: Calculate figure numbers from section + position
+- **Autocomplete Support**: Generate suggestions for editor integration
+- **Bidirectional Resolution**: Parse → Validate → Resolve
+
+**Integration Status**:
+- ✅ Utility functions implemented
+- 🚧 Editor integration pending (Phase 3 TODO)
+- 🚧 Preview resolution pending
+- 🚧 Export resolution pending
+
 ### Linking System (Future Phase 3)
 
 Documents will use template syntax:
@@ -928,7 +1092,7 @@ The codebase follows **incremental migration** - preserve working code, enhance 
 
 **Troubleshooting**:
 
-See [PHASE2C_TROUBLESHOOTING.md](PHASE2C_TROUBLESHOOTING.md) for common issues:
+See [docs/phases/PHASE2C_TROUBLESHOOTING.md](docs/phases/PHASE2C_TROUBLESHOOTING.md) for common issues:
 - Review button not visible
 - AI chat context mismatch
 - Approval workflow not triggering
@@ -1007,11 +1171,22 @@ See [PHASE2C_TROUBLESHOOTING.md](PHASE2C_TROUBLESHOOTING.md) for common issues:
 Create a `.env.local` file (not committed to git):
 
 ```bash
-# AI Provider Configuration
-VITE_OPENROUTER_API_KEY=sk-or-v1-...  # Optional: pre-configured key
+# AI Provider Configuration (all optional with graceful fallbacks)
+VITE_OPENROUTER_API_KEY=sk-or-v1-...  # Pre-configured API key
+VITE_OPENROUTER_MODEL=anthropic/claude-3.5-sonnet  # Default model
+VITE_AI_TEMPERATURE=0.7  # Default temperature (0-2)
+VITE_AI_MAX_TOKENS=4000  # Default max tokens
+VITE_AI_ENABLE_STREAMING=true  # Enable streaming responses
 ```
 
-**Note**: API keys are typically configured via UI and stored encrypted in localStorage, not environment variables.
+**Implementation Notes**:
+- All environment variables have graceful fallbacks - if not set, UI configuration is used
+- API keys are validated (must start with `sk-or-`), then encrypted before localStorage storage
+- Environment configuration utilities in [src/utils/envConfig.ts](src/utils/envConfig.ts)
+- Primary use case: Pre-configure development/staging environments
+- Users can still override via UI settings panel
+
+**Security**: Environment variables are read-only defaults. User-configured keys (via UI) are always encrypted before storage using AES with device fingerprint.
 
 ## Known Issues & Workarounds
 
@@ -1092,7 +1267,63 @@ VITE_OPENROUTER_API_KEY=sk-or-v1-...  # Optional: pre-configured key
   - Real-time validation of proposed fixes
   - User maintains full control (not automatic)
 - **Status**: ✅ Complete and ready for testing
-- **Documentation**: [MERMAID_SELF_HEALING_COMPLETE.md](MERMAID_SELF_HEALING_COMPLETE.md)
+- **Documentation**: [docs/features/MERMAID_SELF_HEALING_COMPLETE.md](docs/features/MERMAID_SELF_HEALING_COMPLETE.md)
+- **Additional Docs**: See [docs/features/](docs/features/) for complete Mermaid healing documentation (6 related files)
+
+### Diagram Preview in Review Panel (IMPLEMENTED 2025-11-19)
+- **Problem**: Diagram approvals showed only raw Mermaid code or JSON, users couldn't see what they were approving
+- **Solution**: Added `BlockDiagramRenderer` and `MermaidDiagramRenderer` components to ReviewPanel with pan/zoom
+- **Implementation**:
+  - [src/components/ai/ReviewPanel.tsx](src/components/ai/ReviewPanel.tsx) - Integrated diagram renderers with PanZoomWrapper
+  - Data normalization handles object/array nodes and missing positions
+  - Default grid layout for nodes without explicit positions
+- **Features**:
+  - Block diagrams: Interactive pan/zoom with same visual style as editor
+  - Mermaid diagrams: Rendered HTML output with error fallback
+  - Source section references: "📄 From: Section X - Title"
+- **Status**: ✅ Complete and working
+- **Documentation**: [docs/features/DIAGRAM_REVIEW_ENHANCEMENT.md](docs/features/DIAGRAM_REVIEW_ENHANCEMENT.md)
+
+### Two-Tier Diagram Generation (IMPLEMENTED 2025-11-19)
+- **Problem**: Diagrams generated for every section, no distinction between explicit requests and suggestions
+- **Solution**: Detect `{{fig:...}}` placeholders as mandatory triggers, use heuristics for suggestions
+- **Implementation**:
+  - [src/services/ai/sectionAnalyzer.ts](src/services/ai/sectionAnalyzer.ts) - Figure reference extraction and analysis
+  - **Mandatory**: Sections with `{{fig:...}}` always generate diagrams (high confidence)
+  - **Suggested**: Sections with strong heuristic evidence may generate diagrams (user approval)
+  - Mandatory diagrams use figure reference ID as diagram ID
+- **Features**:
+  - Clear logging: [MANDATORY] vs [SUGGESTED]
+  - Helper functions: `getMandatorySections()`, `getSuggestedSections()`
+  - Proper ID mapping for figure references
+- **Status**: ✅ Complete and working
+- **Documentation**: [docs/features/INTELLIGENT_DIAGRAM_GENERATION.md](docs/features/INTELLIGENT_DIAGRAM_GENERATION.md)
+
+### TODO Comment Extraction (IMPLEMENTED 2025-11-19)
+- **Problem**: Figure placeholders had detailed requirements in TODO comments that AI was ignoring
+- **Solution**: Extract TODO comments within 2 lines of `{{fig:...}}` and pass to AI as guidance
+- **Implementation**:
+  - [src/services/ai/sectionAnalyzer.ts](src/services/ai/sectionAnalyzer.ts) - `extractTodoComments()` function
+  - [src/services/ai/prompts/diagramPrompts.ts](src/services/ai/prompts/diagramPrompts.ts) - TODO priority with CRITICAL banner
+  - Store in `SectionAnalysis.todoComments` array
+- **Features**:
+  - Visual markers: ━━━━━━, 🚨, ⚠️
+  - Strong language: "MUST", "CRITICAL", "MANDATORY"
+  - 6 mandatory requirements for AI compliance
+- **Status**: ✅ Complete and working
+- **Documentation**: [docs/features/TODO_COMMENT_EXTRACTION_FEATURE.md](docs/features/TODO_COMMENT_EXTRACTION_FEATURE.md), [docs/features/TODO_PRIORITY_ENHANCEMENT.md](docs/features/TODO_PRIORITY_ENHANCEMENT.md)
+
+### Section Content Aggregation (CRITICAL FIX 2025-11-19)
+- **Problem**: AI receiving only 19 characters instead of 19,000+ chars due to missing subsection content
+- **Root Cause**: `sectionAnalyzer.ts` only used top-level section content, filtered out subsections entirely
+- **Solution**: Aggregate all subsection content for top-level sections (e.g., "4" includes "4.1", "4.2", "4.3", etc.)
+- **Implementation**:
+  - [src/services/ai/sectionAnalyzer.ts](src/services/ai/sectionAnalyzer.ts) - Lines 45-64: Subsection aggregation logic
+  - Sorts by document position and joins all content
+  - Added logging: "Aggregating X subsections (YYYY chars total)"
+- **Impact**: AI now has complete context for diagram generation, diagrams align with full specification
+- **Status**: ✅ Complete and verified
+- **Documentation**: [docs/bugs-and-fixes/SECTION_CONTENT_TRUNCATION_FIX.md](docs/bugs-and-fixes/SECTION_CONTENT_TRUNCATION_FIX.md)
 
 ### Refinement Approval Bug (FIXED 2025-11-14)
 - **Problem**: Refinements created via "Refine Selection" were not being applied when user clicked "Approve & Apply"
@@ -1103,7 +1334,7 @@ VITE_OPENROUTER_API_KEY=sk-or-v1-...  # Optional: pre-configured key
 - **Files Fixed**:
   - [src/components/ai/ReviewPanel.tsx:52](src/components/ai/ReviewPanel.tsx#L52) - handleApprove function now handles all three types
 - **Status**: ✅ Fixed and verified working (document length changed from 100,127 → 95,572 chars after approval)
-- **Documentation**: [REFINEMENT_APPROVAL_FIX.md](REFINEMENT_APPROVAL_FIX.md)
+- **Documentation**: [docs/features/REFINEMENT_APPROVAL_FIX.md](docs/features/REFINEMENT_APPROVAL_FIX.md)
 - **Testing**: Console logs confirm type check passes and updateSpecification is called correctly
 
 ### User Guidance for AI Generation (IMPLEMENTED 2025-11-13)
@@ -1122,13 +1353,14 @@ VITE_OPENROUTER_API_KEY=sk-or-v1-...  # Optional: pre-configured key
   - Focus on specific components or interfaces
   - Guide diagram simplification or emphasis
 - **Status**: ✅ Complete and working
-- **Documentation**: [DIAGRAM_GENERATION_GUIDANCE_FEATURE.md](DIAGRAM_GENERATION_GUIDANCE_FEATURE.md)
+- **Documentation**: [docs/features/DIAGRAM_GENERATION_GUIDANCE_FEATURE.md](docs/features/DIAGRAM_GENERATION_GUIDANCE_FEATURE.md)
 
 ### Cascading Refinement (PLANNED - FUTURE)
 - **Status**: Design complete, implementation planned for future phase
 - **Purpose**: When refining a section, AI analyzes impact on other sections and proposes cascading changes
 - **Example**: Remove HSS/AuC from Architecture → AI proposes removing HSS procedures, parameters, references
-- **Documentation**: [FUTURE_CASCADED_REFINEMENT.md](FUTURE_CASCADED_REFINEMENT.md) - Complete design with UX mockups, architecture, implementation plan
+- **Documentation**: [docs/architecture/FUTURE_CASCADED_REFINEMENT.md](docs/architecture/FUTURE_CASCADED_REFINEMENT.md) - Complete design with UX mockups, architecture, implementation plan
+- **Bug Investigations**: See [docs/bugs-and-fixes/](docs/bugs-and-fixes/) for 5 cascade refinement bug investigation documents
 - **User Request**: Saved for future development per user's instruction (2025-11-14)
 
 ### BRS Document Source Verification (CONFIRMED 2025-11-08)
@@ -1172,9 +1404,11 @@ VITE_OPENROUTER_API_KEY=sk-or-v1-...  # Optional: pre-configured key
    const { updateBlockDiagram, setAIConfig } = useProjectStore();
    ```
 
-3. **Check [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md)** for planned architecture
+3. **Check [docs/README.md](docs/README.md)** for full documentation index organized by category
 
-4. **Preserve existing behavior** when refactoring App.tsx
+4. **Check [docs/architecture/IMPLEMENTATION_PROGRESS.md](docs/architecture/IMPLEMENTATION_PROGRESS.md)** for planned architecture
+
+5. **Preserve existing behavior** when refactoring App.tsx
 
 ### When Building BRS-to-TechSpec Features (Phase 2B+)
 
@@ -1268,12 +1502,21 @@ The block diagram editor has been **fully extracted** from App.tsx:
 
 ## Reference Documents
 
-- **README.md** - User-facing features and usage guide
-- **AI_COPILOT_ARCHITECTURE.md** - Complete AI design and workflows
-- **IMPLEMENTATION_PROGRESS.md** - Detailed roadmap with completion status
-- **PROJECT_SUMMARY.md** - High-level project overview
-- **draft-technical-specification** - Sample 5G technical spec document
-- **draft-sequence-diagram** - Empty placeholder for future sequence diagrams
+- [README.md](README.md) - User-facing features and usage guide
+- [docs/README.md](docs/README.md) - **Documentation index** with 42+ files organized by category
+- [docs/architecture/AI_COPILOT_ARCHITECTURE.md](docs/architecture/AI_COPILOT_ARCHITECTURE.md) - Complete AI design and workflows
+- [docs/architecture/IMPLEMENTATION_PROGRESS.md](docs/architecture/IMPLEMENTATION_PROGRESS.md) - Detailed roadmap with completion status
+- [docs/architecture/PROJECT_SUMMARY.md](docs/architecture/PROJECT_SUMMARY.md) - High-level project overview
+- [draft-technical-specification](draft-technical-specification) - Sample 5G technical spec document
+- [draft-sequence-diagram](draft-sequence-diagram) - Empty placeholder for future sequence diagrams
+
+**Documentation Categories** (see [docs/README.md](docs/README.md) for full index):
+- `docs/architecture/` - System design and integration documentation (4 files)
+- `docs/phases/` - Phase completion reports and status (7 files)
+- `docs/features/` - Feature documentation and enhancements (17 files)
+- `docs/bugs-and-fixes/` - Bug investigations and fixes (9 files)
+- `docs/sessions/` - Daily development session summaries (2 files)
+- `docs/tools/` - HTML utility tools for debugging (5 files)
 
 ## External Dependencies
 
@@ -1448,14 +1691,19 @@ When generating technical specifications, the AI must follow **3GPP standards** 
 
 ### 3GPP Document Structure
 
-**Standard Sections** (from 3GPP template):
+**Standard Sections** (from updated template):
+- **Title Page** - Organization, project name, document type, version, status, date
+- **Table of Contents** - Auto-generated section listing
+- **Document Control** (unnumbered, not in ToC) - Authors, reviewers, approvers, revision history
 1. **Scope** - Define what the specification covers
-2. **References** - Normative (required) and informative (helpful) references
-3. **Definitions and Abbreviations** - Terms, acronyms, notation
-4. **Architecture** - System components, interfaces, protocols (with block diagrams)
-5. **Procedures** - Call flows, state machines, message sequences (with sequence diagrams)
-6. **Information Elements** - Data structures, parameters, encoding
-7. **Error Handling** - Failure scenarios, recovery procedures
+2. **Service Overview** - High-level summary from BRS (description, objectives, target customer, architecture context)
+3. **Functional Specification** - Service functionality and features (renamed from Functional Requirements)
+4. **Solution Architecture and Design** - System components, interfaces, protocols, procedures, and call flows (merged Architecture + Procedures)
+5. **Non-Functional Requirements** - Performance, availability, security, scalability in table format
+6. **OSS/BSS and Service Management** - Provisioning, identity correlation, assurance, reporting
+7. **SLA Summary** - Measurement points, SLA commitments by variant, reporting procedures
+8. **Open Items** - Pending decisions and unresolved questions
+9. **Appendices** - Abbreviations, references, design rationale, other supporting materials
 
 ### Language & Terminology
 
@@ -1618,3 +1866,27 @@ const cleaned = removePlaceholderText(result.content);
 - User reports placeholder text issues
 - Document generation fails validation
 - Output quality doesn't meet requirements
+
+## Documentation Organization
+
+The project documentation has been reorganized into a structured hierarchy. See [docs/README.md](docs/README.md) for the complete index.
+
+### Quick Navigation
+
+**For New Contributors:**
+- Start: [QUICK_START.md](QUICK_START.md) (5-minute setup)
+- Then: [docs/README.md](docs/README.md) (documentation map)
+- Architecture: [docs/architecture/](docs/architecture/) (4 design docs)
+- Progress: [docs/phases/](docs/phases/) (phase completion reports)
+
+**For Troubleshooting:**
+- General: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- Phase 2C: [docs/phases/PHASE2C_TROUBLESHOOTING.md](docs/phases/PHASE2C_TROUBLESHOOTING.md)
+- Features: [docs/features/](docs/features/) (17 feature docs)
+- Bug Fixes: [docs/bugs-and-fixes/](docs/bugs-and-fixes/) (9 investigation docs)
+
+**For Historical Context:**
+- Sessions: [docs/sessions/](docs/sessions/) (daily summaries)
+- Tools: [docs/tools/](docs/tools/) (HTML debugging utilities)
+
+**Total Documentation**: 42+ files organized across 6 categories

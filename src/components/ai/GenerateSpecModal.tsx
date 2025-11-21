@@ -1,63 +1,101 @@
 /**
  * GenerateSpecModal Component
- * Modal dialog for generating full technical specification from BRS
+ * Multi-step modal for generating technical specifications with template support
+ *
+ * Flow:
+ * 1. Template Selection - Choose spec template (3GPP, IEEE 830, ISO 29148, etc.)
+ * 2. Section Customization - Enable/disable/reorder sections
+ * 3. Generation - Generate spec with progress tracking
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { aiService } from '../../services/ai';
 import { decrypt } from '../../utils/encryption';
+import { TemplateSelectionModal } from './TemplateSelectionModal';
+import { SectionComposer } from './SectionComposer';
 
 interface GenerateSpecModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+type Step = 'template' | 'customize' | 'generate';
+
 export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, onClose }) => {
   const project = useProjectStore(state => state.project);
   const aiConfig = useProjectStore(state => state.aiConfig);
   const brsDocument = useProjectStore(state => state.getBRSDocument());
+  const availableTemplates = useProjectStore(state => state.availableTemplates);
+  const activeTemplateConfig = useProjectStore(state => state.activeTemplateConfig);
+  const setActiveTemplate = useProjectStore(state => state.setActiveTemplate);
   const updateSpecification = useProjectStore(state => state.updateSpecification);
   const updateUsageStats = useProjectStore(state => state.updateUsageStats);
   const createApproval = useProjectStore(state => state.createApproval);
   const createSnapshot = useProjectStore(state => state.createSnapshot);
 
+  const [step, setStep] = useState<Step>('template');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
+    activeTemplateConfig?.templateId || null
+  );
   const [specTitle, setSpecTitle] = useState(() => {
     const projectName = brsDocument?.metadata?.projectName || project?.name || 'Untitled';
     return `${projectName} - Technical Specification`;
   });
-  const [userGuidance, setUserGuidance] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 8, section: '' });
+  const [progress, setProgress] = useState({ current: 0, total: 0, section: '' });
   const [error, setError] = useState<string | null>(null);
-  const [requireApproval, setRequireApproval] = useState(true); // Default: require approval
+  const [requireApproval, setRequireApproval] = useState(true);
+
+  // Get selected template
+  const selectedTemplate = availableTemplates.find(t => t.id === selectedTemplateId);
 
   // Validation
-  const canGenerate = brsDocument && aiConfig && aiConfig.apiKey;
+  const canGenerate = brsDocument && aiConfig && aiConfig.apiKey && selectedTemplate && activeTemplateConfig;
+
+  // Reset to template step if modal reopens
+  useEffect(() => {
+    if (isOpen && !isGenerating) {
+      setStep(activeTemplateConfig ? 'customize' : 'template');
+      setError(null);
+    }
+  }, [isOpen, activeTemplateConfig, isGenerating]);
+
+  const handleTemplateSelect = (templateId: string) => {
+    const template = availableTemplates.find(t => t.id === templateId);
+    if (!template) return;
+
+    setSelectedTemplateId(templateId);
+
+    // Initialize template configuration
+    setActiveTemplate({
+      templateId: template.id,
+      enabledSections: template.sections.filter(s => s.defaultEnabled).map(s => s.id),
+      sectionOrder: template.sections.map(s => s.id),
+      customGuidance: ''
+    });
+
+    // Move to customization step
+    setStep('customize');
+  };
 
   const handleGenerate = async () => {
-    if (!canGenerate || !brsDocument || !aiConfig) {
+    if (!canGenerate || !brsDocument || !aiConfig || !selectedTemplate || !activeTemplateConfig) {
       return;
     }
 
+    setStep('generate');
     setIsGenerating(true);
     setError(null);
-    setProgress({ current: 0, total: 8, section: 'Analyzing BRS...' });
+
+    // Count enabled sections for progress
+    const enabledCount = activeTemplateConfig.enabledSections.length;
+    setProgress({ current: 0, total: enabledCount + 1, section: 'Analyzing BRS...' });
 
     try {
-      // Decrypt API key and initialize AI service
-      // Check if key is already plain text (starts with sk-or-)
+      // Decrypt API key
       const isPlainText = aiConfig.apiKey?.startsWith('sk-or-');
       const decryptedKey = isPlainText ? aiConfig.apiKey : decrypt(aiConfig.apiKey);
-
-      console.log('🔑 API Key Debug:', {
-        hasEncryptedKey: !!aiConfig.apiKey,
-        isPlainText,
-        encryptedLength: aiConfig.apiKey?.length,
-        hasDecryptedKey: !!decryptedKey,
-        decryptedLength: decryptedKey?.length,
-        decryptedPrefix: decryptedKey?.substring(0, 10),
-      });
 
       if (!decryptedKey) {
         throw new Error('Failed to decrypt API key. Please reconfigure your AI settings.');
@@ -68,7 +106,7 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
         apiKey: decryptedKey
       });
 
-      // Build context with available references and diagrams
+      // Build context
       const context = {
         availableReferences: project?.references || [],
         availableDiagrams: [
@@ -93,54 +131,75 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
         ]
       };
 
-      // Generate full specification
-      const result = await aiService.generateFullSpecification(
+      // Generate specification using template system
+      const result = await aiService.generateSpecificationFromTemplate(
         {
           title: brsDocument.title,
           markdown: brsDocument.markdown,
-          metadata: brsDocument.metadata
+          metadata: {
+            customer: brsDocument.metadata.customer,
+            version: brsDocument.metadata.version,
+            projectName: brsDocument.metadata.projectName
+          }
         },
         specTitle,
+        selectedTemplate,
+        activeTemplateConfig,
         context,
-        (current, total, sectionTitle) => {
-          setProgress({ current, total, section: sectionTitle });
-        },
-        userGuidance.trim() || undefined // Pass user guidance if provided
+        (current, total, section) => {
+          setProgress({ current, total, section });
+        }
       );
 
       // Update usage stats
       updateUsageStats(result.totalTokens, result.totalCost);
 
+      console.log('✅ Specification generation complete:', {
+        sections: result.sections.length,
+        tokens: result.totalTokens,
+        cost: `$${result.totalCost.toFixed(4)}`,
+        length: result.markdown.length
+      });
+
       if (requireApproval) {
-        // Create approval for review
-        const originalMarkdown = project?.specification?.markdown || '';
-        createApproval({
-          taskId: `spec-gen-${Date.now()}`,
+        // Create approval for user review
+        const approvalId = createApproval({
+          taskId: `generate-spec-${Date.now()}`,
           type: 'document',
           status: 'pending',
-          originalContent: originalMarkdown,
-          generatedContent: result.markdown,
+          originalContent: project?.specification?.markdown || '',
+          generatedContent: result.markdown
         });
 
-        alert('Specification generated! Please review it in the Review Panel before applying.');
+        console.log('📋 Created approval for review:', approvalId);
+
+        // Show success message
+        setProgress({ current: enabledCount + 1, total: enabledCount + 1, section: 'Complete! Review in Review Panel.' });
       } else {
-        // Directly apply the generated specification
+        // Apply directly without approval
         updateSpecification(result.markdown);
 
-        // Create snapshot
+        // Create version snapshot
         createSnapshot(
           'specification-generation',
-          `AI-generated full specification from BRS`,
+          `Generated specification from template: ${selectedTemplate.name}`,
           'ai',
-          { tokensUsed: result.totalTokens, costIncurred: result.totalCost }
+          {
+            tokensUsed: result.totalTokens,
+            costIncurred: result.totalCost
+          }
         );
-      }
 
-      // Success - close modal
-      onClose();
+        setProgress({ current: enabledCount + 1, total: enabledCount + 1, section: 'Complete!' });
+
+        // Close modal after brief delay
+        setTimeout(() => {
+          onClose();
+        }, 1500);
+      }
     } catch (err: any) {
-      console.error('Failed to generate specification:', err);
-      setError(err.message || 'Failed to generate specification. Please check your AI configuration.');
+      console.error('❌ Specification generation failed:', err);
+      setError(err.message || 'Failed to generate specification');
     } finally {
       setIsGenerating(false);
     }
@@ -148,171 +207,175 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
+  // Show template selection modal as overlay
+  if (step === 'template') {
+    return (
+      <TemplateSelectionModal
+        isOpen={true}
+        onClose={onClose}
+        onSelect={handleTemplateSelect}
+      />
+    );
+  }
+
+  // Main modal for customization and generation
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
-            Generate Technical Specification
-          </h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-            AI-powered generation from Business Requirements Specification
-          </p>
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                {step === 'customize' ? 'Customize Specification' : 'Generating Specification'}
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                {step === 'customize'
+                  ? `Template: ${selectedTemplate?.name || 'Unknown'}`
+                  : `${progress.current} of ${progress.total} sections`
+                }
+              </p>
+            </div>
+            {!isGenerating && (
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Content */}
-        <div className="px-6 py-4 space-y-4">
-          {/* BRS Info */}
-          {brsDocument && (
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <h3 className="text-sm font-medium text-blue-900 mb-2">Source BRS Document</h3>
-              <div className="text-sm text-blue-800 space-y-1">
-                <p><strong>Title:</strong> {brsDocument.title}</p>
-                <p><strong>Customer:</strong> {brsDocument.metadata.customer || 'Not specified'}</p>
-                <p><strong>Project:</strong> {brsDocument.metadata.projectName || 'Not specified'}</p>
-                <p><strong>File:</strong> {brsDocument.filename}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Specification Title */}
-          <div>
-            <label htmlFor="spec-title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Technical Specification Title
-            </label>
-            <input
-              id="spec-title"
-              type="text"
-              value={specTitle}
-              onChange={(e) => setSpecTitle(e.target.value)}
-              disabled={isGenerating}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-              placeholder="Enter specification title..."
-            />
-          </div>
-
-          {/* User Guidance */}
-          <div>
-            <label htmlFor="user-guidance" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Additional Guidance for AI <span className="text-gray-500 font-normal">(Optional)</span>
-            </label>
-            <textarea
-              id="user-guidance"
-              value={userGuidance}
-              onChange={(e) => setUserGuidance(e.target.value)}
-              disabled={isGenerating}
-              rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 resize-none"
-              placeholder="Provide context or clarifications for the AI. For example:&#10;• The deployment uses 5G-NSA (Non-Standalone) architecture&#10;• Focus on eMBB (Enhanced Mobile Broadband) use cases&#10;• Customer requires dual-stack IPv4/IPv6 support&#10;• Use vendor-specific terminology from Ericsson"
-            />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Use this field to clarify ambiguities in the BRS, specify deployment details, or provide additional context that will help the AI generate a more accurate specification.
-            </p>
-          </div>
-
-          {/* Approval Option */}
-          <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-            <input
-              id="require-approval"
-              type="checkbox"
-              checked={requireApproval}
-              onChange={(e) => setRequireApproval(e.target.checked)}
-              disabled={isGenerating}
-              className="mt-0.5"
-            />
-            <div>
-              <label htmlFor="require-approval" className="text-sm font-medium text-yellow-900 cursor-pointer">
-                Require approval before applying changes
-              </label>
-              <p className="text-xs text-yellow-700 mt-1">
-                {requireApproval
-                  ? 'Generated content will be sent to Review Panel for your approval.'
-                  : 'Generated content will be applied immediately without review.'}
-              </p>
-            </div>
-          </div>
-
-          {/* Generation Info */}
-          <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 rounded-md p-4">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">What will be generated?</h3>
-            <ul className="text-sm text-gray-700 space-y-1">
-              <li>✓ <strong>Section 1:</strong> Scope</li>
-              <li>✓ <strong>Section 2:</strong> References (Normative & Informative)</li>
-              <li>✓ <strong>Section 3:</strong> Definitions, Symbols, and Abbreviations</li>
-              <li>✓ <strong>Section 4:</strong> Architecture (with diagram placeholders)</li>
-              <li>✓ <strong>Section 5:</strong> Functional Requirements</li>
-              <li>✓ <strong>Section 6:</strong> Procedures (with sequence diagram placeholders)</li>
-              <li>✓ <strong>Section 7:</strong> Information Elements</li>
-              <li>✓ <strong>Section 8:</strong> Error Handling</li>
-            </ul>
-            <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
-              Estimated time: 2-5 minutes depending on AI model and complexity
-            </p>
-          </div>
-
-          {/* Progress */}
-          {isGenerating && (
-            <div className="bg-green-50 border border-green-200 rounded-md p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-green-900">Generating...</span>
-                <span className="text-sm text-green-700">
-                  {progress.current} / {progress.total}
-                </span>
-              </div>
-              <div className="w-full bg-green-200 rounded-full h-2 mb-2">
-                <div
-                  className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(progress.current / progress.total) * 100}%` }}
+        <div className="flex-1 overflow-y-auto p-6">
+          {step === 'customize' && selectedTemplate ? (
+            <>
+              {/* Specification Title */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                  Specification Title
+                </label>
+                <input
+                  type="text"
+                  value={specTitle}
+                  onChange={(e) => setSpecTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter specification title..."
                 />
               </div>
-              <p className="text-sm text-green-800">{progress.section}</p>
-            </div>
-          )}
 
-          {/* Error */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-4">
-              <h3 className="text-sm font-medium text-red-900 mb-1">Error</h3>
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
+              {/* Section Composer */}
+              <SectionComposer template={selectedTemplate} />
 
-          {/* Warnings */}
-          {!canGenerate && !brsDocument && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-              <p className="text-sm text-yellow-800">
-                <strong>No BRS document loaded.</strong> Please upload a BRS document first from the BRS tab.
-              </p>
-            </div>
-          )}
+              {/* Validation Messages */}
+              {!brsDocument && (
+                <div className="mt-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                  <p className="text-sm text-yellow-900 dark:text-yellow-200">
+                    <strong>Warning:</strong> No BRS document uploaded. Please upload a BRS document first.
+                  </p>
+                </div>
+              )}
 
-          {!canGenerate && brsDocument && !aiConfig?.apiKey && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-              <p className="text-sm text-yellow-800">
-                <strong>AI not configured.</strong> Please configure your AI provider and API key in Settings.
-              </p>
-            </div>
-          )}
+              {!aiConfig?.apiKey && (
+                <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <p className="text-sm text-red-900 dark:text-red-200">
+                    <strong>Error:</strong> AI API key not configured. Please configure your AI settings first.
+                  </p>
+                </div>
+              )}
+            </>
+          ) : step === 'generate' ? (
+            <>
+              {/* Generation Progress */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">
+                    {progress.section}
+                  </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {Math.round((progress.current / progress.total) * 100)}%
+                  </span>
+                </div>
+
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                  />
+                </div>
+
+                {isGenerating && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Generating specification... This may take several minutes.</span>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                    <p className="text-sm text-red-900 dark:text-red-200">
+                      <strong>Error:</strong> {error}
+                    </p>
+                  </div>
+                )}
+
+                {!isGenerating && !error && (
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                    <p className="text-sm text-green-900 dark:text-green-200">
+                      <strong>Success!</strong> {progress.section}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : null}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
-          <button
-            onClick={onClose}
-            disabled={isGenerating}
-            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isGenerating ? 'Generating...' : 'Cancel'}
-          </button>
-          <button
-            onClick={handleGenerate}
-            disabled={!canGenerate || isGenerating || !specTitle.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isGenerating ? 'Generating...' : 'Generate Specification'}
-          </button>
-        </div>
+        {step === 'customize' && (
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={requireApproval}
+                  onChange={(e) => setRequireApproval(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                />
+                Require approval before applying
+              </label>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep('template')}
+                disabled={isGenerating}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Change Template
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={!canGenerate || isGenerating}
+                className={`
+                  px-4 py-2 text-sm font-medium rounded transition-colors
+                  ${canGenerate && !isGenerating
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                  }
+                `}
+              >
+                {isGenerating ? 'Generating...' : 'Generate Specification'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

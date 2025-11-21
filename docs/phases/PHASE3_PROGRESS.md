@@ -342,7 +342,7 @@ src/components/
 - ⚠️ Mermaid syntax errors in stored diagrams (from earlier AI generation)
   - **Solution:** Use the "Clear Data" button in the header (red trash icon)
   - **Alternative:** Browser console: `localStorage.removeItem('tech-spec-project')` then reload
-  - See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed instructions
+  - See [../../TROUBLESHOOTING.md](../../TROUBLESHOOTING.md) for detailed instructions
 
 ---
 
@@ -365,11 +365,11 @@ src/components/
 ## Documentation Status
 
 ### Updated Files (2025-11-10):
-- ✅ [CLAUDE.md](CLAUDE.md) - Added Git workflow, repository info, Phase 3 status
+- ✅ [../../CLAUDE.md](../../CLAUDE.md) - Added Git workflow, repository info, Phase 3 status
 - ✅ [PHASE3_PROGRESS.md](PHASE3_PROGRESS.md) - This document (updated to 60% complete)
-- ✅ [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) - Updated to reflect 60% completion
-- ✅ [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) - Updated Phase 3 status and priorities
-- ✅ [README.md](README.md) - Added Git workflow and clone instructions
+- ✅ [../architecture/IMPLEMENTATION_PROGRESS.md](../architecture/IMPLEMENTATION_PROGRESS.md) - Updated to reflect 60% completion
+- ✅ [../architecture/PROJECT_SUMMARY.md](../architecture/PROJECT_SUMMARY.md) - Updated Phase 3 status and priorities
+- ✅ [../../README.md](../../README.md) - Added Git workflow and clone instructions
 
 ---
 

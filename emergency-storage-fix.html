@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Emergency Storage Fix</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 { color: #60a5fa; }
+        .warning {
+            background: #991b1b;
+            border: 2px solid #dc2626;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .info {
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        button {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 10px 10px 0;
+        }
+        button:hover { background: #b91c1c; }
+        button.safe { background: #2563eb; }
+        button.safe:hover { background: #1d4ed8; }
+        #log {
+            background: #0a0a0a;
+            border: 1px solid #3a3a3a;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .log-line { margin: 5px 0; }
+        .log-error { color: #f87171; }
+        .log-success { color: #4ade80; }
+        .log-info { color: #60a5fa; }
+    </style>
+</head>
+<body>
+    <h1>🚨 Emergency Storage Fix</h1>
+    
+    <div class="warning">
+        <h2>⚠️ Storage Quota Exceeded</h2>
+        <p>Your browser storage is full. This tool will help you recover by exporting your document and then clearing storage.</p>
+    </div>
+
+    <div class="info">
+        <h3>📊 Current Situation</h3>
+        <p id="status">Checking storage...</p>
+    </div>
+
+    <h3>🔧 Recovery Steps</h3>
+    
+    <button class="safe" onclick="exportDocument()">1. Export Document (IMPORTANT - Do This First!)</button>
+    <button onclick="clearAllStorage()">2. Clear All Storage</button>
+    <button class="safe" onclick="goToApp()">3. Return to App</button>
+
+    <div id="log"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(line);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function checkStorage() {
+            try {
+                const data = localStorage.getItem('tech-spec-project');
+                if (data) {
+                    const size = new Blob([data]).size;
+                    const sizeMB = (size / (1024 * 1024)).toFixed(2);
+                    const parsed = JSON.parse(data);
+                    const docLength = parsed.state?.project?.specification?.markdown?.length || 0;
+                    
+                    document.getElementById('status').innerHTML = `
+                        <strong>Total Storage:</strong> ${sizeMB} MB<br>
+                        <strong>Document Size:</strong> ${docLength.toLocaleString()} characters<br>
+                        <strong>Status:</strong> Storage quota exceeded
+                    `;
+                    
+                    log(`Storage size: ${sizeMB} MB`, 'info');
+                    log(`Document size: ${docLength} characters`, 'info');
+                    log('Storage quota exceeded - export and clear needed', 'error');
+                } else {
+                    document.getElementById('status').textContent = 'No data found in storage';
+                    log('No data in localStorage', 'info');
+                }
+            } catch (error) {
+                log(`Error checking storage: ${error.message}`, 'error');
+            }
+        }
+
+        function exportDocument() {
+            try {
+                log('Starting document export...', 'info');
+                const data = localStorage.getItem('tech-spec-project');
+                if (!data) {
+                    alert('No data to export!');
+                    log('Export failed: No data found', 'error');
+                    return;
+                }
+
+                const parsed = JSON.parse(data);
+                const project = parsed.state?.project;
+                
+                if (!project) {
+                    alert('No project data found!');
+                    log('Export failed: No project data', 'error');
+                    return;
+                }
+
+                // Export the document markdown
+                const markdown = project.specification?.markdown || '';
+                const blob = new Blob([markdown], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${project.name || 'document'}_backup_${new Date().toISOString().split('T')[0]}.md`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                log(`✅ Document exported: ${a.download}`, 'success');
+                log(`Document size: ${markdown.length} characters`, 'info');
+                alert(`Document exported successfully!\n\nFile: ${a.download}\n\nNow click "Clear All Storage" to free up space.`);
+            } catch (error) {
+                log(`❌ Export failed: ${error.message}`, 'error');
+                alert(`Export failed: ${error.message}`);
+            }
+        }
+
+        function clearAllStorage() {
+            if (!confirm('⚠️ This will delete ALL data from localStorage.\n\nMake sure you exported your document first!\n\nContinue?')) {
+                log('Clear cancelled by user', 'info');
+                return;
+            }
+
+            try {
+                log('Clearing all localStorage...', 'info');
+                localStorage.clear();
+                log('✅ Storage cleared successfully!', 'success');
+                alert('✅ Storage cleared!\n\nYou can now return to the app and start fresh.');
+                checkStorage();
+            } catch (error) {
+                log(`❌ Clear failed: ${error.message}`, 'error');
+                alert(`Clear failed: ${error.message}`);
+            }
+        }
+
+        function goToApp() {
+            log('Redirecting to app...', 'info');
+            window.location.href = '/';
+        }
+
+        // Check storage on load
+        checkStorage();
+    </script>
+</body>
+</html>

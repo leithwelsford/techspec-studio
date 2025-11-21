@@ -21,7 +21,7 @@ This session focused on implementing user guidance features for AI generation an
 - `src/services/ai/AIService.ts` - Pass userGuidance parameter through pipeline
 - `src/services/ai/prompts/diagramPrompts.ts` - appendUserGuidance helper function
 
-**Documentation:** [DIAGRAM_GENERATION_GUIDANCE_FEATURE.md](DIAGRAM_GENERATION_GUIDANCE_FEATURE.md)
+**Documentation:** [DIAGRAM_GENERATION_GUIDANCE_FEATURE.md](../features/DIAGRAM_GENERATION_GUIDANCE_FEATURE.md)
 
 ### 2. ✅ Cascading Refinement Design (SAVED FOR FUTURE)
 
@@ -33,7 +33,7 @@ This session focused on implementing user guidance features for AI generation an
 - Created comprehensive design document for future cascading refinement feature
 - User approved: "Please save the new cascaded workflow for future development"
 
-**Documentation:** [FUTURE_CASCADED_REFINEMENT.md](FUTURE_CASCADED_REFINEMENT.md)
+**Documentation:** [FUTURE_CASCADED_REFINEMENT.md](../architecture/FUTURE_CASCADED_REFINEMENT.md)
 
 ### 3. ✅ CRITICAL BUG FIX: Refinement Approvals Not Working (FIXED)
 
@@ -69,7 +69,7 @@ Document successfully updated from 100,127 → 95,572 characters.
 **Files Fixed:**
 - `src/components/ai/ReviewPanel.tsx` - Added 'refinement' type to handleApprove condition
 
-**Documentation:** [REFINEMENT_APPROVAL_FIX.md](REFINEMENT_APPROVAL_FIX.md)
+**Documentation:** [REFINEMENT_APPROVAL_FIX.md](../features/REFINEMENT_APPROVAL_FIX.md)
 
 ## What Was Working vs What's Fixed
 

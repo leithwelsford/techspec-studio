@@ -335,7 +335,7 @@ Follow conventional commit format:
 ### Getting Help
 
 - Check [CLAUDE.md](CLAUDE.md) for development guidance
-- Review [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) for roadmap
+- Review [docs/architecture/IMPLEMENTATION_PROGRESS.md](docs/architecture/IMPLEMENTATION_PROGRESS.md) for roadmap
 - See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues
 
 ---

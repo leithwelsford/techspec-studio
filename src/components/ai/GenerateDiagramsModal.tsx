@@ -55,32 +55,6 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
     }
   }, [isOpen]);
 
-  // Extract source sections for display
-  const extractArchitectureSection = (markdown: string): string => {
-    const lines = markdown.split('\n');
-    const startIdx = lines.findIndex(line => /^##\s*4\.?\s+Architecture/i.test(line));
-    if (startIdx === -1) return 'Architecture section not found';
-
-    const endIdx = lines.findIndex((line, idx) => idx > startIdx && /^##\s*[5-9]/.test(line));
-    const sectionLines = endIdx === -1 ? lines.slice(startIdx) : lines.slice(startIdx, endIdx);
-
-    return sectionLines.join('\n').trim();
-  };
-
-  const extractProceduresSections = (markdown: string): string => {
-    const lines = markdown.split('\n');
-    const startIdx = lines.findIndex(line => /^##\s*6\.?\s+Procedures/i.test(line));
-    if (startIdx === -1) return 'Procedures section not found';
-
-    const endIdx = lines.findIndex((line, idx) => idx > startIdx && /^##\s*[7-9]/.test(line));
-    const sectionLines = endIdx === -1 ? lines.slice(startIdx) : lines.slice(startIdx, endIdx);
-
-    return sectionLines.join('\n').trim();
-  };
-
-  const sourceArchitecture = specification ? extractArchitectureSection(specification.markdown) : '';
-  const sourceProcedures = specification ? extractProceduresSections(specification.markdown) : '';
-
   // Validation
   const canGenerate = specification && specification.markdown.trim().length > 0 && aiConfig && aiConfig.apiKey;
 
@@ -96,7 +70,11 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
 
     try {
       // Decrypt API key and initialize AI service
-      const decryptedKey = decrypt(aiConfig.apiKey);
+      // Check if key is already unencrypted (from environment variable)
+      const decryptedKey = aiConfig.apiKey.startsWith('sk-or-')
+        ? aiConfig.apiKey  // Already unencrypted
+        : decrypt(aiConfig.apiKey);  // Decrypt encrypted key
+
       await aiService.initialize({
         ...aiConfig,
         apiKey: decryptedKey
@@ -227,37 +205,12 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
           {/* Specification Info */}
           {specification && (
             <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-blue-900">Source Technical Specification</h3>
-                <button
-                  onClick={() => setShowSourceText(!showSourceText)}
-                  className="text-xs text-blue-700 hover:text-blue-900 font-medium underline"
-                >
-                  {showSourceText ? 'Hide Source Text' : 'View Source Text'}
-                </button>
-              </div>
+              <h3 className="text-sm font-medium text-blue-900 mb-2">Source Technical Specification</h3>
               <div className="text-sm text-blue-800 space-y-1">
                 <p><strong>Title:</strong> {specification.title}</p>
                 <p><strong>Version:</strong> {specification.metadata.version || 'Not specified'}</p>
                 <p><strong>Length:</strong> {specification.markdown.length} characters</p>
               </div>
-
-              {showSourceText && (
-                <div className="mt-3 space-y-3">
-                  <div>
-                    <h4 className="text-xs font-semibold text-blue-900 mb-1">Architecture Section (for Block Diagram):</h4>
-                    <pre className="text-xs bg-white border border-blue-200 rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap">
-                      {sourceArchitecture}
-                    </pre>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-blue-900 mb-1">Procedures Section (for Sequence Diagrams):</h4>
-                    <pre className="text-xs bg-white border border-blue-200 rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap">
-                      {sourceProcedures}
-                    </pre>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -287,9 +240,12 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
             <div className="bg-purple-50 border border-purple-200 rounded-md p-4">
               <h3 className="text-sm font-medium text-purple-900 mb-2">How it works</h3>
               <ul className="text-sm text-purple-800 space-y-1 list-disc list-inside">
-                <li>Extracts <strong>Architecture</strong> section (typically Section 4) → generates <strong>Block Diagram</strong></li>
-                <li>Extracts <strong>Procedure</strong> subsections (typically Section 6.x) → generates <strong>Sequence Diagrams</strong></li>
-                <li>Diagrams will match terminology and component names from your specification text</li>
+                <li><strong>Intelligent Analysis:</strong> AI scans all sections to detect diagram-worthy content</li>
+                <li><strong>Block Diagrams:</strong> Architecture, components, interfaces, network topology</li>
+                <li><strong>Sequence Diagrams:</strong> Call flows, message exchanges, protocol interactions</li>
+                <li><strong>Flow Diagrams:</strong> Algorithms, decision trees, conditional logic</li>
+                <li><strong>State Diagrams:</strong> State machines, transitions, modes</li>
+                <li><strong>Dynamic Detection:</strong> No hardcoded section numbers - works with any specification structure</li>
               </ul>
             </div>
           )}

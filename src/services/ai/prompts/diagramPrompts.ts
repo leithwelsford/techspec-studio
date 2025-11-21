@@ -11,6 +11,33 @@ import type { BlockDiagram, MermaidDiagram } from '../../../types';
 function appendUserGuidance(basePrompt: string, userGuidance?: string): string {
   if (!userGuidance) return basePrompt;
 
+  // Check if this is a TODO comment (from specification) vs user-provided guidance
+  const isTodoComment = userGuidance.includes('**IMPORTANT - Diagram Requirements from Specification:**');
+
+  if (isTodoComment) {
+    // TODO comments have ABSOLUTE PRIORITY - they define what MUST be in the diagram
+    return `${basePrompt}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 CRITICAL: DIAGRAM REQUIREMENTS FROM TECHNICAL SPECIFICATION 🚨
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${userGuidance}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ MANDATORY REQUIREMENTS:
+1. You MUST follow the requirements above EXACTLY
+2. Include EVERY component, interface, and detail specified
+3. Use the EXACT terminology and names provided
+4. DO NOT add components that aren't specified
+5. DO NOT omit components that are specified
+6. DO NOT make assumptions - follow the requirements literally
+
+The description below is for context only. The requirements above define what MUST be in the diagram.`;
+  }
+
+  // Regular user guidance (not from TODO comments)
   return `${basePrompt}
 
 ---

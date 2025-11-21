@@ -323,8 +323,8 @@ If you encounter issues:
 1. Check browser console for errors (F12)
 2. Verify API key is valid at https://openrouter.ai
 3. Try test connection in AI Settings
-4. Review [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-5. Check [PHASE2B_TASK2_COMPLETE.md](PHASE2B_TASK2_COMPLETE.md) for implementation details
+4. Review [../../TROUBLESHOOTING.md](../../TROUBLESHOOTING.md)
+5. Check [../phases/PHASE2B_TASK2_COMPLETE.md](../phases/PHASE2B_TASK2_COMPLETE.md) for implementation details
 
 ## Next Steps
 

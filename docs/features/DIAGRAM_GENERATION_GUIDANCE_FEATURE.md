@@ -187,10 +187,10 @@ Potential improvements for future phases:
 
 ## Related Documentation
 
-- [PHASE2B_STATUS.md](PHASE2B_STATUS.md) - Original BRS-to-TechSpec pipeline
-- [PHASE2C_COMPLETE.md](PHASE2C_COMPLETE.md) - Approval workflow implementation
-- [AI_COPILOT_ARCHITECTURE.md](AI_COPILOT_ARCHITECTURE.md) - Overall AI integration design
-- [CLAUDE.md](CLAUDE.md) - Development guidelines
+- [../phases/PHASE2B_STATUS.md](../phases/PHASE2B_STATUS.md) - Original BRS-to-TechSpec pipeline
+- [../phases/PHASE2C_COMPLETE.md](../phases/PHASE2C_COMPLETE.md) - Approval workflow implementation
+- [../architecture/AI_COPILOT_ARCHITECTURE.md](../architecture/AI_COPILOT_ARCHITECTURE.md) - Overall AI integration design
+- [../../CLAUDE.md](../../CLAUDE.md) - Development guidelines
 
 ## Completion Status
 

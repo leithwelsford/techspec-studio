@@ -349,6 +349,16 @@ export class AIService {
 
     const prompt = buildBlockDiagramPrompt(description, title, figureNumber, options?.userGuidance);
 
+    console.log('📋 Block diagram prompt details:');
+    console.log(`   Title: ${title}`);
+    console.log(`   Description length: ${description.length} chars`);
+    console.log(`   Description preview (first 500 chars): ${description.substring(0, 500)}...`);
+    console.log(`   User guidance length: ${options?.userGuidance?.length || 0} chars`);
+    if (options?.userGuidance) {
+      console.log(`   User guidance preview (first 300 chars): ${options.userGuidance.substring(0, 300)}...`);
+    }
+    console.log(`   Total prompt length: ${prompt.length} chars`);
+
     const messages = [
       { role: 'user', content: prompt }
     ];
@@ -613,8 +623,8 @@ export class AIService {
 
   /**
    * Auto-generate diagrams from Technical Specification
-   * Creates block diagrams for architecture and sequence diagrams for procedures
-   * Extracts content from spec sections (Architecture, Procedures) for diagram generation
+   * Uses intelligent content-based section analysis to determine which sections need diagrams
+   * No longer relies on hardcoded section numbers
    */
   async generateDiagramsFromSpec(
     specificationMarkdown: string,
@@ -635,77 +645,139 @@ export class AIService {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // Extract sections from specification
+    console.log('🔍 Starting intelligent section analysis...');
+
+    // Use intelligent section analyzer to find diagram-worthy sections
     const {
-      extractArchitectureSection,
-      extractProcedureSubsections,
-      extractAllSections
-    } = await import('../../utils/markdownSectionExtractor');
+      analyzeSectionsForDiagrams,
+      getBlockDiagramSections,
+      getSequenceDiagramSections,
+      getFlowDiagramSections,
+      getStateDiagramSections
+    } = await import('./sectionAnalyzer');
 
-    // Debug: Show all available sections
-    console.log('📄 Analyzing specification markdown...');
-    console.log('  Total length:', specificationMarkdown.length, 'characters');
-    const allSections = extractAllSections(specificationMarkdown);
-    console.log('  Total sections found:', allSections.length);
-    if (allSections.length > 0) {
-      console.log('  All sections:', allSections.map(s => `${s.sectionNumber}. ${s.title}`).join(', '));
-    } else {
-      console.warn('  ⚠️ NO SECTIONS FOUND! First 500 chars of markdown:', specificationMarkdown.substring(0, 500));
+    // Analyze all sections to determine which need diagrams
+    onProgress?.(0, 1, 'Analyzing specification sections...');
+    const analyses = await analyzeSectionsForDiagrams(specificationMarkdown, this);
+
+    // Filter sections by diagram type
+    const blockSections = getBlockDiagramSections(analyses);
+    const sequenceSections = getSequenceDiagramSections(analyses);
+    const flowSections = getFlowDiagramSections(analyses);
+    const stateSections = getStateDiagramSections(analyses);
+
+    // For now, treat flow and state diagrams as sequence diagrams (all Mermaid-based)
+    // TODO: Implement dedicated generateFlowDiagram() and generateStateDiagram() methods
+    const allSequenceSections = [...sequenceSections, ...flowSections, ...stateSections];
+
+    const totalDiagrams = blockSections.length + allSequenceSections.length;
+    let currentDiagram = 0;
+
+    console.log('📊 Diagram generation plan:');
+    console.log(`  Block diagrams: ${blockSections.length} sections`);
+    console.log(`  Sequence diagrams: ${sequenceSections.length} sections`);
+    console.log(`  Flow diagrams: ${flowSections.length} sections (will generate as sequence diagrams)`);
+    console.log(`  State diagrams: ${stateSections.length} sections (will generate as sequence diagrams)`);
+    console.log(`  Total diagrams to generate: ${totalDiagrams}`);
+
+    if (flowSections.length > 0 || stateSections.length > 0) {
+      warnings.push(`Note: Flow and state diagrams will be generated as sequence diagrams (dedicated generation logic coming soon)`);
     }
 
-    const architectureSection = extractArchitectureSection(specificationMarkdown);
-    const procedureSubsections = extractProcedureSubsections(specificationMarkdown);
+    // Generate block diagrams from architecture sections
+    if (blockSections.length > 0) {
+      console.log('\n📐 Generating block diagrams...');
 
-    console.log('📄 Specification analysis:');
-    console.log('  Architecture section:', architectureSection ? `Found (${architectureSection.content.length} chars)` : 'Not found');
-    console.log('  Procedure subsections:', procedureSubsections.length);
+      for (const section of blockSections) {
+        currentDiagram++;
+        onProgress?.(currentDiagram, totalDiagrams, `${section.sectionId} ${section.sectionTitle}`);
 
-    // Generate block diagram from Architecture section
-    if (architectureSection && architectureSection.content.trim().length > 0) {
-      if (onProgress) {
-        onProgress(1, 1 + procedureSubsections.length, `Section ${architectureSection.sectionNumber}: ${architectureSection.title}`);
+        const mandatoryLabel = section.isMandatory ? '[MANDATORY]' : '[SUGGESTED]';
+        console.log(`\n📐 [${currentDiagram}/${totalDiagrams}] ${mandatoryLabel} ${section.sectionId}: ${section.sectionTitle}`);
+        console.log(`   Reason: ${section.reasoning}`);
+        if (section.todoComments && section.todoComments.length > 0) {
+          console.log(`   📝 Using TODO instructions (${section.todoComments.length})`);
+        }
+
+        try {
+          // Use appropriate token limits for block diagram generation
+          const { isReasoningModel } = await import('../../utils/aiModels');
+          const isReasoning = isReasoningModel(this.config.model || '');
+          const maxTokens = isReasoning ? 64000 : 4000;
+
+          // Combine user guidance with TODO comments
+          let combinedGuidance = userGuidance || '';
+          if (section.todoComments && section.todoComments.length > 0) {
+            const todoGuidance = section.todoComments.join('\n\n');
+            combinedGuidance = combinedGuidance
+              ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`
+              : `**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`;
+          }
+
+          const blockOptions: any = { maxTokens, userGuidance: combinedGuidance };
+          if (isReasoning) {
+            blockOptions.reasoning = { effort: 'high' };
+          }
+
+          // Use figure reference as diagram ID if available (mandatory diagrams)
+          // Otherwise use section-based ID (suggested diagrams)
+          const diagramId = section.figureReferences && section.figureReferences.length > 0
+            ? section.figureReferences[0] // Use first figure reference as ID
+            : `${section.sectionId}-1`; // Fallback to section-based ID
+
+          // DIAGNOSTIC: Check section.content before passing to generateBlockDiagram
+          console.log(`🔍 DIAGNOSTIC - Section content before diagram generation:`);
+          console.log(`   Section ID: ${section.sectionId}`);
+          console.log(`   Section Title: ${section.sectionTitle}`);
+          console.log(`   Content length: ${section.content.length} chars`);
+          console.log(`   Content preview (first 300 chars): ${section.content.substring(0, 300)}...`);
+          console.log(`   Content preview (last 100 chars): ...${section.content.substring(section.content.length - 100)}`);
+
+          const blockResult = await this.generateBlockDiagram(
+            section.content,
+            section.sectionTitle,
+            diagramId,
+            blockOptions
+          );
+
+          if (blockResult.diagram) {
+            // Add source section reference
+            blockResult.diagram.sourceSection = {
+              id: section.sectionId,
+              title: section.sectionTitle
+            };
+            blockDiagrams.push(blockResult.diagram);
+            if (section.isMandatory) {
+              console.log(`✅ Block diagram generated (MANDATORY): ${section.sectionTitle} → ID: ${diagramId}`);
+            } else {
+              console.log(`✅ Block diagram generated (SUGGESTED): ${section.sectionTitle} → ID: ${diagramId}`);
+            }
+          }
+          errors.push(...blockResult.errors);
+          warnings.push(...blockResult.warnings);
+        } catch (err) {
+          console.error(`❌ Error generating block diagram for ${section.sectionTitle}:`, err);
+          errors.push(`Failed to generate block diagram for ${section.sectionTitle}: ${err}`);
+        }
       }
-
-      console.log(`📐 Generating block diagram from Architecture section ${architectureSection.sectionNumber}...`);
-
-      // Use appropriate token limits for block diagram generation
-      const { isReasoningModel } = await import('../../utils/aiModels');
-      const isReasoning = isReasoningModel(this.config.model || '');
-      const maxTokens = isReasoning ? 64000 : 4000;
-
-      const blockOptions: any = { maxTokens, userGuidance };
-      if (isReasoning) {
-        blockOptions.reasoning = { effort: 'high' };
-      }
-
-      const blockResult = await this.generateBlockDiagram(
-        architectureSection.content,
-        architectureSection.title,
-        `${architectureSection.sectionNumber}-1`,
-        blockOptions
-      );
-
-      if (blockResult.diagram) {
-        blockDiagrams.push(blockResult.diagram);
-        console.log(`✅ Block diagram generated: ${architectureSection.title}`);
-      }
-      errors.push(...blockResult.errors);
-      warnings.push(...blockResult.warnings);
     } else {
-      warnings.push('No Architecture section found in specification. Block diagram generation skipped.');
-      console.warn('⚠️ No Architecture section found in specification');
+      warnings.push('No architecture sections detected. Block diagram generation skipped.');
+      console.warn('⚠️ No architecture sections detected in specification');
     }
 
-    // Generate sequence diagrams from Procedure subsections
-    if (procedureSubsections.length > 0) {
-      console.log(`📊 Generating ${procedureSubsections.length} sequence diagrams from Procedures sections...`);
+    // Generate sequence diagrams from procedure sections (includes flow and state diagrams for now)
+    if (allSequenceSections.length > 0) {
+      console.log('\n📊 Generating sequence/flow/state diagrams...');
 
-      for (let i = 0; i < procedureSubsections.length; i++) {
-        const procedure = procedureSubsections[i];
-        console.log(`\n🔄 Processing procedure ${i + 1}/${procedureSubsections.length}: ${procedure.sectionNumber}. ${procedure.title}`);
+      for (const section of allSequenceSections) {
+        currentDiagram++;
+        onProgress?.(currentDiagram, totalDiagrams, `${section.sectionId} ${section.sectionTitle}`);
 
-        if (onProgress) {
-          onProgress(2 + i, 1 + procedureSubsections.length, `Section ${procedure.sectionNumber}: ${procedure.title}`);
+        const mandatoryLabel = section.isMandatory ? '[MANDATORY]' : '[SUGGESTED]';
+        console.log(`\n📊 [${currentDiagram}/${totalDiagrams}] ${mandatoryLabel} ${section.sectionId}: ${section.sectionTitle}`);
+        console.log(`   Reason: ${section.reasoning}`);
+        if (section.todoComments && section.todoComments.length > 0) {
+          console.log(`   📝 Using TODO instructions (${section.todoComments.length})`);
         }
 
         try {
@@ -714,44 +786,66 @@ export class AIService {
           const isReasoning = isReasoningModel(this.config.model || '');
           const maxTokens = isReasoning ? 64000 : 4000;
 
-          const seqOptions: any = { maxTokens, userGuidance };
+          // Combine user guidance with TODO comments
+          let combinedGuidance = userGuidance || '';
+          if (section.todoComments && section.todoComments.length > 0) {
+            const todoGuidance = section.todoComments.join('\n\n');
+            combinedGuidance = combinedGuidance
+              ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`
+              : `**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`;
+          }
+
+          const seqOptions: any = { maxTokens, userGuidance: combinedGuidance };
           if (isReasoning) {
             seqOptions.reasoning = { effort: 'high' };
           }
 
+          // Use figure reference as diagram ID if available (mandatory diagrams)
+          // Otherwise use section-based ID (suggested diagrams)
+          const diagramId = section.figureReferences && section.figureReferences.length > 0
+            ? section.figureReferences[0] // Use first figure reference as ID
+            : `${section.sectionId}-1`; // Fallback to section-based ID
+
           const seqResult = await this.generateSequenceDiagram(
-            procedure.content,
-            procedure.title,
+            section.content,
+            section.sectionTitle,
             [], // Let AI extract participants from procedure content
-            `${procedure.sectionNumber}-1`,
+            diagramId,
             seqOptions
           );
 
-          console.log('✅ Sequence diagram result:', {
-            hasDiagram: !!seqResult.diagram,
-            errors: seqResult.errors,
-            warnings: seqResult.warnings
-          });
-
           if (seqResult.diagram) {
+            // Add source section reference
+            seqResult.diagram.sourceSection = {
+              id: section.sectionId,
+              title: section.sectionTitle
+            };
             sequenceDiagrams.push(seqResult.diagram);
-            console.log(`✅ Added sequence diagram: ${procedure.title}`);
+            if (section.isMandatory) {
+              console.log(`✅ Sequence diagram generated (MANDATORY): ${section.sectionTitle} → ID: ${diagramId}`);
+            } else {
+              console.log(`✅ Sequence diagram generated (SUGGESTED): ${section.sectionTitle} → ID: ${diagramId}`);
+            }
           } else {
-            console.error(`❌ No diagram generated for: ${procedure.title}`, seqResult.errors);
+            console.error(`❌ No diagram generated for: ${section.sectionTitle}`, seqResult.errors);
           }
           errors.push(...seqResult.errors);
           warnings.push(...seqResult.warnings);
         } catch (err) {
-          console.error(`❌ Error generating sequence diagram for ${procedure.title}:`, err);
-          errors.push(`Failed to generate diagram for ${procedure.title}: ${err}`);
+          console.error(`❌ Error generating sequence diagram for ${section.sectionTitle}:`, err);
+          errors.push(`Failed to generate sequence diagram for ${section.sectionTitle}: ${err}`);
         }
       }
-
-      console.log(`\n📊 Final results: ${sequenceDiagrams.length} sequence diagrams generated`);
     } else {
-      warnings.push('No Procedure subsections found in specification. Sequence diagram generation skipped.');
-      console.warn('⚠️ No Procedure subsections found in specification');
+      warnings.push('No procedure, flow, or state sections detected. Sequence diagram generation skipped.');
+      console.warn('⚠️ No procedure, flow, or state sections detected in specification');
     }
+
+    console.log('\n✅ Diagram generation complete!');
+    console.log(`  Block diagrams: ${blockDiagrams.length}`);
+    console.log(`  Sequence diagrams: ${sequenceDiagrams.length}`);
+    console.log(`  Errors: ${errors.length}`);
+    console.log(`  Warnings: ${warnings.length}`);
 
     return {
       blockDiagrams,
@@ -1093,13 +1187,15 @@ export class AIService {
     // Import all 3GPP section prompt builders
     const {
       build3GPPScopePrompt,
-      build3GPPReferencesPrompt,
-      build3GPPDefinitionsPrompt,
-      build3GPPArchitecturePrompt,
+      buildServiceOverviewPrompt,
       build3GPPFunctionalRequirementsPrompt,
+      build3GPPArchitecturePrompt,
       build3GPPProceduresPrompt,
-      build3GPPInformationElementsPrompt,
-      build3GPPErrorHandlingPrompt
+      buildNonFunctionalRequirementsPrompt,
+      buildOSSBSSPrompt,
+      buildSLASummaryPrompt,
+      buildOpenItemsPrompt,
+      buildAppendicesPrompt
     } = await import('./prompts/documentPrompts');
 
     // Step 2: Generate each section sequentially with progress reporting
@@ -1109,32 +1205,101 @@ export class AIService {
         promptBuilder: () => build3GPPScopePrompt(specTitle, brsAnalysis, brsDocument.metadata, userGuidance)
       },
       {
-        title: '2 References',
-        promptBuilder: () => build3GPPReferencesPrompt(brsAnalysis.standards || [], context, userGuidance)
+        title: '2 Service Overview',
+        promptBuilder: () => buildServiceOverviewPrompt(specTitle, brsAnalysis, brsDocument.metadata, userGuidance)
       },
       {
-        title: '3 Definitions, Symbols, and Abbreviations',
-        promptBuilder: () => build3GPPDefinitionsPrompt(brsAnalysis.components || [], brsDocument.markdown, userGuidance)
-      },
-      {
-        title: '4 Architecture',
-        promptBuilder: () => build3GPPArchitecturePrompt(brsAnalysis, context, userGuidance)
-      },
-      {
-        title: '5 Functional Requirements',
+        title: '3 Functional Specification',
         promptBuilder: () => build3GPPFunctionalRequirementsPrompt(brsAnalysis, userGuidance)
       },
       {
-        title: '6 Procedures',
-        promptBuilder: () => build3GPPProceduresPrompt(brsAnalysis, userGuidance)
+        title: '4 Solution Architecture and Design',
+        promptBuilder: () => {
+          // Create unified prompt for combined Architecture + Procedures section
+          return `Generate Section 4 (Solution Architecture and Design) for a 3GPP-style technical specification.
+
+This section combines both architecture and procedures into a single comprehensive section.
+
+Architecture Requirements from BRS:
+${JSON.stringify(brsAnalysis.requirementCategories?.architecture || [], null, 2)}
+
+Components:
+${brsAnalysis.components?.join(', ') || 'Not specified'}
+
+Interfaces:
+${JSON.stringify(brsAnalysis.interfaces || [], null, 2)}
+
+Procedures from BRS:
+${JSON.stringify(brsAnalysis.procedures || [], null, 2)}
+
+${context?.availableDiagrams && context.availableDiagrams.length > 0
+  ? `Available Diagrams:\n${context.availableDiagrams.map(d => `- {{fig:${d.id}}} - ${d.title}`).join('\n')}\n`
+  : ''}
+
+Section Structure:
+## 4 Solution Architecture and Design
+
+### 4.1 Overview
+- High-level architecture description
+- Key architectural principles and design decisions
+- **Suggest block diagram**: {{fig:architecture-overview}} <!-- TODO: High-level system architecture -->
+
+### 4.2 Functional Elements
+For each component (PCRF, PCEF, TDF, P-GW, BNG/BRAS, OCS, OFCS, etc.):
+- **4.2.X Component Name**
+  - Function and responsibilities
+  - Interfaces (Gx, Sd, Gy, Gz, RADIUS, etc.)
+  - Standards compliance (3GPP TS references)
+  - Deployment considerations
+
+### 4.3 Interfaces and Reference Points
+For each interface (Gx, Sd, Gy, Gz, RADIUS):
+- Protocol specification
+- Message flows
+- Parameters and AVPs
+- Error handling
+
+### 4.4 Procedures
+For each procedure (Session Establishment, Policy Update, Handover, Charging, etc.):
+
+#### 4.4.X Procedure Name
+- Overview and trigger conditions
+- Step-by-step sequence
+- **Suggest sequence diagram**: {{fig:procedure-name-flow}} <!-- TODO: Detailed message flow -->
+- Success and failure scenarios
+- Timing and performance considerations
+
+Guidelines:
+- Combine architecture description with operational procedures
+- Use block diagrams for architecture, sequence diagrams for procedures
+- Maintain 3GPP terminology and reference standards
+- Include both structural (architecture) and behavioral (procedures) aspects
+- Use normative language (SHALL/MUST) where appropriate
+
+${userGuidance ? `\nAdditional User Guidance:\n${userGuidance}\n` : ''}
+
+Generate the complete Section 4 now in markdown format.`;
+        }
       },
       {
-        title: '7 Information Elements',
-        promptBuilder: () => build3GPPInformationElementsPrompt(brsAnalysis, userGuidance)
+        title: '5 Non-Functional Requirements',
+        promptBuilder: () => buildNonFunctionalRequirementsPrompt(brsAnalysis, userGuidance)
       },
       {
-        title: '8 Error Handling',
-        promptBuilder: () => build3GPPErrorHandlingPrompt(brsAnalysis, userGuidance)
+        title: '6 OSS/BSS and Service Management',
+        promptBuilder: () => buildOSSBSSPrompt(brsAnalysis, userGuidance)
+      },
+      {
+        title: '7 SLA Summary',
+        promptBuilder: () => buildSLASummaryPrompt(brsAnalysis, userGuidance)
+      },
+      {
+        title: '8 Open Items',
+        promptBuilder: () => buildOpenItemsPrompt(brsAnalysis, userGuidance)
+      },
+      {
+        title: '9 Appendices',
+        promptBuilder: () => buildAppendicesPrompt(brsAnalysis, brsDocument.markdown, brsAnalysis.standards || [], userGuidance)
       }
     ];
 
@@ -1202,17 +1367,67 @@ export class AIService {
     }
 
     // Step 3: Combine all sections into final document
-    const documentHeader = `# ${specTitle}
+    const documentHeader = `# **${brsDocument.metadata.customer || 'Organization Name'}**
+## **Project Name:** ${specTitle}
+### **Technical Specification (TSD)**
 
-**Technical Specification**
+**Version:** ${brsDocument.metadata.version || '1.0'} (Draft)
+**Status:** Draft
+**Date:** ${new Date().toISOString().split('T')[0]}
 
 ---
 
-**Document Information**
-- **Customer**: ${brsDocument.metadata.customer || 'Not specified'}
-- **Project**: ${brsDocument.metadata.projectName || 'Not specified'}
-- **Version**: ${brsDocument.metadata.version || '1.0'}
-- **Date**: ${new Date().toISOString().split('T')[0]}
+## Table of Contents
+
+1. [Scope](#1-scope)
+2. [Service Overview](#2-service-overview)
+   * 2.1 Service Description
+   * 2.2 Objectives
+   * 2.3 Target Customer
+   * 2.4 Architecture Context
+3. [Functional Specification](#3-functional-specification)
+4. [Solution Architecture and Design](#4-solution-architecture-and-design)
+5. [Non-Functional Requirements](#5-non-functional-requirements)
+6. [OSS/BSS and Service Management](#6-ossbss-and-service-management)
+   * 6.1 Provisioning & Identity Correlation
+   * 6.2 Assurance & Reporting
+7. [SLA Summary](#7-sla-summary)
+   * 7.1 Measurement & Reporting
+   * 7.2 In-Scope Determination Profiles
+8. [Open Items](#8-open-items)
+9. [Appendices](#9-appendices)
+   * 9.1 Abbreviations
+   * 9.2 References
+   * 9.3 Design Rationale
+   * 9.4 Other
+
+---
+
+## Document Control
+
+**Author(s):**
+
+| Name | Role | Organization | Date |
+|------|------|--------------|------|
+| ${brsDocument.metadata.author || 'TBD'} | Technical Specification Author | ${brsDocument.metadata.customer || 'Organization'} | ${new Date().toISOString().split('T')[0]} |
+
+**Reviewer(s):**
+
+| Name | Role | Organization | Date |
+|------|------|--------------|------|
+| TBD | Technical Reviewer | ${brsDocument.metadata.customer || 'Organization'} | TBD |
+
+**Approver(s):**
+
+| Name | Role | Organization | Date |
+|------|------|--------------|------|
+| TBD | Project Manager | ${brsDocument.metadata.customer || 'Organization'} | TBD |
+
+**Revision History:**
+
+| Version | Date | Author | Description of Changes |
+|---------|------|--------|------------------------|
+| ${brsDocument.metadata.version || '1.0'} | ${new Date().toISOString().split('T')[0]} | ${brsDocument.metadata.author || 'TBD'} | Initial draft |
 
 ---
 
@@ -1249,6 +1464,216 @@ export class AIService {
 
     return {
       markdown: combinedMarkdown,
+      sections,
+      totalTokens,
+      totalCost,
+      brsAnalysis
+    };
+  }
+
+  /**
+   * Generate specification from template configuration
+   *
+   * New template-based generation method that supports:
+   * - Customizable section selection and ordering
+   * - Multi-format templates (3GPP, IEEE 830, ISO 29148, etc.)
+   * - User guidance per template
+   * - Sequential generation with context from previous sections
+   *
+   * @param brsDocument - Business requirements specification
+   * @param specTitle - Technical specification title
+   * @param template - Template definition (sections, format guidance, etc.)
+   * @param config - Template configuration (enabled sections, order, custom guidance)
+   * @param context - Additional AI context (diagrams, references, etc.)
+   * @param onProgress - Progress callback
+   * @returns Generated specification with sections, tokens, cost, and BRS analysis
+   */
+  async generateSpecificationFromTemplate(
+    brsDocument: {
+      title: string;
+      markdown: string;
+      metadata: {
+        customer?: string;
+        version?: string;
+        projectName?: string;
+      };
+    },
+    specTitle: string,
+    template: import('../../types').SpecificationTemplate,
+    config: import('../../types').ProjectTemplateConfig,
+    context?: AIContext,
+    onProgress?: (section: number, total: number, sectionTitle: string) => void
+  ): Promise<{
+    markdown: string;
+    sections: Array<{ title: string; content: string }>;
+    totalTokens: number;
+    totalCost: number;
+    brsAnalysis: any;
+  }> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    let totalTokens = 0;
+    let totalCost = 0;
+    const sections: Array<{ title: string; content: string }> = [];
+
+    // Step 1: Analyze BRS to extract structured requirements
+    const { buildBRSAnalysisPrompt } = await import('./prompts/documentPrompts');
+    const analysisPrompt = buildBRSAnalysisPrompt(brsDocument.markdown, config.customGuidance);
+
+    const { isReasoningModel } = await import('../../utils/aiModels');
+    const currentModel = this.config.model || 'anthropic/claude-3.5-sonnet';
+    const isReasoning = isReasoningModel(currentModel);
+    const analysisMaxTokens = isReasoning ? 32000 : 4000;
+
+    const analysisConfig: any = {
+      model: currentModel,
+      temperature: 0.3,
+      maxTokens: analysisMaxTokens
+    };
+
+    if (isReasoning) {
+      analysisConfig.reasoning = { effort: 'high' };
+    }
+
+    console.log(`🔍 Analyzing BRS document (${brsDocument.markdown.length} chars)...`);
+
+    const analysisResult = await this.provider.generate(
+      [{ role: 'user', content: analysisPrompt }],
+      analysisConfig
+    );
+
+    totalTokens += analysisResult.tokens?.total || 0;
+    totalCost += analysisResult.cost || 0;
+
+    console.log('✅ BRS Analysis complete:', {
+      tokens: analysisResult.tokens?.total || 0,
+      cost: analysisResult.cost || 0,
+      contentLength: analysisResult.content.length
+    });
+
+    let brsAnalysis: any = {};
+    try {
+      brsAnalysis = JSON.parse(analysisResult.content);
+    } catch (e) {
+      console.warn('Failed to parse BRS analysis JSON, using raw response');
+      brsAnalysis = { rawAnalysis: analysisResult.content };
+    }
+
+    // Step 2: Get enabled sections in configured order
+    const enabledSectionIds = config.enabledSections;
+    const orderedSectionIds = config.sectionOrder.filter(id => enabledSectionIds.includes(id));
+    const enabledSections = orderedSectionIds
+      .map(id => template.sections.find(s => s.id === id))
+      .filter((s): s is import('../../types').TemplateSectionDefinition => s !== undefined);
+
+    console.log(`📋 Generating ${enabledSections.length} sections from template: ${template.name}`);
+
+    // Step 3: Import template prompt system
+    const { buildSectionPrompt } = await import('./prompts/templatePrompts');
+
+    // Step 4: Generate each section sequentially with progress reporting
+    for (let i = 0; i < enabledSections.length; i++) {
+      const section = enabledSections[i];
+      const sectionTitle = `${section.number} ${section.title}`;
+
+      // Report progress
+      if (onProgress) {
+        onProgress(i + 1, enabledSections.length, sectionTitle);
+      }
+
+      // Build context with all previous sections
+      const promptContext: any = {
+        specTitle,
+        brsDocument,
+        brsAnalysis,
+        previousSections: sections.map(s => ({ title: s.title, content: s.content })),
+        template: {
+          name: template.name,
+          formatGuidance: template.formatGuidance
+        },
+        userGuidance: config.customGuidance,
+        availableDiagrams: context?.availableDiagrams
+      };
+
+      // Generate section prompt
+      const sectionPrompt = buildSectionPrompt(section, promptContext);
+
+      // Configure token limits based on model type
+      const sectionMaxTokens = isReasoning ? 16000 : (this.config.maxTokens || 4000);
+
+      console.log(`🎯 Generating section ${i + 1}/${enabledSections.length}: ${sectionTitle} (maxTokens: ${sectionMaxTokens})`);
+
+      const sectionConfig: any = {
+        model: currentModel,
+        temperature: this.config.temperature,
+        maxTokens: sectionMaxTokens
+      };
+
+      if (isReasoning) {
+        sectionConfig.reasoning = { effort: 'high' };
+      }
+
+      const sectionResult = await this.provider.generate(
+        [{ role: 'user', content: sectionPrompt }],
+        sectionConfig
+      );
+
+      totalTokens += sectionResult.tokens?.total || 0;
+      totalCost += sectionResult.cost || 0;
+
+      console.log(`📄 Generated section ${i + 1}/${enabledSections.length}:`, {
+        title: sectionTitle,
+        contentLength: sectionResult.content.length,
+        tokens: sectionResult.tokens?.total || 0,
+        cost: sectionResult.cost || 0
+      });
+
+      // Warn if truncated
+      if ((sectionResult as any).finishReason === 'length' || (sectionResult as any).finishReason === 'max_output_tokens') {
+        console.warn(`⚠️ WARNING: Section "${sectionTitle}" was TRUNCATED due to token limit!`);
+      }
+
+      sections.push({
+        title: sectionTitle,
+        content: sectionResult.content
+      });
+    }
+
+    // Step 5: Combine all sections into final document
+    const documentHeader = `# **${brsDocument.metadata.customer || 'Organization Name'}**
+## **Project Name:** ${specTitle}
+### **${template.name}**
+
+**Version:** ${brsDocument.metadata.version || '1.0'} (Draft)
+**Status:** Draft
+**Date:** ${new Date().toISOString().split('T')[0]}
+
+---
+
+## Table of Contents
+
+${enabledSections.map((s, i) => {
+  const indent = s.number.includes('.') ? '   * ' : `${i + 1}. `;
+  return `${indent}[${s.title}](#${s.number.replace(/\./g, '')}-${s.title.toLowerCase().replace(/\s+/g, '-')})`;
+}).join('\n')}
+
+---
+
+`;
+
+    const fullMarkdown = documentHeader + sections.map(s => s.content).join('\n\n---\n\n');
+
+    console.log('✅ Full specification generation complete:', {
+      totalSections: sections.length,
+      totalTokens,
+      totalCost: `$${totalCost.toFixed(4)}`,
+      totalLength: fullMarkdown.length
+    });
+
+    return {
+      markdown: fullMarkdown,
       sections,
       totalTokens,
       totalCost,

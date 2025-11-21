@@ -544,7 +544,7 @@ src/
 
 **Testing Notes:**
 - Requires OpenRouter API key for full workflow testing
-- Use [sample-brs.md](sample-brs.md) for testing
+- Use [sample-brs.md](../../sample-brs.md) for testing
 - Approval workflow adds ~0-2 seconds overhead (user interaction time)
 - Version snapshots persist across browser sessions
 

@@ -9,16 +9,163 @@
  * - Badge indicators for workspace tabs
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useProjectStore } from '../../store/projectStore';
-import type { PendingApproval, CascadedRefinementApproval, PropagatedChange } from '../../types';
+import type { PendingApproval, CascadedRefinementApproval, PropagatedChange, BlockDiagram, MermaidDiagram } from '../../types';
 import DiffViewer from '../DiffViewer';
 import { CascadedRefinementReviewPanel } from './CascadedRefinementReviewPanel';
+import { PanZoomWrapper } from '../PanZoomWrapper';
+import mermaid from 'mermaid';
 
 interface ReviewPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+// Helper component: Block Diagram Renderer (returns SVG content only, no <svg> wrapper)
+const BlockDiagramRenderer: React.FC<{ diagram: BlockDiagram }> = ({ diagram }) => {
+  console.log('🎨 BlockDiagramRenderer called with:', {
+    nodeCount: diagram.nodes.length,
+    edgeCount: diagram.edges.length,
+    nodes: diagram.nodes.map(n => ({ id: n.id, label: n.label, position: n.position, size: n.size }))
+  });
+
+  return (
+    <>
+      {/* Render nodes */}
+      {diagram.nodes.map((node) => (
+        <g key={node.id}>
+          {node.shape === 'cloud' ? (
+            <path
+              d={`M ${node.position.x},${node.position.y + 10}
+                  Q ${node.position.x - 10},${node.position.y} ${node.position.x},${node.position.y - 5}
+                  Q ${node.position.x + node.size.width / 4},${node.position.y - 15} ${node.position.x + node.size.width / 2},${node.position.y - 5}
+                  Q ${node.position.x + (3 * node.size.width) / 4},${node.position.y - 15} ${node.position.x + node.size.width},${node.position.y - 5}
+                  Q ${node.position.x + node.size.width + 10},${node.position.y} ${node.position.x + node.size.width},${node.position.y + 10}
+                  L ${node.position.x + node.size.width},${node.position.y + node.size.height - 10}
+                  Q ${node.position.x + node.size.width + 10},${node.position.y + node.size.height} ${node.position.x + node.size.width},${node.position.y + node.size.height + 5}
+                  Q ${node.position.x + (3 * node.size.width) / 4},${node.position.y + node.size.height + 15} ${node.position.x + node.size.width / 2},${node.position.y + node.size.height + 5}
+                  Q ${node.position.x + node.size.width / 4},${node.position.y + node.size.height + 15} ${node.position.x},${node.position.y + node.size.height + 5}
+                  Q ${node.position.x - 10},${node.position.y + node.size.height} ${node.position.x},${node.position.y + node.size.height - 10}
+                  Z`}
+              fill="white"
+              stroke="#3b82f6"
+              strokeWidth="2"
+            />
+          ) : (
+            <rect
+              x={node.position.x}
+              y={node.position.y}
+              width={node.size.width}
+              height={node.size.height}
+              fill="white"
+              stroke="#3b82f6"
+              strokeWidth="2"
+              rx="4"
+            />
+          )}
+          <text
+            x={node.position.x + node.size.width / 2}
+            y={node.position.y + node.size.height / 2}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#1f2937"
+            fontSize="14"
+            fontWeight="500"
+          >
+            {node.label}
+          </text>
+        </g>
+      ))}
+      {/* Render edges */}
+      {diagram.edges.map((edge, idx) => {
+        const fromNode = diagram.nodes.find(n => n.id === edge.from);
+        const toNode = diagram.nodes.find(n => n.id === edge.to);
+        if (!fromNode || !toNode) return null;
+
+        const fromX = fromNode.position.x + fromNode.size.width / 2;
+        const fromY = fromNode.position.y + fromNode.size.height / 2;
+        const toX = toNode.position.x + toNode.size.width / 2;
+        const toY = toNode.position.y + toNode.size.height / 2;
+
+        const strokeWidth = edge.style === 'bold' ? 4 : edge.style === 'solid' ? 1.6 : 1.2;
+        const strokeDasharray = edge.style === 'dashed' ? '5,5' : undefined;
+
+        return (
+          <g key={idx}>
+            <line
+              x1={fromX}
+              y1={fromY}
+              x2={toX}
+              y2={toY}
+              stroke="#6b7280"
+              strokeWidth={strokeWidth}
+              strokeDasharray={strokeDasharray}
+            />
+            {edge.label && (
+              <text
+                x={(fromX + toX) / 2}
+                y={(fromY + toY) / 2}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#374151"
+                fontSize="12"
+                fontWeight="500"
+                style={{ pointerEvents: 'none' }}
+              >
+                {edge.label}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </>
+  );
+};
+
+// Helper component: Mermaid Diagram Renderer
+const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram }> = ({ diagram }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || !diagram.mermaidCode) return;
+
+    const renderDiagram = async () => {
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'default',
+          securityLevel: 'loose'
+        });
+
+        const uniqueId = `mermaid-review-${Math.random().toString(36).substr(2, 9)}`;
+        const { svg } = await mermaid.render(uniqueId, diagram.mermaidCode);
+
+        if (containerRef.current) {
+          containerRef.current.innerHTML = svg;
+          setRenderError(null);
+        }
+      } catch (error: any) {
+        console.error('Mermaid render error:', error);
+        setRenderError(error.message || 'Failed to render diagram');
+      }
+    };
+
+    renderDiagram();
+  }, [diagram.mermaidCode]);
+
+  if (renderError) {
+    return (
+      <div className="p-4 bg-red-50 border border-red-200 rounded">
+        <p className="text-sm text-red-800">⚠️ Diagram rendering error: {renderError}</p>
+        <pre className="mt-2 text-xs font-mono text-red-700 whitespace-pre-wrap">{diagram.mermaidCode}</pre>
+      </div>
+    );
+  }
+
+  return <div ref={containerRef} className="w-full h-full flex items-center justify-center" />;
+};
 
 export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => {
   const pendingApprovals = useProjectStore((state) => state.pendingApprovals);
@@ -504,18 +651,129 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                   />
                 )}
 
-                {/* Generated content preview */}
-                {!showDiff || !selectedApproval.originalContent ? (
-                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Generated Content:</h4>
-                    <div className="bg-white border border-gray-200 rounded p-4 max-h-96 overflow-y-auto font-mono text-xs">
-                      <pre className="whitespace-pre-wrap">
-                        {typeof selectedApproval.generatedContent === 'string'
-                          ? selectedApproval.generatedContent
-                          : JSON.stringify(selectedApproval.generatedContent, null, 2)}
-                      </pre>
+                {/* Generated content preview - Always show for diagrams, conditionally for text */}
+                {!debugMode && (selectedApproval.type === 'diagram' || !showDiff || !selectedApproval.originalContent) ? (
+                  selectedApproval.type === 'diagram' ? (
+                    // Render diagram with pan/zoom
+                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                      <div className="bg-blue-50 border-b border-blue-200 px-4 py-2">
+                        <h4 className="text-sm font-semibold text-blue-900">
+                          Generated Diagram Preview
+                        </h4>
+                        <p className="text-xs text-blue-700 mt-1">
+                          Use scroll wheel to zoom, click and drag to pan (or spacebar + drag)
+                        </p>
+                        {selectedApproval.generatedContent?.sourceSection && (
+                          <p className="text-xs text-blue-600 dark:text-blue-500 mt-1 font-medium">
+                            📄 From: Section {selectedApproval.generatedContent.sourceSection.id} - {selectedApproval.generatedContent.sourceSection.title}
+                          </p>
+                        )}
+                      </div>
+                      <div className="bg-white" style={{ height: '500px' }}>
+                        {(() => {
+                          const diagram = selectedApproval.generatedContent;
+
+                          // 🔍 DIAGNOSTIC LOGGING
+                          console.log('🔍 Diagram Review Rendering:', {
+                            hasNodes: !!diagram?.nodes,
+                            isNodesArray: Array.isArray(diagram?.nodes),
+                            nodesType: typeof diagram?.nodes,
+                            nodesLength: Array.isArray(diagram?.nodes) ? diagram.nodes.length : 0,
+                            hasEdges: !!diagram?.edges,
+                            isEdgesArray: Array.isArray(diagram?.edges),
+                            edgesLength: Array.isArray(diagram?.edges) ? diagram.edges.length : 0,
+                            hasMermaidCode: !!diagram?.mermaidCode,
+                            mermaidCodeType: typeof diagram?.mermaidCode,
+                            mermaidCodeLength: diagram?.mermaidCode?.length || 0,
+                            diagramKeys: diagram ? Object.keys(diagram) : []
+                          });
+                          console.log('📦 Full diagram object:', diagram);
+
+                          // If nodes exists but isn't an array, log its structure
+                          if (diagram?.nodes && !Array.isArray(diagram.nodes)) {
+                            console.log('⚠️ NODES IS NOT AN ARRAY! Type:', typeof diagram.nodes);
+                            console.log('⚠️ Nodes keys:', Object.keys(diagram.nodes));
+                            console.log('⚠️ Nodes value:', diagram.nodes);
+                          }
+
+                          // Check if it's a block diagram (has nodes and edges)
+                          // Handle both array format and object format for nodes
+                          const hasNodes = diagram?.nodes && (Array.isArray(diagram.nodes) || typeof diagram.nodes === 'object');
+                          const hasEdges = diagram?.edges && Array.isArray(diagram.edges);
+
+                          if (hasNodes && hasEdges) {
+                            // Block diagrams use PanZoomWrapper (SVG-based)
+                            // Convert nodes from object to array if needed
+                            let nodesArray = Array.isArray(diagram.nodes)
+                              ? diagram.nodes
+                              : Object.entries(diagram.nodes).map(([id, node]: [string, any]) => ({
+                                  id,
+                                  ...node
+                                }));
+
+                            console.log('✅ Rendering block diagram with', nodesArray.length, 'nodes and', diagram.edges.length, 'edges');
+                            console.log('📍 First node (before normalization):', nodesArray[0]);
+
+                            // Normalize nodes: add default position and size if missing
+                            nodesArray = nodesArray.map((node, index) => {
+                              const normalized = {
+                                ...node,
+                                position: node.position || { x: 100 + (index % 3) * 300, y: 100 + Math.floor(index / 3) * 200 },
+                                size: node.size || { width: 200, height: 100 },
+                                shape: node.shape || 'rect'
+                              };
+                              return normalized;
+                            });
+
+                            console.log('📍 First node (after normalization):', nodesArray[0]);
+
+                            // Create normalized diagram object
+                            const normalizedDiagram: BlockDiagram = {
+                              ...diagram,
+                              nodes: nodesArray
+                            };
+
+                            return (
+                              <PanZoomWrapper>
+                                <BlockDiagramRenderer diagram={normalizedDiagram} />
+                              </PanZoomWrapper>
+                            );
+                          }
+                          // Otherwise it's a Mermaid diagram (has mermaidCode string)
+                          else if (typeof diagram?.mermaidCode === 'string' && diagram.mermaidCode.length > 0) {
+                            console.log('✅ Rendering Mermaid diagram, code length:', diagram.mermaidCode.length);
+                            console.log('📜 Mermaid code preview:', diagram.mermaidCode.substring(0, 200));
+                            // Mermaid diagrams don't use PanZoomWrapper (HTML-based)
+                            return <MermaidDiagramRenderer diagram={diagram as MermaidDiagram} />;
+                          }
+                          // Fallback to JSON for debugging
+                          console.log('❌ Unknown diagram format, showing fallback');
+                          return (
+                            <div className="p-4">
+                              <div className="mb-2 text-sm text-red-600">
+                                ⚠️ Unknown diagram format. Showing raw data:
+                              </div>
+                              <pre className="font-mono text-xs whitespace-pre-wrap">
+                                {JSON.stringify(diagram, null, 2)}
+                              </pre>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    // Text content preview
+                    <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-2">Generated Content:</h4>
+                      <div className="bg-white border border-gray-200 rounded p-4 max-h-96 overflow-y-auto font-mono text-xs">
+                        <pre className="whitespace-pre-wrap">
+                          {typeof selectedApproval.generatedContent === 'string'
+                            ? selectedApproval.generatedContent
+                            : JSON.stringify(selectedApproval.generatedContent, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                  )
                 ) : null}
 
                 {/* Feedback textarea */}

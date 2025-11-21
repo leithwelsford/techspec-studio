@@ -321,6 +321,11 @@ export default function DiagramViewer() {
                       Figure {selectedDiagram.figureNumber}
                     </p>
                   )}
+                  {selectedDiagram.sourceSection && (
+                    <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                      📄 From: Section {selectedDiagram.sourceSection.id} - {selectedDiagram.sourceSection.title}
+                    </p>
+                  )}
                   {selectedDiagram.description && (
                     <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">
                       {selectedDiagram.description}

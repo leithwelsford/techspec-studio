@@ -93,6 +93,7 @@ export interface BlockDiagram {
   // Additional metadata
   sepY?: number; // horizontal separator position
   labelOffsets?: Record<string, { dx: number; dy: number }>;
+  sourceSection?: { id: string; title: string }; // Technical Specification section this diagram was generated from
 }
 
 export interface MermaidDiagram {
@@ -102,6 +103,7 @@ export interface MermaidDiagram {
   description?: string;
   figureNumber?: string;
   mermaidCode: string;
+  sourceSection?: { id: string; title: string }; // Technical Specification section this diagram was generated from
 }
 
 // ========== References ==========
@@ -418,4 +420,59 @@ export interface VersionSnapshot {
 export interface VersionHistory {
   snapshots: VersionSnapshot[];
   currentSnapshotId: string | null;
+}
+
+// ========== Template System ==========
+
+/**
+ * Template section definition
+ * Defines structure and prompt configuration for a single section
+ */
+export interface TemplateSectionDefinition {
+  id: string;                    // "scope", "architecture", "procedures"
+  number: string;                // "1", "4", "4.1"
+  title: string;                 // "Scope", "Solution Architecture"
+  description: string;           // Help text for users
+  promptKey: string;             // Maps to prompt builder function
+  required: boolean;             // Cannot be disabled
+  allowSubsections: boolean;     // Let LLM create hierarchy
+  defaultEnabled: boolean;       // Enabled in new templates
+}
+
+/**
+ * Complete template definition
+ * Defines entire specification structure and formatting guidance
+ */
+export interface SpecificationTemplate {
+  id: string;                    // "3gpp-ts", "ieee-830", "custom-01"
+  name: string;                  // "3GPP Technical Specification"
+  description: string;           // "Standard telecom spec format"
+  domain: string;                // "telecommunications", "software", "general"
+  version: string;               // "1.0"
+  sections: TemplateSectionDefinition[];
+  formatGuidance: string;        // LLM instructions for format/style
+  createdAt: Date;
+  modifiedAt: Date;
+  isBuiltIn: boolean;            // Cannot be deleted/modified
+}
+
+/**
+ * Active project template configuration
+ * User's customization of a template for a specific project
+ */
+export interface ProjectTemplateConfig {
+  templateId: string;            // Which template to use
+  enabledSections: string[];     // Which sections are active
+  sectionOrder: string[];        // Custom ordering
+  customGuidance: string;        // Additional LLM instructions
+}
+
+/**
+ * Generated section result (for tracking)
+ */
+export interface GeneratedSection {
+  number: string;
+  title: string;
+  content: string;
+  tokensUsed: number;
 }

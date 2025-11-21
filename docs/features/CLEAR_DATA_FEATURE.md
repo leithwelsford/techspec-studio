@@ -238,5 +238,5 @@ Updated "Known Issues" section:
 - Resolves: Mermaid syntax errors persisting after deletion
 - Resolves: Old diagram data appearing after fresh start
 - Relates to: [LINK_RESOLUTION_IMPLEMENTATION.md](LINK_RESOLUTION_IMPLEMENTATION.md) (users wanted clean slate for testing)
-- Documented in: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- Tracked in: [PHASE3_PROGRESS.md](PHASE3_PROGRESS.md)
+- Documented in: [../../TROUBLESHOOTING.md](../../TROUBLESHOOTING.md)
+- Tracked in: [../phases/PHASE3_PROGRESS.md](../phases/PHASE3_PROGRESS.md)

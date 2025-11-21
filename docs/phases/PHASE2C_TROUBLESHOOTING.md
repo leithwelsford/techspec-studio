@@ -306,7 +306,7 @@ If issues persist:
 
 2. **Review Documentation:**
    - [PHASE2C_COMPLETE.md](PHASE2C_COMPLETE.md) - Full Phase 2C documentation
-   - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - General troubleshooting
+   - [../../TROUBLESHOOTING.md](../../TROUBLESHOOTING.md) - General troubleshooting
 
 3. **Check for TypeScript Errors:**
    ```bash

@@ -20,7 +20,11 @@ import type {
   VersionSnapshot,
   VersionHistory,
   VersionChangeType,
+  SpecificationTemplate,
+  ProjectTemplateConfig,
 } from '../types';
+import { getEnvApiKey, getEnvModel, getEnvTemperature, getEnvMaxTokens, getEnvEnableStreaming } from '../utils/envConfig';
+import { encrypt } from '../utils/encryption';
 
 interface ProjectState {
   // Current project
@@ -46,6 +50,10 @@ interface ProjectState {
 
   // Version history
   versionHistory: VersionHistory;
+
+  // Template system
+  availableTemplates: SpecificationTemplate[];
+  activeTemplateConfig: ProjectTemplateConfig | null;
 
   // Actions - Project
   createProject: (name: string) => void;
@@ -123,6 +131,16 @@ interface ProjectState {
   deleteSnapshot: (snapshotId: string) => void;
   clearHistory: () => void;
 
+  // Actions - Template System
+  loadBuiltInTemplates: () => void;
+  createCustomTemplate: (template: Omit<SpecificationTemplate, 'id' | 'createdAt' | 'modifiedAt' | 'isBuiltIn'>) => string;
+  updateCustomTemplate: (id: string, updates: Partial<SpecificationTemplate>) => void;
+  deleteCustomTemplate: (id: string) => void;
+  setActiveTemplate: (config: ProjectTemplateConfig) => void;
+  updateTemplateConfig: (updates: Partial<ProjectTemplateConfig>) => void;
+  reorderSections: (sectionIds: string[]) => void;
+  toggleSection: (sectionId: string, enabled: boolean) => void;
+
   // Utilities
   getAllDiagrams: () => Array<{ id: string; type: string; title: string; figureNumber?: string }>;
   autoNumberFigures: () => void;
@@ -140,6 +158,35 @@ interface ProjectState {
 }
 
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+/**
+ * Create default AI config from environment variables
+ * Returns null if no API key is available
+ *
+ * NOTE: We store the env API key UNENCRYPTED in the store because:
+ * 1. It comes from a secure source (server-side .env.local file)
+ * 2. AIConfigPanel expects to decrypt keys from localStorage, not from env vars
+ * 3. The panel will handle encryption when user saves via UI
+ */
+const createDefaultAIConfig = (): AIConfig | null => {
+  const envApiKey = getEnvApiKey();
+
+  if (!envApiKey) {
+    console.log('ℹ️ No API key found in environment variables');
+    return null;
+  }
+
+  console.log('✅ Initializing AI config from environment variables (unencrypted)');
+
+  return {
+    provider: 'openrouter',
+    apiKey: envApiKey, // Store unencrypted - AIConfigPanel will handle encryption on save
+    model: (getEnvModel() as any) || 'anthropic/claude-3.5-sonnet',
+    temperature: getEnvTemperature() ?? 0.7,
+    maxTokens: getEnvMaxTokens() ?? 4096,
+    enableStreaming: getEnvEnableStreaming() ?? true,
+  };
+};
 
 const createDefaultProject = (name: string): Project => ({
   id: generateId(),
@@ -174,8 +221,8 @@ export const useProjectStore = create<ProjectState>()(
       previewMode: 'split',
       darkMode: false,
 
-      // AI initial state
-      aiConfig: null,
+      // AI initial state - Load from environment if available
+      aiConfig: createDefaultAIConfig(),
       chatHistory: [],
       activeTasks: [],
       pendingApprovals: [],
@@ -194,6 +241,10 @@ export const useProjectStore = create<ProjectState>()(
         snapshots: [],
         currentSnapshotId: null,
       },
+
+      // Template system initial state
+      availableTemplates: [],
+      activeTemplateConfig: null,
 
       // Project actions
       createProject: (name) => {
@@ -852,6 +903,95 @@ export const useProjectStore = create<ProjectState>()(
         return state.project.references.map(r => r.id);
       },
 
+      // Template System actions
+      loadBuiltInTemplates: () => {
+        // This will be called on app initialization to load built-in templates
+        // Built-in templates will be defined in src/data/templates/ in Phase 2
+        // For now, set empty array (will be populated in Phase 6)
+        set({ availableTemplates: [] });
+      },
+
+      createCustomTemplate: (templateData) => {
+        const id = generateId();
+        const now = new Date();
+        const newTemplate: SpecificationTemplate = {
+          ...templateData,
+          id,
+          createdAt: now,
+          modifiedAt: now,
+          isBuiltIn: false,
+        };
+
+        set((state) => ({
+          availableTemplates: [...state.availableTemplates, newTemplate],
+        }));
+
+        return id;
+      },
+
+      updateCustomTemplate: (id, updates) => {
+        set((state) => ({
+          availableTemplates: state.availableTemplates.map((template) =>
+            template.id === id && !template.isBuiltIn
+              ? { ...template, ...updates, modifiedAt: new Date() }
+              : template
+          ),
+        }));
+      },
+
+      deleteCustomTemplate: (id) => {
+        set((state) => ({
+          availableTemplates: state.availableTemplates.filter(
+            (template) => template.id !== id || template.isBuiltIn
+          ),
+        }));
+      },
+
+      setActiveTemplate: (config) => {
+        set({ activeTemplateConfig: config });
+      },
+
+      updateTemplateConfig: (updates) => {
+        set((state) => {
+          if (!state.activeTemplateConfig) return state;
+          return {
+            activeTemplateConfig: {
+              ...state.activeTemplateConfig,
+              ...updates,
+            },
+          };
+        });
+      },
+
+      reorderSections: (sectionIds) => {
+        set((state) => {
+          if (!state.activeTemplateConfig) return state;
+          return {
+            activeTemplateConfig: {
+              ...state.activeTemplateConfig,
+              sectionOrder: sectionIds,
+            },
+          };
+        });
+      },
+
+      toggleSection: (sectionId, enabled) => {
+        set((state) => {
+          if (!state.activeTemplateConfig) return state;
+
+          const enabledSections = enabled
+            ? [...state.activeTemplateConfig.enabledSections, sectionId]
+            : state.activeTemplateConfig.enabledSections.filter(id => id !== sectionId);
+
+          return {
+            activeTemplateConfig: {
+              ...state.activeTemplateConfig,
+              enabledSections,
+            },
+          };
+        });
+      },
+
       // Store management
       resetStore: () => {
         set({
@@ -879,12 +1019,33 @@ export const useProjectStore = create<ProjectState>()(
             snapshots: [],
             currentSnapshotId: null,
           },
+          availableTemplates: [],
+          activeTemplateConfig: null,
         });
       },
     }),
     {
       name: 'tech-spec-project',
       version: 1,
+      merge: (persistedState: any, currentState: ProjectState) => {
+        // Merge persisted state with current state
+        const merged = { ...currentState, ...persistedState };
+
+        // If no AI config in persisted state, try to load from environment
+        if (!merged.aiConfig || !merged.aiConfig.apiKey) {
+          const envConfig = createDefaultAIConfig();
+          if (envConfig) {
+            console.log('✅ Using AI config from environment variables (no valid config in localStorage)');
+            merged.aiConfig = envConfig;
+          }
+        }
+
+        // Always reset isGenerating flag on page load (prevents stuck state)
+        merged.isGenerating = false;
+        merged.currentTaskId = null;
+
+        return merged;
+      },
     }
   )
 );
