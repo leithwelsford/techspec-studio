@@ -17,6 +17,7 @@ import {
   buildOpenItemsPrompt,
   buildAppendicesPrompt,
 } from './documentPrompts';
+import { DIAGRAM_PLACEHOLDER_REQUIREMENTS } from './systemPrompts';
 
 /**
  * Prompt builder context - all data needed to build section prompts
@@ -244,6 +245,8 @@ ${context.userGuidance ? `\n**Additional User Guidance**:\n${context.userGuidanc
 - Follow the template's tone, style, and formatting conventions
 - Use complete, production-ready content (no placeholders or "TODO" markers)
 
+${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
+
 Generate the complete section now in markdown format:`;
 }
 
@@ -314,6 +317,8 @@ Guidelines:
 - Include both structural (architecture) and behavioral (procedures) aspects
 - Use normative language (SHALL/MUST) where appropriate
 
+${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
+
 ${context.userGuidance ? `\nAdditional User Guidance:\n${context.userGuidance}\n` : ''}
 
 Generate the complete Section 4 now in markdown format.`;
@@ -340,6 +345,8 @@ Include the following subsections:
 Requirements from BRS:
 ${JSON.stringify(context.brsAnalysis, null, 2)}
 
+${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
+
 ${context.userGuidance ? `\nAdditional User Guidance:\n${context.userGuidance}\n` : ''}
 
 Generate the complete introduction section now in markdown format.`;
@@ -362,6 +369,8 @@ Include:
 
 Requirements from BRS:
 ${JSON.stringify(context.brsAnalysis, null, 2)}
+
+${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
 
 ${context.userGuidance ? `\nAdditional User Guidance:\n${context.userGuidance}\n` : ''}
 
@@ -392,6 +401,8 @@ Organize by functional area. Include:
 
 Requirements from BRS:
 ${JSON.stringify(context.brsAnalysis, null, 2)}
+
+${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
 
 ${context.userGuidance ? `\nAdditional User Guidance:\n${context.userGuidance}\n` : ''}
 

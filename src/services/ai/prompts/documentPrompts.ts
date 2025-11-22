@@ -4,6 +4,7 @@
  */
 
 import type { AIContext } from '../../../types';
+import { DIAGRAM_PLACEHOLDER_REQUIREMENTS } from './systemPrompts';
 
 export interface DocumentGenerationRequest {
   title: string;
@@ -1048,6 +1049,8 @@ Guidelines:
 - Include provisioning sequence diagrams if helpful
 - Cover both initial setup and ongoing management
 - Address fixed and mobile service integration
+
+${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
 
 Generate the complete Section 6 now in markdown format.`;
 

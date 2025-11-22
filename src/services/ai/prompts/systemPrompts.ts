@@ -300,3 +300,46 @@ Format your response as:
 
 Be concise but comprehensive. Focus on information directly applicable to writing a technical specification.`;
 }
+
+/**
+ * Critical diagram requirements for all section generation
+ * Ensures AI uses {{fig:...}} placeholders instead of text-based diagrams
+ */
+export const DIAGRAM_PLACEHOLDER_REQUIREMENTS = `
+CRITICAL DIAGRAM REQUIREMENTS:
+
+1. NEVER include diagrams as text blocks, ASCII art, or inline descriptions
+2. ALWAYS use figure placeholder syntax for ALL diagrams: {{fig:diagram-id}}
+3. For EVERY sequence diagram, call flow, block diagram, or workflow:
+   - Reference it: "As shown in {{fig:diagram-id}}, the workflow..."
+   - Add TODO comment immediately after with diagram details
+
+Example (CORRECT):
+  The mobile session establishment is shown in {{fig:mobile-session-establishment}}.
+
+  <!-- TODO: Sequence diagram showing:
+  - Participants: UE, P-GW (PCEF), PCRF, TDF
+  - Flow: 1. UE attach, 2. CCR-I from P-GW, 3. CCA-I from PCRF, 4. Bearer setup
+  - Note: P-GW has no Gy/Gz in this architecture
+  -->
+
+FORBIDDEN - DO NOT DO THIS:
+  ❌ \`\`\`text
+     UE -> P-GW -> PCRF
+     \`\`\`
+  ❌ ASCII art diagrams
+  ❌ Inline workflow descriptions without placeholders
+  ❌ Sequence diagrams in code blocks
+
+4. Diagram ID naming conventions:
+   - Workflows/procedures: *-workflow, *-procedure, *-flow
+   - Call flows: *-call-flow, *-sequence
+   - Architecture: *-architecture, *-topology, *-structure
+   - State machines: *-state-machine, *-lifecycle
+
+5. TODO comment structure:
+   - Diagram type (sequence/block/flow)
+   - Participants/components
+   - Key steps/interactions
+   - Special notes/conditions
+`.trim();

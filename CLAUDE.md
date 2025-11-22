@@ -20,6 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 9. [Environment Configuration](#environment-configuration-srcutilsenvconfigts) - Pre-configure API keys and AI settings
 10. [IndexedDB Storage](#indexeddb-storage-srcutilsindexedbts) - High-capacity storage (50MB+)
 11. [Link Resolution](#link-resolution-srcutilslinkresolvertjs) - Parse and resolve {{fig:...}} syntax (see [docs/features/LINK_RESOLUTION_IMPLEMENTATION.md](docs/features/LINK_RESOLUTION_IMPLEMENTATION.md))
+12. [Template System](#template-system-srcdatatemplates) - Multi-template specification generation with customizable sections (see [docs/features/TEMPLATE_SYSTEM.md](docs/features/TEMPLATE_SYSTEM.md))
 
 **Reference as Needed:**
 - [Architecture](#architecture) - State management, data flow, AI service
@@ -137,6 +138,7 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 - ✅ **TODO comment extraction** - Use TODO comments as diagram requirements (Phase 3 - 2025-11-19)
 - ✅ **Section content aggregation** - Include all subsection content for complete AI context (Phase 3 - 2025-11-19)
 - ✅ **Source section references** - Traceability between diagrams and spec sections (Phase 3 - 2025-11-19)
+- ✅ **Template system** - Multi-template spec generation (3GPP, IEEE 830, ISO 29148) with drag-and-drop section customization (Post-Phase 3 - 2025-11-21)
 
 **Phase 3 Status (75% COMPLETE):**
 - ✅ Block diagram editor integration (COMPLETE - BlockDiagramEditor.tsx 998 lines, fully Zustand-integrated)
@@ -146,6 +148,7 @@ This is an **AI-Powered Technical Specification Authoring System** built with Re
 - ✅ Two-tier diagram generation (COMPLETE - mandatory vs suggested, 2025-11-19)
 - ✅ TODO comment extraction (COMPLETE - diagram requirements from code comments, 2025-11-19)
 - ✅ Section content aggregation (COMPLETE - subsection content included, 2025-11-19)
+- ✅ Template system (COMPLETE - multi-template spec generation, 2025-11-21)
 - 🚧 Link resolution ({{fig:...}} and {{ref:...}}) - HIGH PRIORITY TODO
 - 🚧 Auto-numbering for figures and references - HIGH PRIORITY TODO
 - 🚧 Flow diagram editor - OPTIONAL (currently reusing SequenceDiagramEditor)
@@ -578,15 +581,20 @@ src/
 │   │   ├── ChatPanel.tsx    # ✅ AI chat with streaming
 │   │   ├── AIConfigPanel.tsx # ✅ AI configuration modal (dynamic models Phase 2C)
 │   │   ├── ReviewPanel.tsx  # ✅ Approve/reject workflow (Phase 2C)
-│   │   ├── GenerateSpecModal.tsx  # ✅ Spec generation with approval
-│   │   └── GenerateDiagramsModal.tsx  # ✅ Diagram generation with approval
+│   │   ├── CascadedRefinementReviewPanel.tsx  # ✅ Cascading refinement workflow (Post-Phase 3)
+│   │   ├── GenerateSpecModal.tsx  # ✅ Multi-step spec generation with templates (382 lines, Post-Phase 3)
+│   │   ├── GenerateDiagramsModal.tsx  # ✅ Diagram generation with approval
+│   │   ├── TemplateSelectionModal.tsx  # ✅ Template chooser (220 lines, Post-Phase 3)
+│   │   ├── SectionComposer.tsx  # ✅ Section customization with drag-and-drop (313 lines, Post-Phase 3)
+│   │   └── SectionItem.tsx  # ✅ Individual section component for drag-and-drop (Post-Phase 3)
 │   ├── editors/
 │   │   ├── BlockDiagramEditor.tsx  # ✅ COMPLETE (998 lines, Phase 3)
 │   │   ├── MarkdownEditor.tsx      # ✅ Markdown editor with AI actions + approvals
 │   │   ├── SequenceDiagramEditor.tsx  # ✅ COMPLETE (359 lines, Phase 3) - serves sequence & flow
 │   │   └── FlowDiagramEditor.tsx      # 🚧 OPTIONAL (currently using SequenceDiagramEditor)
 │   └── BRSUpload.tsx        # ✅ BRS document upload (Phase 2B)
-└── data/                    # Sample data/templates (empty)
+└── data/                    # ✅ Built-in templates (Post-Phase 3)
+    └── templates/           # 3GPP, IEEE 830, ISO 29148 templates
 ```
 
 ### Key Architecture Decisions
@@ -688,6 +696,12 @@ All types are defined, including comprehensive AI types. **Check this file FIRST
 - `VersionSnapshot` - Complete project state at a point in time
 - `VersionChangeType` - Union type for change types (edit, generation, approval, etc.)
 - `VersionHistory` - Collection of snapshots with metadata
+
+**Template System Types** (Post-Phase 3):
+- `TemplateSectionDefinition` - Section metadata (id, title, promptKey, required, allowSubsections)
+- `SpecificationTemplate` - Complete template (sections, formatGuidance, domain, isBuiltIn)
+- `ProjectTemplateConfig` - User's customization (templateId, enabledSections, sectionOrder, customGuidance)
+- `GeneratedSection` - Section generation result with token tracking
 
 **Diagram-Specific Types**:
 - `Node` - Block diagram node (id, label, shape, position, size)
@@ -992,6 +1006,112 @@ const headings = extractHeadings(markdown);
 - 🚧 Editor integration pending (Phase 3 TODO)
 - 🚧 Preview resolution pending
 - 🚧 Export resolution pending
+
+### Template System (`src/data/templates/`)
+
+**Purpose**: Generate specifications using industry-standard templates (3GPP, IEEE 830, ISO 29148) with customizable sections.
+
+**Overview**: The template system enables users to generate complete technical specifications by selecting a template, customizing which sections to include, reordering sections via drag-and-drop, and providing generation guidance. Each template defines structure, section definitions, and formatting guidance for domain-specific specifications.
+
+```typescript
+// Note: Use relative imports in actual code
+import { builtInTemplates, getTemplateById } from '../../data/templates';
+import type { SpecificationTemplate, ProjectTemplateConfig } from '../../types';
+
+// Load available templates
+const templates = useProjectStore(state => state.availableTemplates);
+
+// Set active template with custom configuration
+const setActiveTemplate = useProjectStore(state => state.setActiveTemplate);
+setActiveTemplate({
+  templateId: '3gpp-ts',
+  enabledSections: ['scope', 'architecture', 'procedures'],
+  sectionOrder: ['scope', 'architecture', 'procedures'],
+  customGuidance: 'Focus on 5G SA deployment scenario with enhanced PCRF capabilities...'
+});
+
+// Generate spec from template (sequential, section-by-section)
+const result = await aiService.generateSpecificationFromTemplate(
+  template,
+  config,
+  brsDocument,
+  context,
+  (section, index, total) => {
+    console.log(`Generated ${section.title} (${index}/${total})`);
+  }
+);
+```
+
+**Built-in Templates**:
+- **3GPP Technical Specification** - Telecommunications domain (9 sections)
+  - Scope, Service Overview, Functional Specification, Solution Architecture, Non-Functional Requirements, OSS/BSS, SLA Summary, Open Items, Appendices
+- **IEEE 830 SRS** - Software requirements (9 sections)
+  - Introduction, Overall Description, Specific Requirements, External Interfaces, System Features, Performance, Design Constraints, Attributes, Requirements
+- **ISO/IEC/IEEE 29148** - General requirements (7 sections)
+  - Introduction, References, Requirements Specification Approach, Requirements, Verification, Appendices, Glossary
+
+**Key Features**:
+- **Section Customization**: Enable/disable individual sections (required sections locked)
+- **Drag-and-Drop Reordering**: Using @dnd-kit library for smooth, accessible reordering
+- **Sequential Generation**: Each section receives previous sections as context for consistency
+- **Template Inheritance**: Built-in templates are read-only (`isBuiltIn: true`), custom templates can extend them
+- **Custom Guidance**: Per-template additional instructions for AI generation
+- **Progress Tracking**: Real-time feedback during multi-section generation
+
+**Components**:
+- [src/components/ai/TemplateSelectionModal.tsx](src/components/ai/TemplateSelectionModal.tsx) - Choose template with filtering (220 lines)
+- [src/components/ai/SectionComposer.tsx](src/components/ai/SectionComposer.tsx) - Customize sections with drag-and-drop (313 lines)
+- [src/components/ai/SectionItem.tsx](src/components/ai/SectionItem.tsx) - Individual section component for sortable list
+- [src/components/ai/GenerateSpecModal.tsx](src/components/ai/GenerateSpecModal.tsx) - Multi-step workflow (382 lines)
+
+**Template Files**:
+- [src/data/templates/3gpp.ts](src/data/templates/3gpp.ts) - 3GPP Technical Specification (4.5KB)
+- [src/data/templates/ieee830.ts](src/data/templates/ieee830.ts) - IEEE 830 SRS (4.9KB)
+- [src/data/templates/iso29148.ts](src/data/templates/iso29148.ts) - ISO/IEC/IEEE 29148 (4.9KB)
+- [src/data/templates/index.ts](src/data/templates/index.ts) - Unified exports and helper functions
+
+**Store Actions**:
+```typescript
+const loadBuiltInTemplates = useProjectStore(state => state.loadBuiltInTemplates);
+const createCustomTemplate = useProjectStore(state => state.createCustomTemplate);
+const updateCustomTemplate = useProjectStore(state => state.updateCustomTemplate);
+const deleteCustomTemplate = useProjectStore(state => state.deleteCustomTemplate);
+const setActiveTemplate = useProjectStore(state => state.setActiveTemplate);
+const updateTemplateConfig = useProjectStore(state => state.updateTemplateConfig);
+const reorderSections = useProjectStore(state => state.reorderSections);
+const toggleSection = useProjectStore(state => state.toggleSection);
+```
+
+**AI Service Method**:
+```typescript
+// Sequential generation with progress callback
+const result = await aiService.generateSpecificationFromTemplate(
+  template: SpecificationTemplate,
+  config: ProjectTemplateConfig,
+  brsDocument: BRSDocument | undefined,
+  context: AIContext,
+  onProgress?: (section: GeneratedSection, index: number, total: number) => void
+): Promise<{ markdown: string; sections: GeneratedSection[] }>
+```
+
+**User Workflow**:
+1. Click "Generate Specification" → TemplateSelectionModal opens
+2. Filter by domain (telecommunications, software, general)
+3. Select template → SectionComposer opens
+4. Enable/disable sections (checkboxes)
+5. Reorder sections (drag handles)
+6. Add custom guidance (textarea)
+7. Click "Generate" → Sequential generation begins
+8. Progress updates show each section being generated
+9. Review generated specification in approval workflow
+
+**Prompt System** ([src/services/ai/prompts/templatePrompts.ts](src/services/ai/prompts/templatePrompts.ts)):
+- Generic prompt builder system with registry of 20+ prompt builders
+- Each section type has dedicated prompt builder (e.g., `build3GPPScopePrompt`, `buildIEEE830IntroductionPrompt`)
+- Context-aware: receives BRS, previous sections, template guidance, user guidance
+- Maintains consistency across entire document
+
+**Documentation**: See [docs/features/TEMPLATE_SYSTEM.md](docs/features/TEMPLATE_SYSTEM.md) for complete implementation details.
 
 ### Linking System (Future Phase 3)
 
@@ -1526,9 +1646,14 @@ The block diagram editor has been **fully extracted** from App.tsx:
 - `typescript` 5.2 - Type system
 - `tailwindcss` 3.4.1 - Styling (v3, not v4)
 
+### UI & Interaction
+- `@dnd-kit/core` 6.3 - Drag-and-drop foundation
+- `@dnd-kit/sortable` 10.0 - Sortable lists (used in SectionComposer)
+- `@dnd-kit/utilities` 3.2 - DnD utilities
+
 ### Diagram Libraries
 - `mermaid` 11.12 - Sequence/flow diagram rendering
-- Custom SVG - Block diagrams (in App.tsx)
+- Custom SVG - Block diagrams (in BlockDiagramEditor.tsx)
 
 ### Document Processing
 - `react-markdown` 10.1 + `remark-gfm` 4.0 - Markdown rendering

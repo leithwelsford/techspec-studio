@@ -1601,7 +1601,9 @@ Generate the complete Section 4 now in markdown format.`;
       const sectionPrompt = buildSectionPrompt(section, promptContext);
 
       // Configure token limits based on model type
-      const sectionMaxTokens = isReasoning ? 16000 : (this.config.maxTokens || 4000);
+      // Reasoning models: 32k for large sections (Architecture, Procedures, etc.)
+      // Non-reasoning models: Use configured maxTokens or 4k default
+      const sectionMaxTokens = isReasoning ? 32000 : (this.config.maxTokens || 4000);
 
       console.log(`🎯 Generating section ${i + 1}/${enabledSections.length}: ${sectionTitle} (maxTokens: ${sectionMaxTokens})`);
 

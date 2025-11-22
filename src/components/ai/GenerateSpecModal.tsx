@@ -80,9 +80,20 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
   };
 
   const handleGenerate = async () => {
+    // Diagnostic logging
+    console.log('🚀 Generate button clicked - checking prerequisites:');
+    console.log('  canGenerate:', canGenerate);
+    console.log('  brsDocument:', !!brsDocument);
+    console.log('  aiConfig:', !!aiConfig);
+    console.log('  selectedTemplate:', !!selectedTemplate);
+    console.log('  activeTemplateConfig:', !!activeTemplateConfig);
+
     if (!canGenerate || !brsDocument || !aiConfig || !selectedTemplate || !activeTemplateConfig) {
+      console.error('❌ Generation blocked - missing prerequisite(s)');
       return;
     }
+
+    console.log('✅ All prerequisites met - starting generation...');
 
     setStep('generate');
     setIsGenerating(true);
