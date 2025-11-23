@@ -246,8 +246,11 @@ function analyzeWithHeuristics(
   const hasStrongArchContent = hasTitleArchKeywords && hasContentArchKeywords &&
     (lowerContent.match(/component|interface|node|entity/g) || []).length >= 5; // Raised threshold from 3 to 5
 
-  // STRICTER: Only allow content-only detection for procedures if title mentions procedures AND has numbered steps
-  const hasStrongProcContent = hasTitleProcKeywords && hasContentProcKeywords && hasNumberedSteps;
+  // Allow content-only detection for procedures if MULTIPLE procedure keywords + numbered steps
+  // OR if title has procedure keywords + content keywords + numbered steps
+  const procedureKeywordCount = procedureKeywords.filter(kw => lowerContent.includes(kw)).length;
+  const hasStrongProcContent = (procedureKeywordCount >= 3 && hasNumberedSteps) || // Multiple keywords + steps
+                                 (hasTitleProcKeywords && hasContentProcKeywords && hasNumberedSteps); // Title + content + steps
 
   // Check for conditional patterns (if/then/else)
   const hasConditionals = /\b(if|when|otherwise|else|in case)\b/gi.test(content);
