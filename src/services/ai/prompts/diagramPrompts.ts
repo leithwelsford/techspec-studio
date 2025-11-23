@@ -242,6 +242,17 @@ Guidelines:
 11. **IMPORTANT**: Message labels must be single-line. Do NOT use \\n or line breaks in labels.
 12. If you need to add multiple pieces of information, use commas or separate them with dashes.
 
+**CRITICAL VALIDATION RULES (prevent syntax errors):**
+13. **Participant names**: Use only alphanumeric characters, underscores, and hyphens. NO special characters like (, ), /, etc.
+    - CORRECT: P_GW, TDF_PCEF, Mobile_UE, CPE, PCRF
+    - WRONG: P-GW (PCEF), TDF/PCEF, UE/CPE
+14. **Activation**: Each participant can only be activated ONCE at a time. Always deactivate before reactivating.
+    - CORRECT: activate A ... deactivate A ... activate A again later
+    - WRONG: activate A ... activate A (ERROR: already active!)
+15. **Unique activations**: If a participant sends multiple messages, use ONE activation block around all messages.
+16. **Participant aliases**: If you need to show "P-GW (PCEF)", declare it as: participant PGW as P-GW/PCEF
+    - Then use PGW in all messages, NOT "P-GW (PCEF)"
+
 Now generate the Mermaid sequence diagram code for the description provided. Output the mermaid code block wrapped in \`\`\`mermaid ... \`\`\`.`;
 
   return appendUserGuidance(basePrompt, userGuidance);

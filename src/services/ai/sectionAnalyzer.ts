@@ -241,12 +241,13 @@ function analyzeWithHeuristics(
   const hasFlowKeywords = hasTitleFlowKeywords && hasContentFlowKeywords;
   const hasStateKeywords = hasTitleStateKeywords && hasContentStateKeywords;
 
-  // Allow content-only detection for architecture if there are multiple components/interfaces
-  const hasStrongArchContent = hasContentArchKeywords &&
-    (lowerContent.match(/component|interface|node|entity/g) || []).length >= 3;
+  // STRICTER: Only allow content-only detection for VERY STRONG indicators
+  // This prevents false positives where sections mention architecture/procedures but aren't diagram-worthy
+  const hasStrongArchContent = hasTitleArchKeywords && hasContentArchKeywords &&
+    (lowerContent.match(/component|interface|node|entity/g) || []).length >= 5; // Raised threshold from 3 to 5
 
-  // Allow content-only detection for procedures if there are numbered steps
-  const hasStrongProcContent = hasContentProcKeywords && hasNumberedSteps;
+  // STRICTER: Only allow content-only detection for procedures if title mentions procedures AND has numbered steps
+  const hasStrongProcContent = hasTitleProcKeywords && hasContentProcKeywords && hasNumberedSteps;
 
   // Check for conditional patterns (if/then/else)
   const hasConditionals = /\b(if|when|otherwise|else|in case)\b/gi.test(content);
@@ -260,7 +261,7 @@ function analyzeWithHeuristics(
   const indicators = {
     architecture: hasArchKeywords || hasStrongArchContent,
     procedure: hasProcKeywords || hasStrongProcContent,
-    flow: hasFlowKeywords || (hasTitleFlowKeywords && hasConditionals && hasNumberedSteps),
+    flow: hasFlowKeywords, // STRICTER: Require both title AND content keywords
     state: hasStateKeywords
   };
 
@@ -278,10 +279,10 @@ function analyzeWithHeuristics(
     diagramType = 'state';
     confidence = hasTitleStateKeywords ? 'high' : 'medium';
     reasoning = 'Contains state machine keywords: states, transitions, modes';
-  } else if (hasFlowKeywords || (hasTitleFlowKeywords && hasConditionals && hasNumberedSteps)) {
+  } else if (hasFlowKeywords) {
     diagramType = 'flow';
     confidence = hasTitleFlowKeywords ? 'high' : 'medium';
-    reasoning = 'Contains flowchart indicators: decision logic, conditional branches';
+    reasoning = 'Contains flowchart indicators in title and content: decision logic, conditional branches';
   } else if (hasArchKeywords || hasStrongArchContent) {
     diagramType = 'block';
     confidence = hasTitleArchKeywords ? 'high' : 'medium';
