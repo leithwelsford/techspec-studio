@@ -3,7 +3,7 @@
  */
 
 import { create } from 'zustand';
-import { indexedDBPersist } from '../utils/indexedDBMiddleware';
+import { createIndexedDBPersist } from '../utils/indexedDBMiddleware';
 import type {
   Project,
   BlockDiagram,
@@ -210,7 +210,7 @@ const createDefaultProject = (name: string): Project => ({
 });
 
 export const useProjectStore = create<ProjectState>()(
-  indexedDBPersist(
+  createIndexedDBPersist(
     (set, get) => ({
       // Initial state
       project: null,
