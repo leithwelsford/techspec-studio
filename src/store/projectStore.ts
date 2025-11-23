@@ -3,7 +3,7 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { indexedDBPersist } from '../utils/indexedDBMiddleware';
 import type {
   Project,
   BlockDiagram,
@@ -210,7 +210,7 @@ const createDefaultProject = (name: string): Project => ({
 });
 
 export const useProjectStore = create<ProjectState>()(
-  persist(
+  indexedDBPersist(
     (set, get) => ({
       // Initial state
       project: null,
@@ -1027,7 +1027,7 @@ export const useProjectStore = create<ProjectState>()(
     {
       name: 'tech-spec-project',
       version: 1,
-      merge: (persistedState: any, currentState: ProjectState) => {
+      migrate: (persistedState: any, currentState: ProjectState) => {
         // Merge persisted state with current state
         const merged = { ...currentState, ...persistedState };
 

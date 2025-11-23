@@ -196,50 +196,57 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
       generatedLength: typeof approval.generatedContent === 'string' ? approval.generatedContent.length : 'not-string',
     });
 
-    // Apply the generated content
-    if (approval.type === 'section' || approval.type === 'document' || approval.type === 'refinement') {
-      console.log('✅ Type check passed, applying specification changes');
-      // For specification content (section generation, document generation, or refinement)
-      const currentMarkdown = approval.originalContent || '';
-      const newMarkdown = approval.generatedContent;
+    try {
+      // Apply the generated content
+      if (approval.type === 'section' || approval.type === 'document' || approval.type === 'refinement') {
+        console.log('✅ Type check passed, applying specification changes');
+        // For specification content (section generation, document generation, or refinement)
+        const currentMarkdown = approval.originalContent || '';
+        const newMarkdown = approval.generatedContent;
 
-      console.log('📝 Calling updateSpecification with', typeof newMarkdown === 'string' ? newMarkdown.length : 'not-string', 'characters');
-      updateSpecification(newMarkdown);
-      console.log('✅ updateSpecification completed');
+        console.log('📝 Calling updateSpecification with', typeof newMarkdown === 'string' ? newMarkdown.length : 'not-string', 'characters');
+        updateSpecification(newMarkdown);
+        console.log('✅ updateSpecification completed');
 
-      // Create snapshot
-      createSnapshot(
-        approval.type === 'refinement' ? 'refinement' : 'ai-generation',
-        `Applied AI-generated ${approval.type}`,
-        'ai',
-        { relatedApprovalId: approval.id }
-      );
-    } else if (approval.type === 'diagram') {
-      // For diagrams
-      const diagram = approval.generatedContent;
-      if (diagram.nodes && diagram.edges) {
-        // Block diagram
-        addBlockDiagram(diagram);
-      } else if (diagram.mermaidCode) {
-        // Mermaid diagram (sequence or flow)
-        addMermaidDiagram(diagram.type || 'sequence', diagram);
+        // Create snapshot
+        createSnapshot(
+          approval.type === 'refinement' ? 'refinement' : 'ai-generation',
+          `Applied AI-generated ${approval.type}`,
+          'ai',
+          { relatedApprovalId: approval.id }
+        );
+      } else if (approval.type === 'diagram') {
+        // For diagrams
+        const diagram = approval.generatedContent;
+        if (diagram.nodes && diagram.edges) {
+          // Block diagram
+          addBlockDiagram(diagram);
+        } else if (diagram.mermaidCode) {
+          // Mermaid diagram (sequence or flow)
+          addMermaidDiagram(diagram.type || 'sequence', diagram);
+        }
+
+        // Create snapshot
+        createSnapshot(
+          'diagram-add',
+          `Applied AI-generated diagram: ${diagram.title || 'Untitled'}`,
+          'ai',
+          { relatedApprovalId: approval.id }
+        );
       }
 
-      // Create snapshot
-      createSnapshot(
-        'diagram-add',
-        `Applied AI-generated diagram: ${diagram.title || 'Untitled'}`,
-        'ai',
-        { relatedApprovalId: approval.id }
-      );
+      // Mark as approved in store
+      approveContent(approval.id, feedback || undefined);
+    } catch (error) {
+      console.error('❌ Error applying approval:', error);
+      // Show error to user but still remove approval
+      alert(`Error applying changes: ${error instanceof Error ? error.message : 'Unknown error'}. The approval will be removed from the queue.`);
+    } finally {
+      // Always remove from pending list, even if there was an error
+      // This prevents approvals from getting stuck in the queue
+      removeApproval(approval.id);
+      console.log(`✅ Removed approval ${approval.id} from pending list`);
     }
-
-    // Mark as approved in store
-    approveContent(approval.id, feedback || undefined);
-
-    // Remove from pending list immediately (no delay to prevent double-approval)
-    removeApproval(approval.id);
-    console.log(`✅ Removed approval ${approval.id} from pending list`);
 
     // Clear selection and feedback
     setSelectedApprovalId(null);
