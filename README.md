@@ -64,6 +64,53 @@ npm run build
 npm run preview
 ```
 
+### Optional: Pandoc Export Service
+
+For professional DOCX export with full corporate Word template support, install the Pandoc backend service:
+
+```bash
+# 1. Install Pandoc (choose your OS)
+
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install pandoc
+
+# macOS
+brew install pandoc
+
+# Windows - Download from: https://pandoc.org/installing.html
+
+# Verify installation
+pandoc --version
+
+# 2. Install backend dependencies
+cd server
+npm install
+
+# 3. Start backend service
+npm start
+# Service runs on http://localhost:3001
+
+# 4. Start frontend (in another terminal)
+cd ..
+npm run dev
+```
+
+**OR use Docker Compose (recommended):**
+
+```bash
+# Start both frontend and backend services
+docker-compose up
+
+# Frontend: http://localhost:3000
+# Backend: http://localhost:3001
+```
+
+**What is Pandoc Export?**
+- Preserves all Word template formatting (headers, footers, logos, styles)
+- No template modification required (no placeholder tags)
+- Professional corporate-compliant output
+- Optional: Use browser-based export if Pandoc service unavailable
+
 ### Git Configuration (for contributors)
 
 ```bash
