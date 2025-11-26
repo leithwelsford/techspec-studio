@@ -24,7 +24,7 @@ import type {
   ProjectTemplateConfig,
 } from '../types';
 import { getEnvApiKey, getEnvModel, getEnvTemperature, getEnvMaxTokens, getEnvEnableStreaming } from '../utils/envConfig';
-import { encrypt } from '../utils/encryption';
+import { assignFigureNumbers } from '../utils/figureNumbering';
 
 interface ProjectState {
   // Current project
@@ -86,6 +86,11 @@ interface ProjectState {
   updateBRSDocument: (updates: Partial<BRSDocument>) => void;
   clearBRSDocument: () => void;
   getBRSDocument: () => BRSDocument | undefined;
+
+  // Actions - DOCX Template
+  setDocxTemplate: (templateBase64: string) => void;
+  clearDocxTemplate: () => void;
+  getDocxTemplate: () => string | undefined;
 
   // Actions - Workspace
   setActiveTab: (tab: WorkspaceTab) => void;
@@ -284,6 +289,8 @@ export const useProjectStore = create<ProjectState>()(
             },
           };
         });
+        // Auto-number figures after specification update
+        get().autoNumberFigures();
       },
 
       updateDocumentMetadata: (metadata) => {
@@ -516,6 +523,37 @@ export const useProjectStore = create<ProjectState>()(
         return get().project?.brsDocument;
       },
 
+      // DOCX Template actions
+      setDocxTemplate: (templateBase64) => {
+        set((state) => {
+          if (!state.project) return state;
+          return {
+            project: {
+              ...state.project,
+              docxTemplate: templateBase64,
+              updatedAt: new Date(),
+            },
+          };
+        });
+      },
+
+      clearDocxTemplate: () => {
+        set((state) => {
+          if (!state.project) return state;
+          return {
+            project: {
+              ...state.project,
+              docxTemplate: undefined,
+              updatedAt: new Date(),
+            },
+          };
+        });
+      },
+
+      getDocxTemplate: () => {
+        return get().project?.docxTemplate;
+      },
+
       // Workspace actions
       setActiveTab: (tab) => set({ activeTab: tab }),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
@@ -726,22 +764,17 @@ export const useProjectStore = create<ProjectState>()(
         set((state) => {
           if (!state.project) return state;
 
-          let counter = 1;
+          // Use the smart auto-numbering system based on document structure
+          const markdown = state.project.specification.markdown;
+          const { blockDiagrams, mermaidDiagrams } = assignFigureNumbers(
+            markdown,
+            state.project.blockDiagrams,
+            [...state.project.sequenceDiagrams, ...state.project.flowDiagrams]
+          );
 
-          const blockDiagrams = state.project.blockDiagrams.map((d) => ({
-            ...d,
-            figureNumber: `4-${counter++}`,
-          }));
-
-          const sequenceDiagrams = state.project.sequenceDiagrams.map((d) => ({
-            ...d,
-            figureNumber: `4-${counter++}`,
-          }));
-
-          const flowDiagrams = state.project.flowDiagrams.map((d) => ({
-            ...d,
-            figureNumber: `4-${counter++}`,
-          }));
+          // Separate mermaid diagrams back into sequence and flow
+          const sequenceDiagrams = mermaidDiagrams.filter(d => d.type === 'sequence');
+          const flowDiagrams = mermaidDiagrams.filter(d => d.type === 'flow' || d.type === 'state' || d.type === 'class');
 
           return {
             project: {

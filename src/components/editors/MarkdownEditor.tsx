@@ -1,10 +1,11 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { aiService } from '../../services/ai';
 import type { AIContext, WorkspaceTab } from '../../types';
 import { remarkLinkResolver } from '../../utils/remarkLinkResolver';
+import { LinkAutocomplete } from '../LinkAutocomplete';
 
 export default function MarkdownEditor() {
   const project = useProjectStore((state) => state.project);
@@ -20,6 +21,14 @@ export default function MarkdownEditor() {
   const [viewMode, setViewMode] = useState<'split' | 'edit' | 'preview'>('split');
   const [generatingSection, setGeneratingSection] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+
+  // Enable autocomplete when textarea is available
+  useEffect(() => {
+    if (textareaRef.current) {
+      setShowAutocomplete(true);
+    }
+  }, [textareaRef.current]);
 
   if (!project) {
     return (
@@ -461,6 +470,16 @@ Use {{fig:diagram-id}} to reference diagrams."
           </div>
         )}
       </div>
+
+      {/* Link Autocomplete */}
+      {showAutocomplete && textareaRef.current && (
+        <LinkAutocomplete
+          textarea={textareaRef.current}
+          figures={getAllFigureReferences()}
+          citations={getAllCitationReferences()}
+          onInsert={(text) => handleChange(text)}
+        />
+      )}
     </div>
   );
 }

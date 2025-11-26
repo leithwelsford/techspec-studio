@@ -8,8 +8,7 @@ import { GenerateDiagramsModal } from './ai/GenerateDiagramsModal';
 import MarkdownEditor from './editors/MarkdownEditor';
 import { BRSUpload } from './BRSUpload';
 import DiagramViewer from './DiagramViewer';
-
-type Tab = 'brs' | 'document' | 'diagrams' | 'references';
+import ExportModal from './ExportModal';
 
 export default function Workspace() {
   const [showAIConfig, setShowAIConfig] = useState(false);
@@ -17,6 +16,7 @@ export default function Workspace() {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showGenerateDiagramsModal, setShowGenerateDiagramsModal] = useState(false);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Use Zustand store for activeTab instead of local state
   const activeTab = useProjectStore((state) => state.activeTab);
@@ -118,6 +118,20 @@ export default function Workspace() {
             </button>
           )}
 
+          {/* Export Button - requires specification or diagrams */}
+          {project && (project.specification.markdown.trim().length > 0 ||
+                       project.blockDiagrams.length > 0 ||
+                       project.sequenceDiagrams.length > 0 ||
+                       project.flowDiagrams.length > 0) && (
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
+              title="Export specification and diagrams"
+            >
+              Export
+            </button>
+          )}
+
           {/* Review Panel Button with Badge */}
           <button
             onClick={() => setShowReviewPanel(true)}
@@ -196,9 +210,9 @@ export default function Workspace() {
               <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6">
                 <nav className="flex space-x-8">
                   <button
-                    onClick={() => setActiveTab('brs')}
+                    onClick={() => setActiveTab('preview')}
                     className={`py-4 px-1 border-b-2 font-medium text-sm relative ${
-                      activeTab === 'brs'
+                      activeTab === 'preview'
                         ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
@@ -221,9 +235,9 @@ export default function Workspace() {
                     Technical Specification
                   </button>
                   <button
-                    onClick={() => setActiveTab('diagrams')}
+                    onClick={() => setActiveTab('block-diagrams')}
                     className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      (activeTab === 'diagrams' || activeTab === 'block-diagrams' || activeTab === 'sequence-diagrams' || activeTab === 'flow-diagrams')
+                      (activeTab === 'block-diagrams' || activeTab === 'sequence-diagrams' || activeTab === 'flow-diagrams')
                         ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
@@ -245,9 +259,9 @@ export default function Workspace() {
 
               {/* Tab Content */}
               <div className="flex-1 overflow-hidden">
-                {activeTab === 'brs' && <BRSUpload />}
+                {activeTab === 'preview' && <BRSUpload />}
                 {activeTab === 'document' && <MarkdownEditor />}
-                {(activeTab === 'diagrams' || activeTab === 'block-diagrams' || activeTab === 'sequence-diagrams' || activeTab === 'flow-diagrams') && <DiagramViewer />}
+                {(activeTab === 'block-diagrams' || activeTab === 'sequence-diagrams' || activeTab === 'flow-diagrams') && <DiagramViewer />}
                 {activeTab === 'references' && (
                   <div className="h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
                     3GPP reference management coming soon...
@@ -290,6 +304,12 @@ export default function Workspace() {
       <ReviewPanel
         isOpen={showReviewPanel}
         onClose={() => setShowReviewPanel(false)}
+      />
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
       />
     </div>
   );

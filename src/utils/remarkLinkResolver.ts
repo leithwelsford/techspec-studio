@@ -5,7 +5,7 @@
  * in markdown preview using react-markdown.
  */
 
-import { visit, SKIP } from 'unist-util-visit';
+import { visit } from 'unist-util-visit';
 import type { Root, Text, Link, Parent, PhrasingContent } from 'mdast';
 import type { FigureReference, CitationReference } from './linkResolver';
 import { LINK_PATTERNS } from './linkResolver';
