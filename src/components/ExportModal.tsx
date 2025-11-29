@@ -409,16 +409,27 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                         />
                         <span className="text-sm text-gray-700 dark:text-gray-300">Embed diagrams as images</span>
                       </label>
-                      {docxTemplateAnalysis && pandocAvailable && (
-                        <label className="flex items-center">
+                      {docxTemplateAnalysis && (
+                        <label className={`flex items-center ${!pandocAvailable ? 'opacity-50' : ''}`}>
                           <input
                             type="checkbox"
                             checked={usePandoc}
                             onChange={(e) => setUsePandoc(e.target.checked)}
+                            disabled={!pandocAvailable}
                             className="mr-2"
                           />
                           <span className="text-sm text-gray-700 dark:text-gray-300">
-                            Use Pandoc (preserves all template formatting)
+                            Use Pandoc (professional output, preserves all template formatting)
+                            {!pandocAvailable && (
+                              <span className="ml-2 text-xs text-red-500">
+                                ⚠️ Backend service not available
+                              </span>
+                            )}
+                            {pandocAvailable && (
+                              <span className="ml-2 text-xs text-green-500">
+                                ✓ Service ready
+                              </span>
+                            )}
                           </span>
                         </label>
                       )}
