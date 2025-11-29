@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>localStorage Inspector - TechSpec Studio</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      margin: 10px 5px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button:hover { background: #45a049; }
+    button.danger { background: #f44336; }
+    button.danger:hover { background: #da190b; }
+    pre {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      max-height: 600px;
+    }
+    .stats {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .stats h2 { margin-top: 0; color: #555; }
+    .stat-item { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 4px; }
+    .stat-label { font-weight: bold; color: #666; }
+    .stat-value { color: #333; }
+    .warning {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 20px 0;
+      color: #856404;
+    }
+  </style>
+</head>
+<body>
+  <h1>💾 localStorage Inspector - TechSpec Studio</h1>
+  <p>Check if your data is still in localStorage (old storage system)</p>
+
+  <div>
+    <button onclick="checkLocalStorage()">📊 Check localStorage</button>
+    <button onclick="clearLocalStorage()" class="danger">🗑️ Clear localStorage</button>
+  </div>
+
+  <div id="warning" class="warning" style="display:none;">
+    <strong>⚠️ Data Found in localStorage!</strong>
+    <p>Your data is still in localStorage. The migration to IndexedDB may not have completed.</p>
+    <p><strong>Recommendation:</strong> Use the "Clear Data" button in the main app, then reload to force a fresh migration.</p>
+  </div>
+
+  <div id="stats" class="stats" style="display:none;">
+    <h2>localStorage Statistics</h2>
+    <div id="statsContent"></div>
+  </div>
+
+  <h2>Data</h2>
+  <pre id="output">Click "Check localStorage" to inspect contents...</pre>
+
+  <script>
+    function checkLocalStorage() {
+      try {
+        const key = 'tech-spec-project';
+        const rawData = localStorage.getItem(key);
+
+        if (!rawData) {
+          document.getElementById('output').textContent = 'No data found in localStorage under key "tech-spec-project"';
+          document.getElementById('stats').style.display = 'none';
+          document.getElementById('warning').style.display = 'none';
+          return;
+        }
+
+        // Show warning
+        document.getElementById('warning').style.display = 'block';
+
+        // Parse the data
+        const data = JSON.parse(rawData);
+        document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+
+        // Calculate stats
+        if (data.state && data.state.project) {
+          const project = data.state.project;
+          const stats = {
+            'Storage Location': '⚠️ localStorage (OLD - should migrate to IndexedDB)',
+            'Specification Length': (project.specification?.markdown?.length || 0).toLocaleString() + ' characters',
+            'Block Diagrams': (project.blockDiagrams?.length || 0) + ' diagrams',
+            'Sequence Diagrams': (project.sequenceDiagrams?.length || 0) + ' diagrams',
+            'Flow Diagrams': (project.flowDiagrams?.length || 0) + ' diagrams',
+            'Total Diagrams': ((project.blockDiagrams?.length || 0) + (project.sequenceDiagrams?.length || 0) + (project.flowDiagrams?.length || 0)) + ' diagrams',
+            'References': (project.references?.length || 0) + ' documents',
+            'BRS Document': project.brsDocument ? 'Loaded (' + (project.brsDocument.markdown?.length || 0).toLocaleString() + ' chars)' : 'Not loaded',
+            'Last Updated': project.updatedAt ? new Date(project.updatedAt).toLocaleString() : 'Unknown',
+            'Version': project.version || 'Unknown',
+            'Storage Size': (rawData.length / 1024 / 1024).toFixed(2) + ' MB'
+          };
+
+          let html = '';
+          for (const [label, value] of Object.entries(stats)) {
+            html += `<div class="stat-item"><span class="stat-label">${label}:</span> <span class="stat-value">${value}</span></div>`;
+          }
+
+          document.getElementById('statsContent').innerHTML = html;
+          document.getElementById('stats').style.display = 'block';
+        }
+      } catch (error) {
+        document.getElementById('output').textContent = 'Error: ' + error.message;
+        document.getElementById('stats').style.display = 'none';
+      }
+    }
+
+    function clearLocalStorage() {
+      if (!confirm('⚠️ WARNING: This will delete data from localStorage!\n\nNote: This may force the app to migrate to IndexedDB on next reload.\n\nAre you sure?')) {
+        return;
+      }
+
+      try {
+        localStorage.removeItem('tech-spec-project');
+        document.getElementById('output').textContent = '✅ localStorage cleared!\n\nReload the main app to see if IndexedDB migration works.';
+        document.getElementById('stats').style.display = 'none';
+        document.getElementById('warning').style.display = 'none';
+        alert('localStorage cleared! Reload the main app.');
+      } catch (error) {
+        document.getElementById('output').textContent = '❌ Error: ' + error.message;
+      }
+    }
+
+    // Auto-check on load
+    window.addEventListener('load', checkLocalStorage);
+  </script>
+</body>
+</html>

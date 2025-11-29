@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Delete Test - TechSpec Studio</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      margin: 10px 5px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button:hover { background: #45a049; }
+    button.danger { background: #f44336; }
+    button.danger:hover { background: #da190b; }
+    .info {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .diagram-list {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    .diagram-item {
+      padding: 10px;
+      margin: 5px 0;
+      background: #f9f9f9;
+      border-radius: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .delete-btn {
+      background: #f44336;
+      color: white;
+      border: none;
+      padding: 5px 15px;
+      cursor: pointer;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    .delete-btn:hover { background: #da190b; }
+  </style>
+</head>
+<body>
+  <h1>🗑️ Delete Persistence Test</h1>
+  <p>Test if diagram deletes are being saved to IndexedDB</p>
+
+  <div class="info">
+    <h2>Instructions:</h2>
+    <ol>
+      <li>Click "Load Current Data" to see all diagrams</li>
+      <li>Click "Delete" next to any diagram</li>
+      <li>Refresh this page (F5)</li>
+      <li>Click "Load Current Data" again</li>
+      <li>Check if the deleted diagram is still gone</li>
+    </ol>
+  </div>
+
+  <button onclick="loadData()">📊 Load Current Data</button>
+  <button onclick="window.location.reload()">🔄 Refresh Page</button>
+
+  <div id="diagramList" class="diagram-list" style="display:none;">
+    <h2>Diagrams in IndexedDB</h2>
+    <div id="diagrams"></div>
+  </div>
+
+  <div id="output" class="info"></div>
+
+  <script>
+    const DB_NAME = 'techspec-studio';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'project-state';
+    const STATE_KEY = 'tech-spec-project';  // IMPORTANT: This is the actual key used!
+
+    let currentData = null;
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+          }
+        };
+      });
+    }
+
+    async function loadData() {
+      try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.get(STATE_KEY);
+
+        request.onsuccess = () => {
+          currentData = request.result;
+          if (!currentData || !currentData.state || !currentData.state.project) {
+            document.getElementById('output').innerHTML = '<p>❌ No project data found</p>';
+            document.getElementById('diagramList').style.display = 'none';
+            return;
+          }
+
+          displayDiagrams(currentData.state.project);
+        };
+
+        request.onerror = () => {
+          document.getElementById('output').innerHTML = '<p>Error: ' + request.error + '</p>';
+        };
+      } catch (error) {
+        document.getElementById('output').innerHTML = '<p>Error: ' + error.message + '</p>';
+      }
+    }
+
+    function displayDiagrams(project) {
+      const blockDiagrams = project.blockDiagrams || [];
+      const sequenceDiagrams = project.sequenceDiagrams || [];
+      const flowDiagrams = project.flowDiagrams || [];
+
+      let html = '<h3>📊 Block Diagrams (' + blockDiagrams.length + ')</h3>';
+      blockDiagrams.forEach(diagram => {
+        html += '<div class="diagram-item">';
+        html += '<span><strong>' + diagram.title + '</strong> (ID: ' + diagram.id + ')</span>';
+        html += '<button class="delete-btn" onclick="deleteDiagram(\'' + diagram.id + '\', \'block\')">Delete</button>';
+        html += '</div>';
+      });
+
+      html += '<h3>🔄 Sequence Diagrams (' + sequenceDiagrams.length + ')</h3>';
+      sequenceDiagrams.forEach(diagram => {
+        html += '<div class="diagram-item">';
+        html += '<span><strong>' + diagram.title + '</strong> (ID: ' + diagram.id + ')</span>';
+        html += '<button class="delete-btn" onclick="deleteDiagram(\'' + diagram.id + '\', \'sequence\')">Delete</button>';
+        html += '</div>';
+      });
+
+      html += '<h3>📈 Flow Diagrams (' + flowDiagrams.length + ')</h3>';
+      flowDiagrams.forEach(diagram => {
+        html += '<div class="diagram-item">';
+        html += '<span><strong>' + diagram.title + '</strong> (ID: ' + diagram.id + ')</span>';
+        html += '<button class="delete-btn" onclick="deleteDiagram(\'' + diagram.id + '\', \'flow\')">Delete</button>';
+        html += '</div>';
+      });
+
+      document.getElementById('diagrams').innerHTML = html;
+      document.getElementById('diagramList').style.display = 'block';
+
+      document.getElementById('output').innerHTML =
+        '<p>✅ <strong>Total diagrams:</strong> ' +
+        (blockDiagrams.length + sequenceDiagrams.length + flowDiagrams.length) + '</p>' +
+        '<p><strong>Last updated:</strong> ' + new Date(project.updatedAt).toLocaleString() + '</p>';
+    }
+
+    async function deleteDiagram(id, type) {
+      if (!confirm('Delete diagram "' + id + '"?\n\nThis will ACTUALLY DELETE IT from IndexedDB!')) {
+        return;
+      }
+
+      try {
+        if (!currentData || !currentData.state || !currentData.state.project) {
+          alert('No data loaded! Click "Load Current Data" first.');
+          return;
+        }
+
+        // Delete from the appropriate array
+        if (type === 'block') {
+          currentData.state.project.blockDiagrams = currentData.state.project.blockDiagrams.filter(d => d.id !== id);
+        } else if (type === 'sequence') {
+          currentData.state.project.sequenceDiagrams = currentData.state.project.sequenceDiagrams.filter(d => d.id !== id);
+        } else if (type === 'flow') {
+          currentData.state.project.flowDiagrams = currentData.state.project.flowDiagrams.filter(d => d.id !== id);
+        }
+
+        // Update timestamp
+        currentData.state.project.updatedAt = new Date().toISOString();
+
+        // Save back to IndexedDB
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.put(currentData, STATE_KEY);
+
+        request.onsuccess = () => {
+          alert('✅ Diagram deleted and saved to IndexedDB!\n\nNow:\n1. Refresh this page (F5)\n2. Click "Load Current Data"\n3. Check if it\'s still gone');
+          loadData(); // Reload to show updated list
+        };
+
+        request.onerror = () => {
+          alert('❌ Error saving to IndexedDB: ' + request.error);
+        };
+
+      } catch (error) {
+        alert('❌ Error: ' + error.message);
+      }
+    }
+
+    // Auto-load on page load
+    window.addEventListener('load', loadData);
+  </script>
+</body>
+</html>

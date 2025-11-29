@@ -31,6 +31,7 @@ export default function Workspace() {
   const toggleDarkMode = useProjectStore((state) => state.toggleDarkMode);
   const pendingApprovals = useProjectStore((state) => state.pendingApprovals);
   const resetStore = useProjectStore((state) => state.resetStore);
+  const docxTemplateAnalysis = useProjectStore((state) => state.docxTemplateAnalysis);
 
   // Show AI config on first load if not configured (but allow dismissal)
   const needsConfig = (!aiConfig?.apiKey || !aiConfig.apiKey.trim()) && !hasDismissedConfig;
@@ -118,19 +119,17 @@ export default function Workspace() {
             </button>
           )}
 
-          {/* Export Button - requires specification or diagrams */}
-          {project && (
-            ((project.specification?.markdown?.trim().length ?? 0) > 0) ||
-            ((project.blockDiagrams?.length ?? 0) > 0) ||
-            ((project.sequenceDiagrams?.length ?? 0) > 0) ||
-            ((project.flowDiagrams?.length ?? 0) > 0)
-          ) ? (
+          {/* Template & Export Button - always visible when project exists */}
+          {project ? (
             <button
               onClick={() => setShowExportModal(true)}
-              className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
-              title="Export specification and diagrams"
+              className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md flex items-center gap-2"
+              title="Upload template and export specification"
             >
-              Export
+              {docxTemplateAnalysis && (
+                <span className="text-green-300">✓</span>
+              )}
+              Template & Export
             </button>
           ) : null}
 

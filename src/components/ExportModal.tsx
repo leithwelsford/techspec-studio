@@ -11,6 +11,8 @@ import {
   downloadSVG,
   downloadPNG,
 } from '../utils/diagramExport';
+import { templateAnalyzer } from '../services/templateAnalyzer';
+import type { DocxTemplateAnalysis } from '../types';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -22,28 +24,32 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const docxTemplate = useProjectStore((state) => state.getDocxTemplate());
   const setDocxTemplate = useProjectStore((state) => state.setDocxTemplate);
   const clearDocxTemplate = useProjectStore((state) => state.clearDocxTemplate);
+  const docxTemplateAnalysis = useProjectStore((state) => state.docxTemplateAnalysis);
+  const setTemplateAnalysis = useProjectStore((state) => state.setTemplateAnalysis);
+  const setMarkdownGuidance = useProjectStore((state) => state.setMarkdownGuidance);
+  const clearTemplateAnalysis = useProjectStore((state) => state.clearTemplateAnalysis);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'template' | 'export'>('template');
 
   const [exporting, setExporting] = useState(false);
-  const [exportType, setExportType] = useState<'docx' | 'diagrams'>('docx');
-  const [useTemplate, setUseTemplate] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'markdown' | 'docx'>('docx');
   const [usePandoc, setUsePandoc] = useState(false);
   const [pandocAvailable, setPandocAvailable] = useState(false);
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Template analysis state
+  const [analyzingTemplate, setAnalyzingTemplate] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
   // DOCX options
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
-  const [author, setAuthor] = useState('');
-  const [company, setCompany] = useState('');
 
   // Check Pandoc availability on mount
   useEffect(() => {
     checkPandocService().then(setPandocAvailable);
   }, []);
-
-  // Diagram export options
-  const [diagramFormat, setDiagramFormat] = useState<'svg' | 'png'>('png');
-  const [selectedDiagrams, setSelectedDiagrams] = useState<string[]>([]);
 
   if (!isOpen || !project) return null;
 
@@ -56,37 +62,55 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
       return;
     }
 
-    try {
-      // Store the File object for Pandoc export
-      setTemplateFile(file);
+    setTemplateFile(file);
+    setAnalysisError(null);
 
-      // Also store as base64 for browser-based export
+    // Auto-analyze on upload
+    try {
+      setAnalyzingTemplate(true);
+      console.log('[Template] Analyzing uploaded template...');
+
+      const analysis = await templateAnalyzer.analyzeTemplate(file);
+      setTemplateAnalysis(analysis);
+
+      const guidance = templateAnalyzer.generateMarkdownGuidance(analysis);
+      setMarkdownGuidance(guidance);
+
+      console.log('[Template] Analysis complete');
+
+      // Store as base64 for browser-based export
       const reader = new FileReader();
       reader.onload = (event) => {
         const base64 = event.target?.result as string;
-        // Remove data URL prefix if present
         const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
         setDocxTemplate(base64Data);
-        setUseTemplate(true);
-        alert('Template uploaded successfully!');
       };
       reader.readAsDataURL(file);
+
     } catch (error) {
-      console.error('Template upload error:', error);
-      alert(`Failed to upload template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('[Template] Analysis failed:', error);
+      setAnalysisError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setAnalyzingTemplate(false);
     }
   };
 
   const handleClearTemplate = () => {
-    if (confirm('Remove uploaded template? You can upload a new one anytime.')) {
-      clearDocxTemplate();
-      setTemplateFile(null);
-      setUseTemplate(false);
-      setUsePandoc(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+    if (!confirm('Clear template? This will remove formatting guidance for AI generation.')) {
+      return;
     }
+
+    clearDocxTemplate();
+    clearTemplateAnalysis();
+    setTemplateFile(null);
+    setAnalysisError(null);
+    setUsePandoc(false);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    console.log('[Template] Cleared');
   };
 
   const handleExportDocx = async () => {
@@ -94,34 +118,28 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
 
     setExporting(true);
     try {
-      const exportOpts: ExportOptions = {
-        ...options,
-        author: author || undefined,
-        company: company || undefined,
-      };
-
+      const exportOpts: ExportOptions = { ...options };
       let blob: Blob;
       const filename = project.specification.title || 'technical-specification';
 
       // Use Pandoc if enabled and template is uploaded
-      if (usePandoc && useTemplate && templateFile) {
+      if (usePandoc && templateFile) {
         if (!pandocAvailable) {
-          throw new Error('Pandoc service is not available. Please start the backend service or uncheck "Use Pandoc".');
+          throw new Error('Pandoc service is not available');
         }
-
-        console.log('[Export] Using Pandoc export...');
+        console.log('[Export] Using Pandoc...');
         blob = await exportWithPandoc(project, templateFile, exportOpts);
         downloadPandocDocx(blob, filename);
 
-      } else if (useTemplate && docxTemplate) {
+      } else if (docxTemplate) {
         // Use browser-based template export
-        console.log('[Export] Using browser-based template export...');
+        console.log('[Export] Using template...');
         blob = await exportWithTemplate(project, docxTemplate, exportOpts);
         downloadTemplateDocx(blob, filename);
 
       } else {
         // Use default export
-        console.log('[Export] Using default export...');
+        console.log('[Export] Using default...');
         blob = await exportToDocx(project, exportOpts);
         downloadDocx(blob, filename);
       }
@@ -129,95 +147,38 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
       alert('Document exported successfully!');
       onClose();
     } catch (error) {
-      console.error('Export error:', error);
+      console.error('[Export] Failed:', error);
       alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setExporting(false);
     }
   };
 
-  const handleExportDiagrams = async () => {
+  const handleExportMarkdown = () => {
     if (!project) return;
 
-    setExporting(true);
-    try {
-      // Determine which diagrams to export
-      const blockDiagsToExport = selectedDiagrams.length > 0
-        ? project.blockDiagrams.filter(d => selectedDiagrams.includes(d.id))
-        : project.blockDiagrams;
+    const markdown = project.specification.markdown;
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${project.specification.title || 'specification'}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 
-      const sequenceDiagsToExport = selectedDiagrams.length > 0
-        ? project.sequenceDiagrams.filter(d => selectedDiagrams.includes(d.id))
-        : project.sequenceDiagrams;
-
-      const flowDiagsToExport = selectedDiagrams.length > 0
-        ? project.flowDiagrams.filter(d => selectedDiagrams.includes(d.id))
-        : project.flowDiagrams;
-
-      // Export block diagrams
-      for (const diagram of blockDiagsToExport) {
-        if (diagramFormat === 'svg') {
-          const svg = await exportBlockDiagramAsSVG(diagram);
-          downloadSVG(svg, diagram.title);
-        } else {
-          const png = await exportBlockDiagramAsPNG(diagram);
-          downloadPNG(png, diagram.title);
-        }
-      }
-
-      // Export sequence diagrams
-      for (const diagram of sequenceDiagsToExport) {
-        if (diagramFormat === 'svg') {
-          const svg = await exportMermaidDiagramAsSVG(diagram);
-          downloadSVG(svg, diagram.title);
-        } else {
-          const png = await exportMermaidDiagramAsPNG(diagram);
-          downloadPNG(png, diagram.title);
-        }
-      }
-
-      // Export flow diagrams
-      for (const diagram of flowDiagsToExport) {
-        if (diagramFormat === 'svg') {
-          const svg = await exportMermaidDiagramAsSVG(diagram);
-          downloadSVG(svg, diagram.title);
-        } else {
-          const png = await exportMermaidDiagramAsPNG(diagram);
-          downloadPNG(png, diagram.title);
-        }
-      }
-
-      const totalExported = blockDiagsToExport.length + sequenceDiagsToExport.length + flowDiagsToExport.length;
-
-      alert(`Exported ${totalExported} diagram(s) successfully!`);
-      onClose();
-    } catch (error) {
-      console.error('Diagram export error:', error);
-      alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const allDiagrams = [
-    ...project.blockDiagrams.map(d => ({ id: d.id, title: d.title, type: 'Block' })),
-    ...project.sequenceDiagrams.map(d => ({ id: d.id, title: d.title, type: 'Sequence' })),
-    ...project.flowDiagrams.map(d => ({ id: d.id, title: d.title, type: 'Flow' })),
-  ];
-
-  const toggleDiagram = (id: string) => {
-    setSelectedDiagrams(prev =>
-      prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]
-    );
+    alert('Markdown exported successfully!');
+    onClose();
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Export Specification</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Template & Export Settings</h2>
             <button
               onClick={onClose}
               className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -229,308 +190,263 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="px-6 py-4">
-          {/* Export Type Selection */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Export Type
-            </label>
-            <div className="flex gap-4">
-              <button
-                onClick={() => setExportType('docx')}
-                className={`flex-1 px-4 py-2 rounded-md border ${
-                  exportType === 'docx'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
-                }`}
-              >
-                DOCX Document
-              </button>
-              <button
-                onClick={() => setExportType('diagrams')}
-                className={`flex-1 px-4 py-2 rounded-md border ${
-                  exportType === 'diagrams'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
-                }`}
-              >
-                Diagrams Only
-              </button>
-            </div>
-          </div>
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+          <nav className="flex -mb-px px-6">
+            <button
+              onClick={() => setActiveTab('template')}
+              className={`py-4 px-4 text-sm font-medium border-b-2 flex items-center gap-2 ${
+                activeTab === 'template'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+              }`}
+            >
+              <span>📄</span>
+              Template Setup
+              {docxTemplateAnalysis && (
+                <span className="text-green-500 dark:text-green-400">✓</span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('export')}
+              className={`py-4 px-4 text-sm font-medium border-b-2 flex items-center gap-2 ${
+                activeTab === 'export'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+              }`}
+            >
+              <span>📤</span>
+              Export Document
+            </button>
+          </nav>
+        </div>
 
-          {/* DOCX Options */}
-          {exportType === 'docx' && (
-            <div className="space-y-4">
-              {/* Template Upload Section */}
-              <div className="border border-gray-300 dark:border-gray-600 rounded-md p-4 bg-gray-50 dark:bg-gray-800">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  DOCX Template (Optional)
-                </label>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                  Upload a .docx template with placeholders like: TITLE, CONTENT, TOC, FIGURES, BIBLIOGRAPHY, AUTHOR, COMPANY, DATE, VERSION (wrapped in double curly braces)
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Template Setup Tab */}
+          {activeTab === 'template' && (
+            <div className="p-6 space-y-6">
+              {/* File Upload Section */}
+              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 bg-gray-50 dark:bg-gray-900">
+                <h3 className="text-base font-medium text-gray-900 dark:text-white mb-2">
+                  📄 Upload DOCX Template
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Upload a Word template to guide AI specification formatting and export styling
                 </p>
 
-                <div className="flex gap-3">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".docx"
-                    onChange={handleTemplateUpload}
-                    className="hidden"
-                    id="template-upload"
-                  />
-                  <label
-                    htmlFor="template-upload"
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md cursor-pointer"
-                  >
-                    {docxTemplate ? 'Replace Template' : 'Upload Template'}
-                  </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".docx"
+                  onChange={handleTemplateUpload}
+                  className="block w-full text-sm text-gray-500 dark:text-gray-400
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-md file:border-0
+                    file:text-sm file:font-medium
+                    file:bg-blue-600 file:text-white
+                    hover:file:bg-blue-700 file:cursor-pointer"
+                />
 
-                  {docxTemplate && (
-                    <>
-                      <button
-                        onClick={handleClearTemplate}
-                        className="px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 bg-white dark:bg-gray-700 border border-red-300 dark:border-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20"
-                      >
-                        Clear Template
-                      </button>
-                      <span className="flex items-center text-sm text-green-600 dark:text-green-400">
-                        <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                        Template loaded
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                {docxTemplate && (
-                  <div className="mt-3 space-y-2">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={useTemplate}
-                        onChange={(e) => setUseTemplate(e.target.checked)}
-                        className="rounded"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Use uploaded template for export</span>
-                    </label>
-
-                    {useTemplate && (
-                      <label className="flex items-center gap-2 ml-6">
-                        <input
-                          type="checkbox"
-                          checked={usePandoc}
-                          onChange={(e) => setUsePandoc(e.target.checked)}
-                          disabled={!pandocAvailable}
-                          className="rounded"
-                        />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">
-                          Use Pandoc (professional output, preserves all template formatting)
-                          {!pandocAvailable && (
-                            <span className="ml-2 text-xs text-red-500 dark:text-red-400">
-                              ⚠️ Backend service not available
-                            </span>
-                          )}
-                          {pandocAvailable && (
-                            <span className="ml-2 text-xs text-green-600 dark:text-green-400">
-                              ✓ Service ready
-                            </span>
-                          )}
-                        </span>
-                      </label>
-                    )}
-
-                    {useTemplate && usePandoc && (
-                      <div className="ml-6 mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
-                        <p className="text-xs text-blue-800 dark:text-blue-300">
-                          <strong>Pandoc Mode:</strong> Your template's headers, footers, logos, and styles will be preserved exactly.
-                          No placeholder tags needed in the template.
-                        </p>
-                      </div>
-                    )}
+                {templateFile && (
+                  <div className="mt-3 text-sm text-gray-700 dark:text-gray-300">
+                    <span className="font-medium">Selected:</span> {templateFile.name}
                   </div>
                 )}
               </div>
 
-              <div>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={options.includeTOC}
-                    onChange={(e) => setOptions({ ...options, includeTOC: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Include Table of Contents</span>
-                </label>
+              {/* Analysis Status */}
+              {analyzingTemplate && (
+                <div className="flex items-center justify-center py-4">
+                  <svg className="animate-spin h-5 w-5 mr-2 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span className="text-blue-600 dark:text-blue-400">Analyzing template...</span>
+                </div>
+              )}
+
+              {/* Analysis Error */}
+              {analysisError && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <p className="text-sm text-red-800 dark:text-red-400">
+                    <strong>Analysis Error:</strong> {analysisError}
+                  </p>
+                </div>
+              )}
+
+              {/* Analysis Results */}
+              {docxTemplateAnalysis && !analyzingTemplate && (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                  <h3 className="font-medium text-green-900 dark:text-green-300 mb-2 flex items-center gap-2">
+                    <span>✓</span> Template Analysis Complete
+                  </h3>
+                  <ul className="text-sm text-green-800 dark:text-green-400 space-y-1">
+                    <li>✓ Styles detected: {docxTemplateAnalysis.styles?.length || 0} heading levels</li>
+                    <li>✓ Formatting guidance generated for AI</li>
+                    <li>✓ Template ready for export</li>
+                  </ul>
+                </div>
+              )}
+
+              {/* Info Box */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <p className="text-sm text-blue-800 dark:text-blue-400">
+                  <strong>💡 How it works:</strong> The template analysis extracts your organization's
+                  style standards and guides the AI to format the specification accordingly. This ensures
+                  consistency with your corporate branding and document standards.
+                </p>
               </div>
 
-              <div>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={options.includeListOfFigures}
-                    onChange={(e) => setOptions({ ...options, includeListOfFigures: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Include List of Figures</span>
-                </label>
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={options.includeBibliography}
-                    onChange={(e) => setOptions({ ...options, includeBibliography: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Include Bibliography</span>
-                </label>
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={options.embedDiagrams}
-                    onChange={(e) => setOptions({ ...options, embedDiagrams: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Embed Diagrams (as PNG images)</span>
-                </label>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Author (optional)
-                </label>
-                <input
-                  type="text"
-                  value={author}
-                  onChange={(e) => setAuthor(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                  placeholder="Your name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Company (optional)
-                </label>
-                <input
-                  type="text"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                  placeholder="Company name"
-                />
-              </div>
+              {/* Actions */}
+              {docxTemplateAnalysis && (
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleClearTemplate}
+                    className="px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 bg-white dark:bg-gray-800 border border-red-300 dark:border-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    Clear Template
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Diagram Export Options */}
-          {exportType === 'diagrams' && (
-            <div className="space-y-4">
+          {/* Export Document Tab */}
+          {activeTab === 'export' && (
+            <div className="p-6 space-y-6">
+              {/* Template Status Banner */}
+              {docxTemplateAnalysis ? (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                  <p className="text-sm text-green-800 dark:text-green-400 flex items-center gap-2">
+                    <span>✓</span>
+                    <span>Template loaded: Export will use your organization's formatting</span>
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-400">
+                    <span>⚠️ No template loaded:</span> Export will use default formatting.{' '}
+                    <button
+                      onClick={() => setActiveTab('template')}
+                      className="underline font-medium hover:no-underline"
+                    >
+                      Upload template
+                    </button>
+                  </p>
+                </div>
+              )}
+
+              {/* Export Format */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Format
+                  Export Format
                 </label>
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setDiagramFormat('svg')}
-                    className={`flex-1 px-4 py-2 rounded-md border ${
-                      diagramFormat === 'svg'
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
-                    }`}
-                  >
-                    SVG (Vector)
-                  </button>
-                  <button
-                    onClick={() => setDiagramFormat('png')}
-                    className={`flex-1 px-4 py-2 rounded-md border ${
-                      diagramFormat === 'png'
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
-                    }`}
-                  >
-                    PNG (Raster)
-                  </button>
+                <div className="space-y-2">
+                  <label className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="format"
+                      value="markdown"
+                      checked={exportFormat === 'markdown'}
+                      onChange={() => setExportFormat('markdown')}
+                      className="mr-3"
+                    />
+                    <div>
+                      <div className="font-medium text-gray-900 dark:text-white">Markdown (.md)</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Plain text format, version control friendly</div>
+                    </div>
+                  </label>
+                  <label className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="format"
+                      value="docx"
+                      checked={exportFormat === 'docx'}
+                      onChange={() => setExportFormat('docx')}
+                      className="mr-3"
+                    />
+                    <div>
+                      <div className="font-medium text-gray-900 dark:text-white">Word Document (.docx)</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Professional format with full styling</div>
+                    </div>
+                  </label>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Select Diagrams ({selectedDiagrams.length} of {allDiagrams.length} selected)
-                </label>
-                <div className="max-h-60 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md">
-                  {allDiagrams.map((diagram) => (
-                    <label key={diagram.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={selectedDiagrams.includes(diagram.id)}
-                        onChange={() => toggleDiagram(diagram.id)}
-                        className="rounded"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">
-                        {diagram.title} <span className="text-gray-500">({diagram.type})</span>
-                      </span>
+              {/* DOCX Export Options */}
+              {exportFormat === 'docx' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Options
                     </label>
-                  ))}
+                    <div className="space-y-2">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={options.includeTOC}
+                          onChange={(e) => setOptions({ ...options, includeTOC: e.target.checked })}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Include Table of Contents</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={options.includeFigureList}
+                          onChange={(e) => setOptions({ ...options, includeFigureList: e.target.checked })}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Include List of Figures</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={options.embedDiagrams}
+                          onChange={(e) => setOptions({ ...options, embedDiagrams: e.target.checked })}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Embed diagrams as images</span>
+                      </label>
+                      {docxTemplateAnalysis && pandocAvailable && (
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={usePandoc}
+                            onChange={(e) => setUsePandoc(e.target.checked)}
+                            className="mr-2"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">
+                            Use Pandoc (preserves all template formatting)
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={() =>
-                    setSelectedDiagrams(
-                      selectedDiagrams.length === allDiagrams.length ? [] : allDiagrams.map(d => d.id)
-                    )
-                  }
-                  className="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  {selectedDiagrams.length === allDiagrams.length ? 'Deselect All' : 'Select All'}
-                </button>
-              </div>
+              )}
+
+              {/* Export Button */}
+              <button
+                onClick={exportFormat === 'markdown' ? handleExportMarkdown : handleExportDocx}
+                disabled={exporting}
+                className="w-full px-6 py-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {exporting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Exporting...
+                  </>
+                ) : (
+                  <>Export {exportFormat === 'markdown' ? 'Markdown' : 'Word Document'}</>
+                )}
+              </button>
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            disabled={exporting}
-            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={exportType === 'docx' ? handleExportDocx : handleExportDiagrams}
-            disabled={exporting || (exportType === 'diagrams' && selectedDiagrams.length === 0)}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {exporting ? (
-              <>
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                <span>Exporting...</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                <span>Export</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
     </div>

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>IndexedDB Inspector - TechSpec Studio</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      margin: 10px 5px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button:hover { background: #45a049; }
+    button.danger { background: #f44336; }
+    button.danger:hover { background: #da190b; }
+    pre {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .stats {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .stats h2 { margin-top: 0; color: #555; }
+    .stat-item { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 4px; }
+    .stat-label { font-weight: bold; color: #666; }
+    .stat-value { color: #333; }
+  </style>
+</head>
+<body>
+  <h1>🔍 IndexedDB Inspector - TechSpec Studio</h1>
+  <p>Inspect and manage your project data stored in IndexedDB</p>
+
+  <div>
+    <button onclick="loadData()">📊 Load Data</button>
+    <button onclick="checkStats()">📈 Show Statistics</button>
+    <button onclick="clearData()" class="danger">🗑️ Clear All Data</button>
+  </div>
+
+  <div id="stats" class="stats" style="display:none;">
+    <h2>Storage Statistics</h2>
+    <div id="statsContent"></div>
+  </div>
+
+  <h2>Data</h2>
+  <pre id="output">Click "Load Data" to inspect IndexedDB contents...</pre>
+
+  <script>
+    const DB_NAME = 'techspec-studio';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'project-state';
+    const STATE_KEY = 'tech-spec-project';  // IMPORTANT: This is the actual key used!
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onerror = () => {
+          console.error('IndexedDB open error:', request.error);
+          reject(request.error);
+        };
+
+        request.onsuccess = () => {
+          console.log('IndexedDB opened successfully');
+          resolve(request.result);
+        };
+
+        request.onupgradeneeded = (event) => {
+          console.log('IndexedDB upgrade needed');
+          const db = event.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            console.log('Creating object store:', STORE_NAME);
+            db.createObjectStore(STORE_NAME);
+          }
+        };
+      });
+    }
+
+    async function loadData() {
+      try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.get(STATE_KEY);
+
+        request.onsuccess = () => {
+          const data = request.result;
+          if (data) {
+            document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+          } else {
+            document.getElementById('output').textContent = 'No data found in IndexedDB';
+          }
+        };
+
+        request.onerror = () => {
+          document.getElementById('output').textContent = 'Error loading data: ' + request.error;
+        };
+      } catch (error) {
+        document.getElementById('output').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    async function checkStats() {
+      try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.get(STATE_KEY);
+
+        request.onsuccess = () => {
+          const data = request.result;
+          if (!data || !data.state || !data.state.project) {
+            document.getElementById('statsContent').innerHTML = '<p>No project data found</p>';
+            document.getElementById('stats').style.display = 'block';
+            return;
+          }
+
+          const project = data.state.project;
+          const stats = {
+            'Specification Length': (project.specification?.markdown?.length || 0).toLocaleString() + ' characters',
+            'Block Diagrams': (project.blockDiagrams?.length || 0) + ' diagrams',
+            'Sequence Diagrams': (project.sequenceDiagrams?.length || 0) + ' diagrams',
+            'Flow Diagrams': (project.flowDiagrams?.length || 0) + ' diagrams',
+            'Total Diagrams': ((project.blockDiagrams?.length || 0) + (project.sequenceDiagrams?.length || 0) + (project.flowDiagrams?.length || 0)) + ' diagrams',
+            'References': (project.references?.length || 0) + ' documents',
+            'BRS Document': project.brsDocument ? 'Loaded (' + (project.brsDocument.markdown?.length || 0).toLocaleString() + ' chars)' : 'Not loaded',
+            'Last Updated': project.updatedAt ? new Date(project.updatedAt).toLocaleString() : 'Unknown',
+            'Version': project.version || 'Unknown',
+            'Storage Size': (JSON.stringify(data).length / 1024 / 1024).toFixed(2) + ' MB'
+          };
+
+          let html = '';
+          for (const [label, value] of Object.entries(stats)) {
+            html += `<div class="stat-item"><span class="stat-label">${label}:</span> <span class="stat-value">${value}</span></div>`;
+          }
+
+          document.getElementById('statsContent').innerHTML = html;
+          document.getElementById('stats').style.display = 'block';
+        };
+
+        request.onerror = () => {
+          document.getElementById('statsContent').innerHTML = '<p>Error loading stats: ' + request.error + '</p>';
+          document.getElementById('stats').style.display = 'block';
+        };
+      } catch (error) {
+        document.getElementById('statsContent').innerHTML = '<p>Error: ' + error.message + '</p>';
+        document.getElementById('stats').style.display = 'block';
+      }
+    }
+
+    async function clearData() {
+      if (!confirm('⚠️ WARNING: This will delete ALL data from IndexedDB!\n\nAre you sure?')) {
+        return;
+      }
+
+      try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.clear();
+
+        request.onsuccess = () => {
+          document.getElementById('output').textContent = '✅ All data cleared successfully!';
+          document.getElementById('stats').style.display = 'none';
+          alert('Data cleared! Reload the main app to see changes.');
+        };
+
+        request.onerror = () => {
+          document.getElementById('output').textContent = '❌ Error clearing data: ' + request.error;
+        };
+      } catch (error) {
+        document.getElementById('output').textContent = '❌ Error: ' + error.message;
+      }
+    }
+
+    // Auto-load on page load
+    window.addEventListener('load', () => {
+      checkStats();
+    });
+  </script>
+</body>
+</html>
