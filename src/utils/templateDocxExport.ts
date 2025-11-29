@@ -274,13 +274,14 @@ export async function exportWithTemplate(
     // Update document.xml in zip
     zip.file('word/document.xml', updatedXml);
 
-    // Generate blob
-    const blob = zip.generate({
+    // Generate blob using correct PizZip API
+    const blob = await zip.generateAsync({
       type: 'blob',
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      compression: 'DEFLATE',
     });
 
-    return blob as Blob;
+    return blob;
   } catch (error) {
     console.error('Template export error:', error);
     throw new Error(`Failed to export with template: ${error instanceof Error ? error.message : 'Unknown error'}`);
