@@ -274,14 +274,22 @@ export async function exportWithTemplate(
     // Update document.xml in zip
     zip.file('word/document.xml', updatedXml);
 
-    // Generate blob using correct PizZip API
-    const blob = await zip.generateAsync({
-      type: 'blob',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    // Generate binary string using PizZip
+    const content = zip.generate({
+      type: 'base64',
       compression: 'DEFLATE',
     });
 
-    return blob;
+    // Convert base64 to blob
+    const binary = atob(content);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    return new Blob([bytes], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
   } catch (error) {
     console.error('Template export error:', error);
     throw new Error(`Failed to export with template: ${error instanceof Error ? error.message : 'Unknown error'}`);
