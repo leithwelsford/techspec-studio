@@ -36,6 +36,19 @@ declare module 'zustand' {
   }
 }
 
+/**
+ * Extract only serializable state data (exclude functions)
+ */
+const getSerializableState = (state: any): any => {
+  const serializable: any = {};
+  for (const key in state) {
+    if (typeof state[key] !== 'function') {
+      serializable[key] = state[key];
+    }
+  }
+  return serializable;
+};
+
 const persistImpl: PersistImpl = (storeInitializer, options) => {
   return (set, get, store) => {
     const { name, version = 1, migrate, onRehydrateStorage } = options;
@@ -58,7 +71,9 @@ const persistImpl: PersistImpl = (storeInitializer, options) => {
       saveTimeout = setTimeout(async () => {
         try {
           const currentState = get();
-          await setState(currentState, version);
+          // Extract only serializable data (exclude functions)
+          const serializableState = getSerializableState(currentState);
+          await setState(serializableState, version);
         } catch (error) {
           console.error('❌ Failed to persist state to IndexedDB:', error);
         }

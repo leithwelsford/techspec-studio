@@ -119,10 +119,12 @@ export default function Workspace() {
           )}
 
           {/* Export Button - requires specification or diagrams */}
-          {project && (project.specification.markdown.trim().length > 0 ||
-                       project.blockDiagrams.length > 0 ||
-                       project.sequenceDiagrams.length > 0 ||
-                       project.flowDiagrams.length > 0) && (
+          {project && (
+            ((project.specification?.markdown?.trim().length ?? 0) > 0) ||
+            ((project.blockDiagrams?.length ?? 0) > 0) ||
+            ((project.sequenceDiagrams?.length ?? 0) > 0) ||
+            ((project.flowDiagrams?.length ?? 0) > 0)
+          ) ? (
             <button
               onClick={() => setShowExportModal(true)}
               className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
@@ -130,7 +132,7 @@ export default function Workspace() {
             >
               Export
             </button>
-          )}
+          ) : null}
 
           {/* Review Panel Button with Badge */}
           <button
