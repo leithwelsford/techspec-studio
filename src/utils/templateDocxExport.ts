@@ -203,9 +203,16 @@ export async function exportWithTemplate(
   options: ExportOptions
 ): Promise<Blob> {
   try {
+    console.log('[Template Export] Starting export...');
+    console.log('[Template Export] Template base64 length:', templateBase64?.length);
+    console.log('[Template Export] Project:', project?.name);
+
     // Decode template from base64
     const templateData = atob(templateBase64);
+    console.log('[Template Export] Decoded template data length:', templateData.length);
+
     const zip = new PizZip(templateData);
+    console.log('[Template Export] PizZip created');
 
     // Get document.xml
     const documentXml = zip.file('word/document.xml')?.asText();
@@ -269,16 +276,21 @@ export async function exportWithTemplate(
     }
 
     // Replace placeholders in document XML
+    console.log('[Template Export] Replacing placeholders...');
     const updatedXml = replacePlaceholders(documentXml, replacements);
+    console.log('[Template Export] Updated XML length:', updatedXml.length);
 
     // Update document.xml in zip
     zip.file('word/document.xml', updatedXml);
+    console.log('[Template Export] Updated document.xml in zip');
 
     // Generate binary string using PizZip
+    console.log('[Template Export] Generating DOCX...');
     const content = zip.generate({
       type: 'base64',
       compression: 'DEFLATE',
     });
+    console.log('[Template Export] Generated base64 length:', content.length);
 
     // Convert base64 to blob
     const binary = atob(content);
@@ -287,6 +299,7 @@ export async function exportWithTemplate(
       bytes[i] = binary.charCodeAt(i);
     }
 
+    console.log('[Template Export] Blob created, size:', bytes.length);
     return new Blob([bytes], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     });
