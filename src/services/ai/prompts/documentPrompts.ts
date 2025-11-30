@@ -59,8 +59,16 @@ ${context?.availableReferences && context.availableReferences.length > 0
 
 ${context?.userInstructions ? `Additional Instructions:\n${context.userInstructions}\n` : ''}
 
+CRITICAL FORMATTING RULES:
+- DO NOT include title, subtitle, author, date, or version in the markdown
+- DO NOT create a "Title Page" or "Document Control" section
+- START DIRECTLY with the first content section
+- Use # (single hash) for main sections (e.g., "# 1. Scope")
+- Use ## (double hash) for subsections (e.g., "## 1.1 Overview")
+- Use ### (triple hash) for sub-subsections (e.g., "### 1.1.1 Purpose")
+
 For each section:
-1. Start with a clear section heading (use ## for main sections, ### for subsections)
+1. Start with a clear section heading using proper markdown hierarchy
 2. Provide a brief introduction to the section's purpose
 3. Include detailed technical content with:
    - Definitions and terminology
@@ -75,9 +83,11 @@ For each section:
 7. Include examples or use cases where appropriate
 
 Output Format:
-- Clean markdown with proper heading hierarchy
+- Clean markdown starting with # for top-level sections
+- Proper heading hierarchy (# → ## → ###)
 - Well-organized with clear logical flow
 - Technical accuracy is paramount
+- NO title page elements (handled separately by export system)
 - Professional tone suitable for ${audience}
 - Include TODO comments for diagrams that should be created
 
@@ -479,13 +489,13 @@ Based on BRS Analysis:
 - Key Standards: ${brsAnalysis.standards?.map((s: any) => s.id).join(', ') || 'None'}
 
 Section Requirements:
-1. **Section Heading**: ## 1 Scope
+1. **Section Heading**: # 1. Scope
 2. **Subsections**:
-   ### 1.1 Purpose and Overview
+   ## 1.1 Purpose and Overview
    - State the purpose of this specification
    - Brief overview of what the specification covers
 
-   ### 1.2 Document Structure
+   ## 1.2 Document Structure
    - Brief description of how the document is organized
    - Reference the major sections (2-8)
 
@@ -520,14 +530,14 @@ ${existingRefs.length > 0
   : ''}
 
 Section Structure:
-## 2 References
+# 2. References
 
-### 2.1 Normative References
+## 2.1 Normative References
 List standards that are REQUIRED for implementation. Format:
 - **[X]** 3GPP TS XX.XXX: "Title"
   Brief description of relevance to this specification.
 
-### 2.2 Informative References
+## 2.2 Informative References
 List standards that are HELPFUL but not required. Format:
 - **[X]** IETF RFC XXXX: "Title"
   Brief description of how this reference provides context.
@@ -560,18 +570,18 @@ BRS Context (extract relevant terms):
 ${brsMarkdown.substring(0, 3000)}...
 
 Section Structure:
-## 3 Definitions, Symbols, and Abbreviations
+# 3. Definitions, Symbols, and Abbreviations
 
-### 3.1 Definitions
+## 3.1 Definitions
 Define key terms used in this specification. Format:
 - **Term**: Definition
   (Include any clarifications or examples)
 
-### 3.2 Symbols
+## 3.2 Symbols
 Mathematical symbols or notation (if applicable). Format:
 - **Symbol** - Description
 
-### 3.3 Abbreviations
+## 3.3 Abbreviations
 Alphabetically sorted list. Format:
 | Abbreviation | Full Form |
 |--------------|-----------|
@@ -614,28 +624,28 @@ ${context?.availableDiagrams && context.availableDiagrams.length > 0
   : ''}
 
 Section Structure:
-## 4 Architecture
+# 4. Architecture
 
-### 4.1 Overview
+## 4.1 Overview
 - High-level architecture description
 - Key architectural principles
 - **Suggest block diagram**: {{fig:architecture-overview}} <!-- TODO: High-level system architecture -->
 
-### 4.2 Functional Elements
+## 4.2 Functional Elements
 For each component (PCRF, PCEF, TDF, etc.):
-#### 4.2.X Component Name
+### 4.2.X Component Name
 - **Function**: What it does
 - **Responsibilities**: Key responsibilities
 - **Interfaces**: Reference points to other elements
 - **Standards Compliance**: Relevant 3GPP specs
 
-### 4.3 Reference Points and Interfaces
+## 4.3 Reference Points and Interfaces
 Table of interfaces:
 | Interface | Between | Protocol | Reference |
 |-----------|---------|----------|-----------|
 | Gx | PCEF - PCRF | Diameter | TS 29.212 |
 
-### 4.4 Deployment Architecture
+## 4.4 Deployment Architecture
 - Typical deployment scenarios
 - Scalability considerations
 - Redundancy and high availability
@@ -683,39 +693,39 @@ ${JSON.stringify({
 }, null, 2)}
 
 Section Structure:
-## 3 Functional Specification
+# 3. Functional Specification
 
-### 3.1 Policy Control
+## 3.1 Policy Control
 - Transform BRS policy requirements into technical specifications
 - Use normative language (SHALL/MUST/SHOULD/MAY)
 - Include specific parameters (QCI, ARP, MBR, GBR, etc.)
 
-### 3.2 Session Management
+## 3.2 Session Management
 - Session establishment requirements
 - Session lifecycle management
 - Session failover and recovery
 - **For any call flows or procedures**: Use diagram placeholders like {{fig:mobile-session-establishment}} <!-- TODO: Mobile session establishment sequence -->
 - **DO NOT create text-based ASCII diagrams** - use {{fig:...}} placeholders instead
 
-### 3.3 Traffic Management
+## 3.3 Traffic Management
 - Traffic classification
 - QoS enforcement
 - Traffic shaping and policing
 - **For traffic flow diagrams**: Use {{fig:traffic-classification-flow}} <!-- TODO: Traffic classification flowchart -->
 
-### 3.4 Performance Requirements
+## 3.4 Performance Requirements
 - Throughput specifications
 - Latency requirements
 - Capacity requirements
 - Scalability targets
 
-### 3.5 Availability and Reliability
+## 3.5 Availability and Reliability
 - Uptime requirements (e.g., 99.999%)
 - Redundancy requirements
 - Failover procedures
 - **For failover sequences**: Use {{fig:failover-procedure}} <!-- TODO: Failover procedure sequence -->
 
-### 3.6 Security Requirements
+## 3.6 Security Requirements
 - Authentication mechanisms
 - Encryption protocols
 - Access control
@@ -755,17 +765,17 @@ Procedures from BRS:
 ${JSON.stringify(brsAnalysis.procedures || [], null, 2)}
 
 Section Structure:
-## 6 Procedures
+# 6. Procedures
 
 For each procedure (Session Establishment, Policy Update, Handover, etc.):
-### 6.X Procedure Name
+## 6.X Procedure Name
 
-#### 6.X.1 Overview
+### 6.X.1 Overview
 - Brief description of the procedure
 - When it is triggered
 - Expected outcomes
 
-#### 6.X.2 Message Flow
+### 6.X.2 Message Flow
 - Step-by-step message exchange
 - **Suggest sequence diagram**: {{fig:procedure-name-flow}} <!-- TODO: Sequence diagram showing message flow -->
 - Use numbered steps with participants clearly identified
@@ -779,12 +789,12 @@ Example format:
 6. PCEF establishes bearer with specified QoS
 7. Session is established
 
-#### 6.X.3 Information Elements
+### 6.X.3 Information Elements
 - Key parameters exchanged
 - Message formats (table format)
 - Mandatory vs. optional fields
 
-#### 6.X.4 Error Handling
+### 6.X.4 Error Handling
 - Possible failure scenarios
 - Error recovery procedures
 - Timeout handling
@@ -815,26 +825,26 @@ Context from BRS:
 - Requirements: Policy parameters (QCI, ARP, MBR, GBR)
 
 Section Structure:
-## 7 Information Elements
+# 7. Information Elements
 
-### 7.1 Overview
+## 7.1 Overview
 - Brief introduction to information elements
 - How they are used in the system
 
-### 7.2 Policy Information Elements
+## 7.2 Policy Information Elements
 Table format:
 | IE Name | Type | Description | Mandatory | Reference |
 |---------|------|-------------|-----------|-----------|
 | QCI | Integer (1-9) | QoS Class Identifier | M | TS 23.203 |
 | ARP | Struct | Allocation/Retention Priority | M | TS 29.212 |
 
-### 7.3 Session Information Elements
+## 7.3 Session Information Elements
 Table of session-related parameters
 
-### 7.4 Subscriber Profile Information
+## 7.4 Subscriber Profile Information
 Table of subscriber attributes
 
-### 7.5 Encoding Rules
+## 7.5 Encoding Rules
 - Data type specifications
 - Encoding format (if applicable)
 - Value ranges and constraints
@@ -865,14 +875,14 @@ Context from BRS:
 - Interfaces: ${brsAnalysis.interfaces?.map((i: any) => i.name).join(', ') || 'Not specified'}
 
 Section Structure:
-## 8 Error Handling
+# 8. Error Handling
 
-### 8.1 General Error Handling Principles
+## 8.1 General Error Handling Principles
 - Error detection mechanisms
 - Error reporting procedures
 - Recovery strategies
 
-### 8.2 Interface Errors
+## 8.2 Interface Errors
 For each interface (Gx, Rx, S5/S8, AAA):
 #### 8.2.X Interface Name Errors
 - Connection failures
@@ -880,19 +890,19 @@ For each interface (Gx, Rx, S5/S8, AAA):
 - Timeout handling
 - Protocol errors
 
-### 8.3 System Errors
+## 8.3 System Errors
 - Component failures
 - Resource exhaustion
 - Configuration errors
 - State inconsistencies
 
-### 8.4 Error Codes and Messages
+## 8.4 Error Codes and Messages
 Table format:
 | Error Code | Description | Cause | Recovery Action |
 |------------|-------------|-------|-----------------|
 | ERR-GX-001 | PCRF unreachable | Network failure | Use cached policy, retry connection |
 
-### 8.5 Logging and Monitoring
+## 8.5 Logging and Monitoring
 - Error logging requirements
 - Alarm generation
 - Monitoring and diagnostics
@@ -928,23 +938,23 @@ Context:
 - Service Type: ${brsAnalysis.serviceType || '5G telecommunications service'}
 
 Section Structure:
-## 2 Service Overview
+# 2. Service Overview
 
-### 2.1 Service Description
+## 2.1 Service Description
 Brief overview of what the service provides and its primary purpose.
 (Summarize from BRS Section 1 - make it concise, 2-3 paragraphs)
 
-### 2.2 Objectives
+## 2.2 Objectives
 - List the main objectives of the service
 - Focus on business and technical goals
 - Include commercialization goals
 
-### 2.3 Target Customer
+## 2.3 Target Customer
 - Describe the target customer segment
 - Enterprise vs consumer
 - Use cases and scenarios
 
-### 2.4 Architecture Context
+## 2.4 Architecture Context
 High-level architecture context:
 - **Access:** What access technologies (5G NR, Fixed, etc.)
 - **Core:** What core network elements (EPC, IMS, etc.)
@@ -977,7 +987,7 @@ Context from BRS:
 - Security requirements: ${brsAnalysis.security || 'Extract from BRS'}
 
 Section Structure:
-## 5 Non-Functional Requirements
+# 5. Non-Functional Requirements
 
 Present in table format:
 
@@ -1022,9 +1032,9 @@ export function buildOSSBSSPrompt(
   const basePrompt = `Generate Section 6 (OSS/BSS and Service Management) for a 3GPP-style technical specification.
 
 Section Structure:
-## 6 OSS/BSS and Service Management
+# 6. OSS/BSS and Service Management
 
-### 6.1 Provisioning & Identity Correlation (Fixed + Mobile)
+## 6.1 Provisioning & Identity Correlation (Fixed + Mobile)
 - Service activation workflow
 - Customer identity management
 - Correlation between fixed and mobile identities (if applicable)
@@ -1033,7 +1043,7 @@ Section Structure:
 - Policy profile provisioning (PCRF/SPR)
 - Subscriber data management
 
-### 6.2 Assurance & Reporting (Fixed + Mobile)
+## 6.2 Assurance & Reporting (Fixed + Mobile)
 - Service monitoring and KPIs
 - Performance measurement
 - Fault management
@@ -1071,16 +1081,16 @@ Context from BRS:
 - SLA commitments: ${brsAnalysis.sla || 'Extract from BRS'}
 
 Section Structure:
-## 7 SLA Summary
+# 7. SLA Summary
 
-### 7.1 Measurement & Reporting
+## 7.1 Measurement & Reporting
 
-#### 7.1.1 Measurement Point
+### 7.1.1 Measurement Point
 - Define where SLA measurements are taken (e.g., SGi at P-GW/TDF)
 - Specify measurement methodology
 - Measurement window (e.g., 24-hour rolling average)
 
-#### 7.1.2 SLA Commitments by Variant
+### 7.1.2 SLA Commitments by Variant
 Table format:
 
 | Service Variant | Speed | SLA Target | Measurement Criteria |
@@ -1090,13 +1100,13 @@ Table format:
 | Backup | As subscribed | Failover only | N/A during primary operation |
 | On-the-Move | 10/20 Mbps | Conditional | Within NR coverage only |
 
-#### 7.1.3 Reporting
+### 7.1.3 Reporting
 - Reporting frequency (daily, weekly, monthly)
 - Reporting format and delivery method
 - SLA breach notification procedures
 - Remediation and credits
 
-### 7.2 In-Scope Determination Profiles (if applicable)
+## 7.2 In-Scope Determination Profiles (if applicable)
 For services with conditional SLAs (e.g., On-the-Move with NR detection):
 - Define in-scope conditions (e.g., NR coverage, specific cell IDs)
 - Out-of-scope conditions (no coverage, planned maintenance)
@@ -1124,7 +1134,7 @@ export function buildOpenItemsPrompt(
   const basePrompt = `Generate Section 8 (Open Items) for a 3GPP-style technical specification.
 
 Section Structure:
-## 8 Open Items
+# 8. Open Items
 
 List any pending decisions, unresolved technical questions, or items requiring further clarification.
 
@@ -1170,9 +1180,9 @@ Context:
 - Standards: ${standards.map(s => s.name || s).join(', ')}
 
 Section Structure:
-## 9 Appendices
+# 9. Appendices
 
-### 9.1 Abbreviations
+## 9.1 Abbreviations
 Two-column table format, alphabetically sorted:
 
 | Term | Definition |
@@ -1190,7 +1200,7 @@ Guidelines for abbreviations:
 - Include vendor-specific terms if applicable
 - Include business terms (SLA, KPI, BSS, OSS, etc.)
 
-### 9.2 References
+## 9.2 References
 List of informative references (normative references already in earlier section):
 
 **3GPP Specifications:**
@@ -1206,7 +1216,7 @@ List of informative references (normative references already in earlier section)
 **Operator Internal:**
 - (Add operator-specific references if applicable)
 
-### 9.3 Design Rationale (optional)
+## 9.3 Design Rationale (optional)
 Narrative explaining key design decisions made in this specification.
 
 For example:
@@ -1215,7 +1225,7 @@ For example:
 - Design trade-offs and alternatives considered
 - Operational implications of chosen approach
 
-### 9.4 Other (as needed)
+## 9.4 Other (as needed)
 Additional appendices as relevant:
 - Test procedures
 - Configuration examples

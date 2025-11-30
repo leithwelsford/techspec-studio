@@ -122,13 +122,31 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
       let blob: Blob;
       const filename = project.specification.title || 'technical-specification';
 
-      // Use Pandoc if enabled and template is uploaded
-      if (usePandoc && templateFile) {
+      // Convert base64 template to File object if using Pandoc and no file uploaded this session
+      let templateFileForPandoc: File | null = templateFile;
+      if (usePandoc && !templateFile && docxTemplate) {
+        console.log('[Export] Converting stored template to File for Pandoc...');
+        const binary = atob(docxTemplate);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const templateBlob = new Blob([bytes], {
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        });
+        templateFileForPandoc = new File([templateBlob], 'template.docx', {
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        });
+        console.log('[Export] Template File created, size:', templateFileForPandoc.size);
+      }
+
+      // Use Pandoc if enabled and template is available (uploaded or from store)
+      if (usePandoc && templateFileForPandoc) {
         if (!pandocAvailable) {
           throw new Error('Pandoc service is not available');
         }
         console.log('[Export] Using Pandoc...');
-        blob = await exportWithPandoc(project, templateFile, exportOpts);
+        blob = await exportWithPandoc(project, templateFileForPandoc, exportOpts);
         downloadPandocDocx(blob, filename);
 
       } else if (docxTemplate) {

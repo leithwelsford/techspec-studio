@@ -33,6 +33,7 @@ export interface PromptBuilderContext {
   };
   userGuidance?: string;
   availableDiagrams?: Array<{ id: string; title: string; type: string }>;
+  markdownGuidance?: import('../../../types').MarkdownGenerationGuidance | null;
 }
 
 /**
@@ -216,6 +217,9 @@ function buildGenericSectionPrompt(
     ? `\n\n### Previously Generated Sections:\n\n${context.previousSections.map(s => `**${s.title}**\n${s.content.substring(0, 500)}...\n`).join('\n')}`
     : '';
 
+  // Include template-specific markdown formatting if available
+  const formattingInstructions = buildTemplateFormattingInstructions(context.markdownGuidance || null);
+
   return `Generate section "${section.number} ${section.title}" for a technical specification document.
 
 **Template**: ${context.template.name}
@@ -246,6 +250,8 @@ ${context.userGuidance ? `\n**Additional User Guidance**:\n${context.userGuidanc
 - Use complete, production-ready content (no placeholders or "TODO" markers)
 
 ${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
+
+${formattingInstructions}
 
 Generate the complete section now in markdown format:`;
 }
@@ -454,4 +460,104 @@ function buildGenericVerificationPrompt(section: TemplateSectionDefinition, cont
 
 function buildGenericAppendicesPrompt(section: TemplateSectionDefinition, context: PromptBuilderContext): string {
   return buildGenericSectionPrompt(section, context);
+}
+
+// ========== Template-Aware Markdown Formatting ==========
+
+/**
+ * Build template-specific markdown formatting instructions
+ * Uses MarkdownGenerationGuidance from template analysis
+ */
+export function buildTemplateFormattingInstructions(
+  guidance: import('../../../types').MarkdownGenerationGuidance | null
+): string {
+  if (!guidance) {
+    // No template guidance available, return minimal instructions
+    return `
+**Markdown Formatting Guidelines**:
+- Use ATX-style headings (# syntax)
+- Include blank lines before and after headings, paragraphs, lists
+- Use standard markdown tables
+- Use fenced code blocks with language hints (\`\`\`typescript)
+`;
+  }
+
+  return `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 TEMPLATE-SPECIFIC MARKDOWN FORMATTING REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The user has uploaded a corporate Word template. To ensure optimal compatibility
+and formatting when exported via Pandoc, follow these requirements EXACTLY:
+
+## Heading Levels
+
+- Use heading levels 1 through ${guidance.headingLevels.maxDepth} only (# through ${'#'.repeat(guidance.headingLevels.maxDepth)})
+- ${guidance.headingLevels.numberingStyle}
+- Leave blank line before and after each heading
+
+## Figure References
+
+- Format: ${guidance.figureFormat.syntax}
+- Numbering pattern: ${guidance.figureFormat.numberingPattern}
+- Caption placement: ${guidance.figureFormat.captionPlacement} the image
+- Example: \`![Figure 4-1: Service Architecture](diagrams/arch.png)\`
+
+## Table References
+
+- Format: Standard markdown tables with caption ${guidance.tableFormat.captionPlacement}
+- Numbering pattern: ${guidance.tableFormat.numberingPattern}
+- Example:
+  \`\`\`
+  Table 4-1: Performance Requirements
+
+  | Metric | Target | Unit |
+  |--------|--------|------|
+  | Latency | < 10 | ms |
+  \`\`\`
+
+## Lists
+
+- Bullet lists: Use "${guidance.listFormat.bulletChar}" character
+- Ordered lists: Use "${guidance.listFormat.orderedStyle}" format
+- Maintain consistent indentation (2 spaces per level)
+
+## Code Blocks
+
+${guidance.codeBlockStyle.fenced
+  ? `- Use fenced code blocks with triple backticks: \`\`\`
+${guidance.codeBlockStyle.languageHints ? '- Include language hint: ```typescript' : '- No language hints needed'}`
+  : '- Use indented code blocks (4 spaces)'
+}
+
+## Emphasis
+
+- Bold: ${guidance.emphasis.bold}text${guidance.emphasis.bold}
+- Italic: ${guidance.emphasis.italic}text${guidance.emphasis.italic}
+
+## Section Breaks
+
+${guidance.sectionBreaks.usePageBreaks
+  ? `- Use "${guidance.sectionBreaks.pattern}" for page breaks between major sections`
+  : '- Do not use explicit page breaks (Pandoc will handle based on template)'
+}
+
+## CRITICAL: Pandoc Markdown Best Practices
+
+1. **Headings**: Always use ATX-style headings (# syntax), never Setext-style (underlines)
+2. **Blank Lines**: Include blank line before and after:
+   - Headings
+   - Paragraphs
+   - Lists
+   - Code blocks
+   - Tables
+3. **Consistent Spacing**: Use single blank line to separate elements (not 2+)
+4. **No HTML**: Avoid inline HTML - use pure markdown syntax only
+5. **Link Format**: Use markdown links \`[text](url)\` not HTML \`<a href="">\`
+6. **Image Attributes**: Use simple \`![alt](path)\` format - Pandoc will apply template styling
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Following these guidelines will ensure your markdown exports perfectly to the user's Word template.
+`;
 }

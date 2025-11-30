@@ -91,19 +91,39 @@ export async function exportWithPandoc(
   }));
 
   // Resolve all {{fig:...}} and {{ref:...}} links in markdown
-  const resolvedMarkdown = resolveAllLinks(
+  let resolvedMarkdown = resolveAllLinks(
     project.specification.markdown,
     allFigures,
     citations
   );
 
-  console.log('[Pandoc Export] Markdown resolved:', resolvedMarkdown.length, 'characters');
+  // Strip manual numbering from headings (e.g., "# 1. Introduction" → "# Introduction")
+  // This prevents double-numbering when Pandoc's --number-sections is enabled
+  resolvedMarkdown = resolvedMarkdown.replace(/^(#{1,6})\s+\d+(\.\d+)*\.?\s+/gm, '$1 ');
+
+  // Add YAML front matter for title page metadata
+  // This ensures title, subtitle, version, etc. are handled as metadata, not content
+  const yamlFrontMatter = `---
+title: "${project.specification.title || 'Technical Specification'}"
+${project.specification.subtitle ? `subtitle: "${project.specification.subtitle}"` : ''}
+author: "${options.author || project.specification.author || 'TechSpec Studio'}"
+date: "${new Date().toISOString().split('T')[0]}"
+version: "${project.specification.metadata?.version || project.version}"
+abstract: |
+  ${project.specification.metadata?.abstract || 'This document provides a comprehensive technical specification.'}
+---
+
+`;
+
+  const markdownWithMetadata = yamlFrontMatter + resolvedMarkdown;
+
+  console.log('[Pandoc Export] Markdown resolved:', markdownWithMetadata.length, 'characters');
 
   // Create form data for multipart upload
   const formData = new FormData();
 
-  // Add markdown file
-  const markdownBlob = new Blob([resolvedMarkdown], { type: 'text/markdown' });
+  // Add markdown file with YAML front matter
+  const markdownBlob = new Blob([markdownWithMetadata], { type: 'text/markdown' });
   formData.append('markdown', markdownBlob, 'input.md');
 
   // Add template file

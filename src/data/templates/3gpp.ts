@@ -125,10 +125,14 @@ TONE & STYLE:
 - Use active voice for requirements ("The operator SHALL configure...")
 
 STRUCTURE:
-- Each major section starts with ### (h3)
-- Subsections use #### (h4) and ##### (h5)
+- DO NOT include title, subtitle, author, date, or version in the markdown content
+- START DIRECTLY with the first content section (e.g., "# 1. Scope")
+- Each major section starts with # (h1) - example: "# 1. Scope"
+- Subsections use ## (h2) - example: "## 1.1 Overview"
+- Sub-subsections use ### (h3) - example: "### 1.1.1 Purpose"
 - Keep hierarchy depth reasonable (typically max 3 levels)
-- Use numbered lists for procedures, bulleted lists for features`,
+- Use numbered lists for procedures, bulleted lists for features
+- Title page elements (title, author, version, TOC, document control) are handled by export system`,
   createdAt: new Date('2025-11-21'),
   modifiedAt: new Date('2025-11-21'),
   isBuiltIn: true,
