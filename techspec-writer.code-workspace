@@ -1,7 +1,16 @@
 {
-	"folders": [
-		{
-			"path": "."
-		}
-	]
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "window.title": "🛠 TechSpec Writer – Dev (${folderName})",
+    "workbench.colorCustomizations": {
+      "titleBar.activeBackground": "#4b2870",
+      "titleBar.activeForeground": "#ffffff",
+      "titleBar.inactiveBackground": "#4b2870",
+      "titleBar.inactiveForeground": "#cccccc"
+    }
+  }
 }

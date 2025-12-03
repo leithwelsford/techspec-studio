@@ -9,6 +9,7 @@ import type {
   BlockDiagram,
   MermaidDiagram,
   ReferenceDocument,
+  ReferenceDocumentContent,
   BRSDocument,
   WorkspaceTab,
   SpecDocument,
@@ -22,11 +23,16 @@ import type {
   VersionChangeType,
   SpecificationTemplate,
   ProjectTemplateConfig,
+  DocxTemplateAnalysis,
+  MarkdownGenerationGuidance,
+  SectionOverride,
+  CustomSection,
 } from '../types';
+import * as documentStorage from '../services/storage/documentStorage';
 import { getEnvApiKey, getEnvModel, getEnvTemperature, getEnvMaxTokens, getEnvEnableStreaming } from '../utils/envConfig';
 import { assignFigureNumbers } from '../utils/figureNumbering';
 
-interface ProjectState {
+export interface ProjectState {
   // Current project
   project: Project | null;
 
@@ -55,6 +61,10 @@ interface ProjectState {
   availableTemplates: SpecificationTemplate[];
   activeTemplateConfig: ProjectTemplateConfig | null;
 
+  // Template analysis
+  docxTemplateAnalysis: DocxTemplateAnalysis | null;
+  markdownGuidance: MarkdownGenerationGuidance | null;
+
   // Actions - Project
   createProject: (name: string) => void;
   loadProject: (project: Project) => void;
@@ -80,6 +90,13 @@ interface ProjectState {
   addReference: (ref: Omit<ReferenceDocument, 'id'>) => string;
   updateReference: (id: string, updates: Partial<ReferenceDocument>) => void;
   deleteReference: (id: string) => void;
+
+  // Actions - PDF Reference Documents (Multimodal Support)
+  addPDFReference: (file: File) => Promise<string>;
+  removePDFReference: (id: string) => Promise<void>;
+  clearPDFReferences: () => Promise<void>;
+  getPDFReferencesForGeneration: (options?: { extractTextFallback?: boolean }) => Promise<ReferenceDocumentContent[]>;
+  getPDFReferenceCount: () => number;
 
   // Actions - BRS Document
   setBRSDocument: (brs: Omit<BRSDocument, 'id' | 'uploadedAt'>) => void;
@@ -145,6 +162,23 @@ interface ProjectState {
   updateTemplateConfig: (updates: Partial<ProjectTemplateConfig>) => void;
   reorderSections: (sectionIds: string[]) => void;
   toggleSection: (sectionId: string, enabled: boolean) => void;
+
+  // Actions - Section Overrides (Dynamic Sections)
+  updateSectionOverride: (sectionId: string, override: SectionOverride) => void;
+  clearSectionOverride: (sectionId: string) => void;
+  clearAllSectionOverrides: () => void;
+
+  // Actions - Custom Sections
+  addCustomSection: (section: Omit<CustomSection, 'isCustom'>) => void;
+  updateCustomSection: (sectionId: string, updates: Partial<Omit<CustomSection, 'id' | 'isCustom'>>) => void;
+  removeCustomSection: (sectionId: string) => void;
+
+  // Actions - Template Analysis
+  setTemplateAnalysis: (analysis: DocxTemplateAnalysis) => void;
+  getTemplateAnalysis: () => DocxTemplateAnalysis | null;
+  setMarkdownGuidance: (guidance: MarkdownGenerationGuidance) => void;
+  getMarkdownGuidance: () => MarkdownGenerationGuidance | null;
+  clearTemplateAnalysis: () => void;
 
   // Utilities
   getAllDiagrams: () => Array<{ id: string; type: string; title: string; figureNumber?: string }>;
@@ -250,6 +284,10 @@ export const useProjectStore = create<ProjectState>()(
       // Template system initial state
       availableTemplates: [],
       activeTemplateConfig: null,
+
+      // Template analysis initial state
+      docxTemplateAnalysis: null,
+      markdownGuidance: null,
 
       // Project actions
       createProject: (name) => {
@@ -472,6 +510,178 @@ export const useProjectStore = create<ProjectState>()(
             },
           };
         });
+      },
+
+      // PDF Reference Document actions (Multimodal Support)
+      addPDFReference: async (file: File) => {
+        const state = get();
+        if (!state.project) throw new Error('No project loaded');
+
+        // Store file in IndexedDB
+        const stored = await documentStorage.storeFile(file);
+
+        // Create reference document entry
+        const ref: Omit<ReferenceDocument, 'id'> = {
+          title: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
+          type: file.name.toLowerCase().endsWith('.pdf') ? 'PDF' : 'DOCX',
+          source: '', // Not used for uploaded files
+          filename: stored.filename,
+          mimeType: stored.mimeType,
+          size: stored.size,
+          uploadedAt: stored.uploadedAt,
+          dataRef: stored.id, // Reference to IndexedDB
+          // Token estimate will be calculated separately
+        };
+
+        // Add to project references
+        const id = generateId();
+        set((state) => {
+          if (!state.project) return state;
+          return {
+            project: {
+              ...state.project,
+              references: [...state.project.references, { ...ref, id }],
+              updatedAt: new Date(),
+            },
+          };
+        });
+
+        console.log('📁 Added PDF reference:', { id, filename: stored.filename, size: stored.size });
+        return id;
+      },
+
+      removePDFReference: async (id: string) => {
+        const state = get();
+        if (!state.project) return;
+
+        // Find the reference
+        const ref = state.project.references.find(r => r.id === id);
+        if (!ref) return;
+
+        // Delete from IndexedDB if it has a dataRef
+        if (ref.dataRef) {
+          await documentStorage.deleteDocument(ref.dataRef);
+        }
+
+        // Remove from project references
+        set((state) => {
+          if (!state.project) return state;
+          return {
+            project: {
+              ...state.project,
+              references: state.project.references.filter((r) => r.id !== id),
+              updatedAt: new Date(),
+            },
+          };
+        });
+
+        console.log('🗑️ Removed PDF reference:', id);
+      },
+
+      clearPDFReferences: async () => {
+        const state = get();
+        if (!state.project) return;
+
+        // Get all PDF/DOCX references with dataRef
+        const pdfRefs = state.project.references.filter(
+          r => r.dataRef && (r.type === 'PDF' || r.type === 'DOCX')
+        );
+
+        // Delete all from IndexedDB
+        const dataRefs = pdfRefs.map(r => r.dataRef!).filter(Boolean);
+        if (dataRefs.length > 0) {
+          await documentStorage.deleteDocuments(dataRefs);
+        }
+
+        // Remove from project references
+        set((state) => {
+          if (!state.project) return state;
+          return {
+            project: {
+              ...state.project,
+              references: state.project.references.filter(
+                r => !r.dataRef || (r.type !== 'PDF' && r.type !== 'DOCX')
+              ),
+              updatedAt: new Date(),
+            },
+          };
+        });
+
+        console.log('🗑️ Cleared all PDF references');
+      },
+
+      getPDFReferencesForGeneration: async (options?: { extractTextFallback?: boolean }): Promise<ReferenceDocumentContent[]> => {
+        const state = get();
+        if (!state.project) return [];
+
+        // Get all PDF/DOCX references with dataRef
+        const pdfRefs = state.project.references.filter(
+          r => r.dataRef && (r.type === 'PDF' || r.type === 'DOCX')
+        );
+
+        // Load base64 data and optionally extract text for each
+        const results: ReferenceDocumentContent[] = [];
+        for (const ref of pdfRefs) {
+          if (!ref.dataRef) continue;
+
+          const base64Data = await documentStorage.getDocumentAsBase64(ref.dataRef);
+          if (base64Data) {
+            let extractedText = ref.extractedText;
+            let tokenEstimate = ref.tokenEstimate || 0;
+
+            // If text extraction fallback is requested and we don't have extracted text,
+            // extract it now (for non-vision models)
+            if (options?.extractTextFallback && !extractedText) {
+              try {
+                console.log(`📝 Extracting text from ${ref.title} for non-vision model...`);
+                const extraction = await documentStorage.extractTextFromStoredDocument(ref.dataRef);
+                if (extraction) {
+                  extractedText = extraction.text;
+                  tokenEstimate = extraction.tokenEstimate;
+
+                  // Update the reference in the store with extracted text
+                  // This caches it for future use
+                  set((state) => {
+                    if (!state.project) return state;
+                    return {
+                      project: {
+                        ...state.project,
+                        references: state.project.references.map(r =>
+                          r.id === ref.id
+                            ? { ...r, extractedText, tokenEstimate }
+                            : r
+                        ),
+                        updatedAt: new Date(),
+                      },
+                    };
+                  });
+                }
+              } catch (error) {
+                console.error(`❌ Failed to extract text from ${ref.title}:`, error);
+              }
+            }
+
+            results.push({
+              id: ref.id,
+              title: ref.title,
+              filename: ref.filename || ref.title,
+              mimeType: ref.mimeType || 'application/pdf',
+              base64Data,
+              extractedText,
+              tokenEstimate,
+            });
+          }
+        }
+
+        return results;
+      },
+
+      getPDFReferenceCount: () => {
+        const state = get();
+        if (!state.project) return 0;
+        return state.project.references.filter(
+          r => r.dataRef && (r.type === 'PDF' || r.type === 'DOCX')
+        ).length;
       },
 
       // BRS Document actions
@@ -1022,6 +1232,121 @@ export const useProjectStore = create<ProjectState>()(
               enabledSections,
             },
           };
+        });
+      },
+
+      // Section Override actions (Dynamic Sections)
+      updateSectionOverride: (sectionId, override) => {
+        set((state) => {
+          if (!state.activeTemplateConfig) return state;
+          return {
+            activeTemplateConfig: {
+              ...state.activeTemplateConfig,
+              sectionOverrides: {
+                ...state.activeTemplateConfig.sectionOverrides,
+                [sectionId]: override,
+              },
+            },
+          };
+        });
+      },
+
+      clearSectionOverride: (sectionId) => {
+        set((state) => {
+          if (!state.activeTemplateConfig) return state;
+          const { [sectionId]: _, ...remaining } = state.activeTemplateConfig.sectionOverrides || {};
+          return {
+            activeTemplateConfig: {
+              ...state.activeTemplateConfig,
+              sectionOverrides: remaining,
+            },
+          };
+        });
+      },
+
+      clearAllSectionOverrides: () => {
+        set((state) => {
+          if (!state.activeTemplateConfig) return state;
+          return {
+            activeTemplateConfig: {
+              ...state.activeTemplateConfig,
+              sectionOverrides: {},
+            },
+          };
+        });
+      },
+
+      // Custom Section actions
+      addCustomSection: (section) => {
+        set((state) => {
+          if (!state.activeTemplateConfig) return state;
+          const customSection: CustomSection = {
+            ...section,
+            isCustom: true,
+          };
+          return {
+            activeTemplateConfig: {
+              ...state.activeTemplateConfig,
+              customSections: [...(state.activeTemplateConfig.customSections || []), customSection],
+              enabledSections: [...state.activeTemplateConfig.enabledSections, section.id],
+              sectionOrder: [...state.activeTemplateConfig.sectionOrder, section.id],
+            },
+          };
+        });
+      },
+
+      updateCustomSection: (sectionId, updates) => {
+        set((state) => {
+          if (!state.activeTemplateConfig) return state;
+          return {
+            activeTemplateConfig: {
+              ...state.activeTemplateConfig,
+              customSections: state.activeTemplateConfig.customSections?.map((s) =>
+                s.id === sectionId ? { ...s, ...updates } : s
+              ),
+            },
+          };
+        });
+      },
+
+      removeCustomSection: (sectionId) => {
+        set((state) => {
+          if (!state.activeTemplateConfig) return state;
+          return {
+            activeTemplateConfig: {
+              ...state.activeTemplateConfig,
+              customSections: state.activeTemplateConfig.customSections?.filter((s) => s.id !== sectionId),
+              enabledSections: state.activeTemplateConfig.enabledSections.filter((id) => id !== sectionId),
+              sectionOrder: state.activeTemplateConfig.sectionOrder.filter((id) => id !== sectionId),
+            },
+          };
+        });
+      },
+
+      // Template Analysis actions
+      setTemplateAnalysis: (analysis) => {
+        console.log('[Store] Setting template analysis:', analysis);
+        set({ docxTemplateAnalysis: analysis });
+      },
+
+      getTemplateAnalysis: () => {
+        return get().docxTemplateAnalysis;
+      },
+
+      setMarkdownGuidance: (guidance) => {
+        console.log('[Store] Setting markdown guidance:', guidance);
+        set({ markdownGuidance: guidance });
+      },
+
+      getMarkdownGuidance: () => {
+        return get().markdownGuidance;
+      },
+
+      clearTemplateAnalysis: () => {
+        console.log('[Store] Clearing template analysis');
+        set({
+          docxTemplateAnalysis: null,
+          markdownGuidance: null,
         });
       },
 

@@ -1,9 +1,11 @@
 /**
  * System Prompts for AI Co-Pilot
  * Base instructions that define the AI's role and capabilities
+ *
+ * UPDATED: Now supports domain-agnostic prompts via DomainConfig
  */
 
-import type { Project, DiagramReference, ReferenceDocument } from '../../../types';
+import type { DiagramReference, ReferenceDocument, DomainConfig } from '../../../types';
 
 export interface SystemPromptContext {
   projectName?: string;
@@ -12,10 +14,96 @@ export interface SystemPromptContext {
   availableDiagrams?: DiagramReference[];
   availableReferences?: ReferenceDocument[];
   userInstructions?: string;
+  domainConfig?: DomainConfig;  // NEW: Domain configuration for adaptive prompts
+}
+
+/**
+ * Build normative language section based on domain configuration
+ */
+function buildNormativeLanguageSection(domainConfig?: DomainConfig): string {
+  const style = domainConfig?.normativeLanguage;
+  const custom = domainConfig?.customNormativeTerms;
+
+  if (custom) {
+    return `
+Normative Language:
+- ${custom.shall}: Mandatory requirement
+- ${custom.should}: Recommended but not mandatory
+- ${custom.may}: Optional, implementer's choice`;
+  }
+
+  switch (style) {
+    case 'IEEE':
+      return `
+Normative Language (IEEE Style):
+- shall: Mandatory requirement
+- shall not: Prohibited action
+- should: Recommended but not mandatory
+- may: Optional, implementer's choice`;
+
+    case 'ISO':
+      return `
+Normative Language (ISO Style):
+- Must: Mandatory requirement
+- Must not: Prohibited action
+- Should: Recommended but not mandatory
+- May: Optional, implementer's choice`;
+
+    case 'RFC2119':
+    default:
+      return `
+Normative Language (RFC 2119):
+- SHALL/MUST: Mandatory requirement
+- SHALL NOT/MUST NOT: Prohibited action
+- SHOULD/RECOMMENDED: Strongly encouraged but not mandatory
+- SHOULD NOT/NOT RECOMMENDED: Discouraged but not prohibited
+- MAY/OPTIONAL: Truly optional, implementer's choice`;
+  }
+}
+
+/**
+ * Build domain expertise section
+ */
+function buildDomainExpertiseSection(domainConfig?: DomainConfig): string {
+  // No domain config = general technical writing
+  if (!domainConfig?.domain) {
+    return `You are an expert technical specification writer.
+
+Your expertise spans multiple technical domains. Adapt your writing style, terminology,
+and level of detail based on the subject matter provided in the requirements.`;
+  }
+
+  const { domain, industry, standards, terminology } = domainConfig;
+
+  let expertise = `You are an expert technical specification writer specializing in **${domain}**`;
+
+  if (industry) {
+    expertise += ` with focus on **${industry}**`;
+  }
+  expertise += '.';
+
+  if (standards && standards.length > 0) {
+    expertise += `\n\nRelevant Standards: ${standards.join(', ')}`;
+    expertise += `\nEnsure alignment with these standards where applicable.`;
+  }
+
+  if (terminology && Object.keys(terminology).length > 0) {
+    expertise += `\n\nKey Terminology:`;
+    for (const [term, definition] of Object.entries(terminology)) {
+      expertise += `\n- ${term}: ${definition}`;
+    }
+  }
+
+  return expertise;
 }
 
 /**
  * Base system prompt for technical specification writing
+ *
+ * UPDATED: Now domain-agnostic by default. Pass domainConfig to specialize.
+ *
+ * @param context - Context including project info, diagrams, references, and optional domain config
+ * @returns System prompt string
  */
 export function buildSystemPrompt(context: SystemPromptContext = {}): string {
   const {
@@ -24,10 +112,11 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
     currentDocument,
     availableDiagrams = [],
     availableReferences = [],
-    userInstructions
+    userInstructions,
+    domainConfig
   } = context;
 
-  return `You are an expert technical specification writer specializing in telecommunications and 5G networks.
+  return `${buildDomainExpertiseSection(domainConfig)}
 
 ${projectName ? `Current Project: ${projectName}` : ''}
 ${documentTitle ? `Document: ${documentTitle}` : ''}
@@ -43,8 +132,8 @@ When answering questions, ALWAYS refer to the actual content in the current docu
 
 Your Role:
 - Generate technically accurate and professional technical specifications
-- Use precise telecommunications terminology and industry standards
-- Follow normative language patterns (SHALL, MUST, SHOULD, MAY, etc.)
+- Use precise terminology appropriate to the domain
+- Follow normative language patterns for requirements
 - Structure content clearly with proper headings and organization
 - Insert diagram references using {{fig:diagram-id}} syntax where appropriate
 - Cite reference documents using {{ref:reference-id}} syntax
@@ -62,23 +151,33 @@ ${availableReferences.length > 0
 
 Writing Guidelines:
 1. Use clear, concise technical language
-2. Define acronyms on first use (e.g., "User Equipment (UE)")
+2. Define acronyms on first use
 3. Use numbered or bulleted lists for clarity
 4. Include specific technical details and constraints
 5. Reference relevant standards and specifications
 6. Use tables for complex data relationships
 7. Maintain consistency in terminology throughout
-
-Normative Language:
-- SHALL/MUST: Mandatory requirement
-- SHALL NOT/MUST NOT: Prohibited action
-- SHOULD/RECOMMENDED: Strongly encouraged but not mandatory
-- SHOULD NOT/NOT RECOMMENDED: Discouraged but not prohibited
-- MAY/OPTIONAL: Truly optional, implementer's choice
+${buildNormativeLanguageSection(domainConfig)}
 
 ${userInstructions ? `\nAdditional User Instructions:\n${userInstructions}` : ''}
 
 Always output clean, well-structured markdown that can be directly inserted into the document.`;
+}
+
+/**
+ * Legacy system prompt with hardcoded telecom specialization
+ * @deprecated Use buildSystemPrompt with domainConfig for telecommunications
+ */
+export function buildTelecomSystemPrompt(context: Omit<SystemPromptContext, 'domainConfig'>): string {
+  return buildSystemPrompt({
+    ...context,
+    domainConfig: {
+      domain: 'telecommunications',
+      industry: '5G networks',
+      standards: ['3GPP TS 23.501', '3GPP TS 23.502', '3GPP TS 23.503'],
+      normativeLanguage: 'RFC2119',
+    }
+  });
 }
 
 /**

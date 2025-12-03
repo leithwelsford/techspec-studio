@@ -120,6 +120,64 @@ export interface ReferenceDocument {
     tags?: string[];
   };
   content?: string; // extracted text for search
+
+  // Multimodal PDF support (Phase 1)
+  filename?: string;              // Original filename
+  mimeType?: string;              // e.g., "application/pdf"
+  size?: number;                  // File size in bytes
+  uploadedAt?: Date;              // Upload timestamp
+  dataRef?: string;               // IndexedDB key for large file data
+  extractedText?: string;         // Fallback text extraction for non-vision models
+  tokenEstimate?: number;         // Estimated token usage
+  pageCount?: number;             // PDF page count for token estimation
+}
+
+// ========== Multimodal Content Types ==========
+
+/**
+ * Multimodal content part for OpenRouter API
+ * Supports text, images, and PDF files
+ */
+export type MultimodalContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } }
+  | { type: 'file'; file: { filename: string; file_data: string } };
+
+/**
+ * Extended AI message supporting multimodal content
+ * Compatible with OpenRouter's universal file support
+ */
+export interface AIMessageMultimodal {
+  role: 'system' | 'user' | 'assistant';
+  content: string | MultimodalContentPart[];
+}
+
+/**
+ * PDF processing engine options for OpenRouter
+ */
+export type PDFEngine = 'auto' | 'mistral-ocr' | 'pdf-text';
+
+/**
+ * Multimodal generation options
+ */
+export interface MultimodalGenerationOptions {
+  pdfEngine?: PDFEngine;
+  referenceDocuments?: ReferenceDocument[];
+  useMultimodal?: boolean;  // Force multimodal even if model detection says otherwise
+}
+
+/**
+ * Reference document content prepared for AI generation
+ * Used when passing documents to the AI service
+ */
+export interface ReferenceDocumentContent {
+  id: string;
+  title: string;              // Display title for the document
+  filename: string;
+  mimeType: string;
+  base64Data?: string;        // For multimodal (vision models)
+  extractedText?: string;     // For text-only models
+  tokenEstimate: number;
 }
 
 // ========== Business Requirements ==========
@@ -286,6 +344,7 @@ export interface AIContext {
   availableDiagrams?: DiagramReference[];
   availableReferences?: ReferenceDocument[];
   userInstructions?: string;
+  markdownGuidance?: MarkdownGenerationGuidance | null; // Template-specific formatting guidance
 }
 
 export type AITaskOutput =
@@ -425,8 +484,8 @@ export interface VersionHistory {
 // ========== Template System ==========
 
 /**
- * Template section definition
- * Defines structure and prompt configuration for a single section
+ * Template section definition (LEGACY - kept for backward compatibility)
+ * @deprecated Use FlexibleSection instead for new implementations
  */
 export interface TemplateSectionDefinition {
   id: string;                    // "scope", "architecture", "procedures"
@@ -439,6 +498,116 @@ export interface TemplateSectionDefinition {
   defaultEnabled: boolean;       // Enabled in new templates
 }
 
+// ========== Flexible Section System (NEW) ==========
+
+/**
+ * Domain configuration for AI generation
+ * Allows prompts to adapt to different industries/domains
+ */
+export interface DomainConfig {
+  domain: string;                           // Free-form: "telecommunications", "software", "automotive", "medical", etc.
+  industry?: string;                        // More specific: "5G networks", "embedded systems", "aerospace"
+  standards?: string[];                     // Referenced standards: ["3GPP TS 23.501", "ISO 26262", "DO-178C"]
+  terminology?: Record<string, string>;     // Custom term definitions: { "UE": "User Equipment" }
+  normativeLanguage?: 'RFC2119' | 'IEEE' | 'ISO' | 'custom';  // Requirements language style
+  customNormativeTerms?: {
+    shall: string;    // e.g., "SHALL", "shall", "must"
+    should: string;   // e.g., "SHOULD", "should", "recommended"
+    may: string;      // e.g., "MAY", "may", "optional"
+  };
+}
+
+/**
+ * Flexible section definition
+ * User-editable section that adapts to any domain
+ */
+export interface FlexibleSection {
+  id: string;                              // Unique ID: "scope", "architecture", "custom-1"
+  title: string;                           // Editable: "Scope", "System Architecture"
+  description: string;                     // What this section should contain (editable by user)
+  isRequired: boolean;                     // Suggestion only, user can override
+  suggestedSubsections?: string[];         // Optional hints: ["Purpose", "Applicability", "Assumptions"]
+  contentGuidance?: string;                // User's custom guidance for THIS section
+  order: number;                           // Position in document (for reordering)
+}
+
+/**
+ * Token estimation result
+ * For warning when context exceeds model limits
+ */
+export interface TokenEstimate {
+  systemPrompt: number;
+  brsDocument: number;
+  references: number;
+  existingSpec: number;
+  userGuidance: number;
+  webSearchResults?: number;
+  total: number;
+}
+
+/**
+ * Token budget result with model limit comparison
+ */
+export interface TokenBudgetResult {
+  withinBudget: boolean;
+  totalTokens: number;
+  availableTokens: number;
+  usageByComponent: Record<string, number>;
+  recommendations?: Record<string, number>;  // Recommended token counts if over budget
+  percentUsed: number;
+  // Legacy fields for backward compatibility
+  estimate?: TokenEstimate;
+  modelLimit?: number;
+  warningThreshold?: number;    // 80% of model limit
+  exceedsLimit?: boolean;
+  exceedsWarning?: boolean;
+}
+
+/**
+ * Web search result from Brave API or model built-in search
+ */
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  description: string;
+  publishedDate?: string;
+  source?: string;  // Hostname of the source
+}
+
+/**
+ * Reference excerpt extracted when full documents exceed token limit
+ */
+export interface ExtractedExcerpt {
+  referenceId: string;
+  referenceTitle: string;
+  content: string;
+  relevanceScore: number;       // 0-1 relevance score
+  matchedKeywords?: string[];   // Optional: keywords that matched
+  startPosition?: number;       // Optional: start position in original
+  endPosition?: number;         // Optional: end position in original
+  tokenCount?: number;          // Optional: token count
+}
+
+/**
+ * Context manager configuration
+ */
+export interface ContextManagerConfig {
+  maxTotalTokens: number;        // Model's context limit
+  reserveForOutput: number;      // Tokens to reserve for generation
+  maxTokensPerReference?: number; // Max tokens per reference document (legacy)
+  maxReferenceTokens?: number;   // Max tokens for all references combined
+  minReferenceTokens?: number;   // Min tokens per reference
+  excerptStrategy?: 'keyword' | 'section' | 'semantic';
+  excerptOverlap?: number;       // Token overlap for context continuity
+  priorities?: {                 // Priority weights for each component
+    brs: number;
+    previousSections: number;
+    references: number;
+    webSearch: number;
+    userGuidance: number;
+  };
+}
+
 /**
  * Complete template definition
  * Defines entire specification structure and formatting guidance
@@ -449,11 +618,49 @@ export interface SpecificationTemplate {
   description: string;           // "Standard telecom spec format"
   domain: string;                // "telecommunications", "software", "general"
   version: string;               // "1.0"
-  sections: TemplateSectionDefinition[];
+  sections: TemplateSectionDefinition[];  // Legacy rigid sections
+  suggestedSections?: FlexibleSection[];  // NEW: Flexible sections (preferred)
   formatGuidance: string;        // LLM instructions for format/style
+  domainConfig?: DomainConfig;   // NEW: Domain-specific configuration
   createdAt: Date;
   modifiedAt: Date;
   isBuiltIn: boolean;            // Cannot be deleted/modified
+}
+
+/**
+ * Flexible template definition (NEW)
+ * Preferred format for new templates - fully customizable
+ */
+export interface FlexibleTemplate {
+  id: string;
+  name: string;
+  description: string;
+  domainConfig: DomainConfig;
+  suggestedSections: FlexibleSection[];
+  formatGuidance?: MarkdownGenerationGuidance;
+  createdAt: Date;
+  modifiedAt: Date;
+  isBuiltIn: boolean;
+}
+
+/**
+ * Section override for customizing title and description
+ * Allows users to modify template sections without changing the template itself
+ */
+export interface SectionOverride {
+  customTitle?: string;          // If set, overrides template section title
+  customDescription?: string;    // If set, overrides template section description (AI guidance)
+}
+
+/**
+ * Custom section created by user (not from template)
+ * These are stored separately and merged with template sections during generation
+ */
+export interface CustomSection {
+  id: string;                    // Format: "custom-{timestamp}"
+  title: string;                 // User-defined title
+  description: string;           // User-defined AI guidance
+  isCustom: true;                // Discriminator for type narrowing
 }
 
 /**
@@ -463,8 +670,14 @@ export interface SpecificationTemplate {
 export interface ProjectTemplateConfig {
   templateId: string;            // Which template to use
   enabledSections: string[];     // Which sections are active
-  sectionOrder: string[];        // Custom ordering
+  sectionOrder: string[];        // Custom ordering (includes both template and custom section IDs)
   customGuidance: string;        // Additional LLM instructions
+
+  // NEW: Per-section customizations
+  sectionOverrides?: Record<string, SectionOverride>;  // Key is section ID
+
+  // NEW: Custom sections added by user
+  customSections?: CustomSection[];
 }
 
 /**
@@ -475,4 +688,200 @@ export interface GeneratedSection {
   title: string;
   content: string;
   tokensUsed: number;
+}
+
+// ========== DOCX Template Analysis ==========
+
+/**
+ * Complete DOCX template analysis result
+ * Extracted from Word template to guide markdown generation
+ */
+export interface DocxTemplateAnalysis {
+  id: string;
+  filename: string;
+  uploadedAt: Date;
+
+  // Style analysis
+  headingStyles: HeadingStyleInfo[];
+  paragraphStyles: ParagraphStyleInfo[];
+  captionStyles: CaptionStyleInfo;
+
+  // Numbering analysis
+  sectionNumbering: NumberingSchemeInfo;
+  listNumbering: ListNumberingInfo;
+
+  // Structure analysis
+  documentStructure: DocumentStructureInfo;
+
+  // Compatibility analysis
+  compatibility: TemplateCompatibility;
+
+  // Warnings
+  warnings: TemplateWarning[];
+
+  // Raw XML (for debugging)
+  rawXml?: {
+    styles?: string;
+    numbering?: string;
+    document?: string;
+  };
+}
+
+/**
+ * Heading style information extracted from template
+ */
+export interface HeadingStyleInfo {
+  level: 1 | 2 | 3 | 4 | 5 | 6;
+  styleId: string; // e.g., "Heading1"
+  font: string;
+  fontSize: number; // points
+  color: string;
+  bold: boolean;
+  numbering: {
+    enabled: boolean;
+    format: string; // "1", "1.1", "I", "A", etc.
+    separator: string;
+  };
+  spacing: {
+    beforePt: number;
+    afterPt: number;
+  };
+}
+
+/**
+ * Paragraph style information
+ */
+export interface ParagraphStyleInfo {
+  styleId: string;
+  name: string;
+  font: string;
+  fontSize: number;
+  alignment: 'left' | 'right' | 'center' | 'justify';
+  lineSpacing: number; // e.g., 1.0, 1.5, 2.0
+}
+
+/**
+ * Caption style configuration
+ */
+export interface CaptionStyleInfo {
+  figureCaption: {
+    exists: boolean;
+    styleId?: string;
+    format?: string; // e.g., "Figure %s: %s"
+    numbering?: 'continuous' | 'per-section';
+  };
+  tableCaption: {
+    exists: boolean;
+    styleId?: string;
+    format?: string;
+    numbering?: 'continuous' | 'per-section';
+  };
+}
+
+/**
+ * Section numbering scheme information
+ */
+export interface NumberingSchemeInfo {
+  detectedPattern: 'decimal' | 'multi-level' | 'mixed' | 'none';
+  levels: {
+    level: number;
+    format: string; // "1", "%1.%2", etc.
+    example: string; // "1.2.3"
+  }[];
+  recommendation: string; // Markdown guidance
+}
+
+/**
+ * List numbering information
+ */
+export interface ListNumberingInfo {
+  bulletStyle: string; // "-", "*", "•", etc.
+  orderedStyle: 'decimal' | 'alpha' | 'roman';
+}
+
+/**
+ * Document structure information
+ */
+export interface DocumentStructureInfo {
+  hasTitlePage: boolean;
+  titlePageElements: {
+    hasTitle: boolean;
+    hasVersion: boolean;
+    hasDate: boolean;
+    hasAuthor: boolean;
+    hasCompany: boolean;
+  };
+  hasTOC: boolean;
+  tocLocation: 'before-content' | 'after-content' | 'separate-page' | 'none';
+  sectionBreaks: number;
+  pageOrientation: 'portrait' | 'landscape';
+  pageSize: 'A4' | 'Letter' | 'Legal' | 'Custom';
+}
+
+/**
+ * Template compatibility assessment
+ */
+export interface TemplateCompatibility {
+  pandocCompatible: boolean;
+  compatibilityScore: number; // 0-100
+  issues: CompatibilityIssue[];
+  recommendations: string[];
+}
+
+/**
+ * Compatibility issue detected in template
+ */
+export interface CompatibilityIssue {
+  severity: 'error' | 'warning' | 'info';
+  type: 'missing-style' | 'incompatible-numbering' | 'complex-layout' | 'unsupported-feature';
+  description: string;
+  affectedElements: string[];
+  suggestion: string;
+}
+
+/**
+ * Template warning
+ */
+export interface TemplateWarning {
+  type: 'missing-heading-style' | 'no-caption-style' | 'inconsistent-numbering' | 'complex-structure';
+  severity: 'high' | 'medium' | 'low';
+  message: string;
+  recommendation: string;
+}
+
+/**
+ * Markdown generation guidance
+ * Derived from template analysis to guide LLM output
+ */
+export interface MarkdownGenerationGuidance {
+  headingLevels: {
+    maxDepth: number; // Max heading level to use (e.g., 4)
+    numberingStyle: string; // "Use # for level 1, ## for level 2, etc."
+  };
+  figureFormat: {
+    captionPlacement: 'above' | 'below';
+    numberingPattern: string; // "Figure 1-1: Title" or "Figure 1: Title"
+    syntax: string; // "![Caption](path)" or custom
+  };
+  tableFormat: {
+    captionPlacement: 'above' | 'below';
+    numberingPattern: string;
+    useMarkdownTables: boolean;
+  };
+  listFormat: {
+    bulletChar: '-' | '*' | '+';
+    orderedStyle: '1.' | '1)' | 'a.' | 'i.';
+  };
+  codeBlockStyle: {
+    fenced: boolean; // Use ```code``` or indented
+    languageHints: boolean; // ```typescript vs ```
+  };
+  emphasis: {
+    bold: '**' | '__';
+    italic: '*' | '_';
+  };
+  sectionBreaks: {
+    usePageBreaks: boolean; // Include \pagebreak in markdown
+    pattern: string; // "\\pagebreak" or "---"
+  };
 }

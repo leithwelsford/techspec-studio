@@ -6,11 +6,11 @@
 import type {
   AIConfig,
   AIMessage,
-  AITask,
   AIContext,
   BlockDiagram,
   MermaidDiagram,
-  Project
+  ReferenceDocumentContent,
+  AIMessageMultimodal,
 } from '../../types';
 
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
@@ -18,7 +18,6 @@ import { buildSystemPrompt, buildRefinementPrompt, buildReviewPrompt } from './p
 import {
   buildDocumentGenerationPrompt,
   buildSectionGenerationPrompt,
-  buildSectionRefinementPrompt
 } from './prompts/documentPrompts';
 import {
   buildBlockDiagramPrompt,
@@ -97,6 +96,24 @@ export class AIService {
     }
 
     return await this.provider.testConnection();
+  }
+
+  /**
+   * Check if the currently configured model supports vision/multimodal input
+   * Vision models can process PDFs and images natively without text extraction
+   */
+  isVisionModel(): boolean {
+    if (!this.provider || !this.config) {
+      return false;
+    }
+    return this.provider.isVisionModel(this.config.model);
+  }
+
+  /**
+   * Get the current model ID
+   */
+  getCurrentModel(): string | null {
+    return this.config?.model || null;
   }
 
   /**
@@ -191,6 +208,132 @@ export class AIService {
       model: this.config.model,
       temperature: options?.temperature ?? this.config.temperature,
       maxTokens: options?.maxTokens ?? this.config.maxTokens
+    });
+
+    return {
+      content: result.content,
+      tokens: result.tokens,
+      cost: result.cost
+    };
+  }
+
+  /**
+   * Generate content with PDF reference documents attached
+   * Uses vision model multimodal capabilities for native PDF processing
+   *
+   * @param prompt - The text prompt for generation
+   * @param pdfReferences - Array of PDF references with base64 data
+   * @param systemPrompt - Optional system prompt
+   * @param options - Generation options
+   * @returns Generated content with token usage and cost
+   */
+  async generateWithPDFReferences(
+    prompt: string,
+    pdfReferences: ReferenceDocumentContent[],
+    systemPrompt?: string,
+    options?: GenerationOptions
+  ): Promise<GenerationResult> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    // Check if model supports multimodal
+    if (!this.isVisionModel()) {
+      console.warn(`⚠️ Model ${this.config.model} does not support multimodal. Falling back to text-only generation.`);
+      // Fall back to text-only generation with PDF content as text
+      const textContext = pdfReferences
+        .filter(ref => ref.extractedText)
+        .map(ref => `\n\n--- Reference Document: ${ref.title} ---\n${ref.extractedText}`)
+        .join('');
+
+      const messages = systemPrompt
+        ? [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt + textContext }
+          ]
+        : [{ role: 'user', content: prompt + textContext }];
+
+      const result = await this.provider.generate(messages, {
+        model: this.config.model,
+        temperature: options?.temperature ?? this.config.temperature,
+        maxTokens: options?.maxTokens ?? this.config.maxTokens
+      });
+
+      return {
+        content: result.content,
+        tokens: result.tokens,
+        cost: result.cost
+      };
+    }
+
+    // Build multimodal messages with PDF attachments
+    console.log(`📄 Generating with ${pdfReferences.length} PDF reference(s) using multimodal...`);
+
+    const pdfsWithData = pdfReferences.filter(ref => ref.base64Data);
+
+    if (pdfsWithData.length === 0) {
+      console.warn('⚠️ No PDFs have base64 data. Falling back to text-only generation.');
+      // Fall back to text context
+      const textContext = pdfReferences
+        .filter(ref => ref.extractedText)
+        .map(ref => `\n\n--- Reference Document: ${ref.title} ---\n${ref.extractedText}`)
+        .join('');
+
+      const messages = systemPrompt
+        ? [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt + textContext }
+          ]
+        : [{ role: 'user', content: prompt + textContext }];
+
+      const result = await this.provider.generate(messages, {
+        model: this.config.model,
+        temperature: options?.temperature ?? this.config.temperature,
+        maxTokens: options?.maxTokens ?? this.config.maxTokens
+      });
+
+      return {
+        content: result.content,
+        tokens: result.tokens,
+        cost: result.cost
+      };
+    }
+
+    // Create multimodal content with PDFs
+    const { OpenRouterProvider } = await import('./providers/OpenRouterProvider');
+    const pdfData = pdfsWithData.map(ref => ({
+      filename: ref.filename || `${ref.title}.pdf`,
+      base64Data: ref.base64Data!
+    }));
+
+    const multimodalContent = OpenRouterProvider.createMultiplePDFContent(prompt, pdfData);
+
+    const multimodalMessages: AIMessageMultimodal[] = [];
+
+    // Add system message if provided
+    if (systemPrompt) {
+      multimodalMessages.push({
+        role: 'system',
+        content: systemPrompt
+      });
+    }
+
+    // Add user message with multimodal content
+    multimodalMessages.push({
+      role: 'user',
+      content: multimodalContent
+    });
+
+    const result = await this.provider.generateMultimodal(multimodalMessages, {
+      model: this.config.model,
+      temperature: options?.temperature ?? this.config.temperature,
+      maxTokens: options?.maxTokens ?? this.config.maxTokens
+    });
+
+    console.log(`✅ Multimodal generation complete:`, {
+      contentLength: result.content.length,
+      tokens: result.tokens,
+      cost: result.cost
     });
 
     return {
@@ -1479,6 +1622,7 @@ Generate the complete Section 4 now in markdown format.`;
    * - Multi-format templates (3GPP, IEEE 830, ISO 29148, etc.)
    * - User guidance per template
    * - Sequential generation with context from previous sections
+   * - Multimodal PDF reference documents (for vision-capable models)
    *
    * @param brsDocument - Business requirements specification
    * @param specTitle - Technical specification title
@@ -1486,6 +1630,7 @@ Generate the complete Section 4 now in markdown format.`;
    * @param config - Template configuration (enabled sections, order, custom guidance)
    * @param context - Additional AI context (diagrams, references, etc.)
    * @param onProgress - Progress callback
+   * @param pdfReferences - Optional PDF reference documents for multimodal generation
    * @returns Generated specification with sections, tokens, cost, and BRS analysis
    */
   async generateSpecificationFromTemplate(
@@ -1502,7 +1647,8 @@ Generate the complete Section 4 now in markdown format.`;
     template: import('../../types').SpecificationTemplate,
     config: import('../../types').ProjectTemplateConfig,
     context?: AIContext,
-    onProgress?: (section: number, total: number, sectionTitle: string) => void
+    onProgress?: (section: number, total: number, sectionTitle: string) => void,
+    pdfReferences?: ReferenceDocumentContent[]
   ): Promise<{
     markdown: string;
     sections: Array<{ title: string; content: string }>;
@@ -1537,12 +1683,42 @@ Generate the complete Section 4 now in markdown format.`;
       analysisConfig.reasoning = { effort: 'high' };
     }
 
-    console.log(`🔍 Analyzing BRS document (${brsDocument.markdown.length} chars)...`);
+    // Check if we should use multimodal generation (vision model + PDF references)
+    const useMultimodal = pdfReferences && pdfReferences.length > 0 && this.isVisionModel();
+    const pdfsWithData = pdfReferences?.filter(ref => ref.base64Data) || [];
 
-    const analysisResult = await this.provider.generate(
-      [{ role: 'user', content: analysisPrompt }],
-      analysisConfig
-    );
+    console.log(`🔍 Analyzing BRS document (${brsDocument.markdown.length} chars)...`);
+    if (useMultimodal && pdfsWithData.length > 0) {
+      console.log(`📄 Including ${pdfsWithData.length} PDF reference(s) via multimodal...`);
+    }
+
+    let analysisResult;
+
+    if (useMultimodal && pdfsWithData.length > 0) {
+      // Use multimodal generation with PDF attachments
+      const { OpenRouterProvider } = await import('./providers/OpenRouterProvider');
+      const pdfData = pdfsWithData.map(ref => ({
+        filename: ref.filename || `${ref.title}.pdf`,
+        base64Data: ref.base64Data!
+      }));
+
+      const multimodalContent = OpenRouterProvider.createMultiplePDFContent(
+        analysisPrompt + '\n\nPlease also consider the attached reference documents when analyzing the requirements.',
+        pdfData
+      );
+
+      const multimodalMessages: AIMessageMultimodal[] = [
+        { role: 'user', content: multimodalContent }
+      ];
+
+      analysisResult = await this.provider.generateMultimodal(multimodalMessages, analysisConfig);
+    } else {
+      // Standard text-only generation
+      analysisResult = await this.provider.generate(
+        [{ role: 'user', content: analysisPrompt }],
+        analysisConfig
+      );
+    }
 
     totalTokens += analysisResult.tokens?.total || 0;
     totalCost += analysisResult.cost || 0;
@@ -1550,7 +1726,8 @@ Generate the complete Section 4 now in markdown format.`;
     console.log('✅ BRS Analysis complete:', {
       tokens: analysisResult.tokens?.total || 0,
       cost: analysisResult.cost || 0,
-      contentLength: analysisResult.content.length
+      contentLength: analysisResult.content.length,
+      multimodal: useMultimodal && pdfsWithData.length > 0
     });
 
     let brsAnalysis: any = {};
@@ -1561,14 +1738,62 @@ Generate the complete Section 4 now in markdown format.`;
       brsAnalysis = { rawAnalysis: analysisResult.content };
     }
 
-    // Step 2: Get enabled sections in configured order
+    // Step 2: Get enabled sections in configured order with dynamic numbering
     const enabledSectionIds = config.enabledSections;
     const orderedSectionIds = config.sectionOrder.filter(id => enabledSectionIds.includes(id));
-    const enabledSections = orderedSectionIds
-      .map(id => template.sections.find(s => s.id === id))
-      .filter((s): s is import('../../types').TemplateSectionDefinition => s !== undefined);
 
-    console.log(`📋 Generating ${enabledSections.length} sections from template: ${template.name}`);
+    // Get template sections (prefer suggestedSections for flexible format)
+    const { getFlexibleSections } = await import('../../data/templates');
+    const templateFlexibleSections = getFlexibleSections(template);
+
+    // Merge with custom sections from config
+    const customSections = config.customSections || [];
+    const allFlexibleSections: import('../../types').FlexibleSection[] = [
+      ...templateFlexibleSections,
+      ...customSections.map((cs, idx) => ({
+        id: cs.id,
+        title: cs.title,
+        description: cs.description,
+        isRequired: false,
+        order: templateFlexibleSections.length + idx + 1,
+        // Custom sections don't have these by default
+        suggestedSubsections: undefined,
+        contentGuidance: undefined,
+      })),
+    ];
+
+    // Apply section overrides and calculate dynamic numbering
+    const sectionOverrides = config.sectionOverrides || {};
+    const enabledSections = orderedSectionIds
+      .map((id, index) => {
+        const section = allFlexibleSections.find(s => s.id === id);
+        if (!section) return null;
+
+        const override = sectionOverrides[id];
+        // Dynamic section number based on position in enabled list
+        const dynamicNumber = index + 1;
+
+        return {
+          // FlexibleSection fields with overrides applied
+          id: section.id,
+          title: override?.customTitle || section.title,
+          description: override?.customDescription || section.description,
+          isRequired: section.isRequired,
+          suggestedSubsections: section.suggestedSubsections,
+          contentGuidance: section.contentGuidance,
+          // Dynamic number based on position
+          number: String(dynamicNumber),
+          order: dynamicNumber,
+          // For backward compatibility with legacy prompt builders
+          promptKey: template.sections.find(s => s.id === id)?.promptKey || 'buildFlexibleSectionPrompt',
+          required: section.isRequired,
+          allowSubsections: template.sections.find(s => s.id === id)?.allowSubsections ?? true,
+          defaultEnabled: true,
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+
+    console.log(`📋 Generating ${enabledSections.length} sections from template: ${template.name} (dynamic numbering enabled)`);
 
     // Step 3: Import template prompt system
     const { buildSectionPrompt } = await import('./prompts/templatePrompts');
@@ -1594,7 +1819,8 @@ Generate the complete Section 4 now in markdown format.`;
           formatGuidance: template.formatGuidance
         },
         userGuidance: config.customGuidance,
-        availableDiagrams: context?.availableDiagrams
+        availableDiagrams: context?.availableDiagrams,
+        markdownGuidance: context?.markdownGuidance
       };
 
       // Generate section prompt
@@ -1617,10 +1843,44 @@ Generate the complete Section 4 now in markdown format.`;
         sectionConfig.reasoning = { effort: 'high' };
       }
 
-      const sectionResult = await this.provider.generate(
-        [{ role: 'user', content: sectionPrompt }],
-        sectionConfig
-      );
+      let sectionResult;
+
+      // Use multimodal generation for sections if we have PDF references
+      // Only attach PDFs for key sections that benefit from reference context
+      // (Architecture, Functional Requirements, Procedures, etc.)
+      const sectionsBenefitingFromPDFs = ['architecture', 'functional', 'procedures', 'design', 'requirements', 'interface'];
+      const shouldIncludePDFs = useMultimodal && pdfsWithData.length > 0 &&
+        sectionsBenefitingFromPDFs.some(keyword =>
+          section.title.toLowerCase().includes(keyword) ||
+          section.id.toLowerCase().includes(keyword)
+        );
+
+      if (shouldIncludePDFs) {
+        console.log(`📄 Including PDF references for section: ${sectionTitle}`);
+
+        const { OpenRouterProvider } = await import('./providers/OpenRouterProvider');
+        const pdfData = pdfsWithData.map(ref => ({
+          filename: ref.filename || `${ref.title}.pdf`,
+          base64Data: ref.base64Data!
+        }));
+
+        const multimodalContent = OpenRouterProvider.createMultiplePDFContent(
+          sectionPrompt + '\n\nReference documents are attached for additional context. Use relevant information from these references where appropriate.',
+          pdfData
+        );
+
+        const multimodalMessages: AIMessageMultimodal[] = [
+          { role: 'user', content: multimodalContent }
+        ];
+
+        sectionResult = await this.provider.generateMultimodal(multimodalMessages, sectionConfig);
+      } else {
+        // Standard text-only generation
+        sectionResult = await this.provider.generate(
+          [{ role: 'user', content: sectionPrompt }],
+          sectionConfig
+        );
+      }
 
       totalTokens += sectionResult.tokens?.total || 0;
       totalCost += sectionResult.cost || 0;
@@ -1629,7 +1889,8 @@ Generate the complete Section 4 now in markdown format.`;
         title: sectionTitle,
         contentLength: sectionResult.content.length,
         tokens: sectionResult.tokens?.total || 0,
-        cost: sectionResult.cost || 0
+        cost: sectionResult.cost || 0,
+        multimodal: shouldIncludePDFs
       });
 
       // Warn if truncated

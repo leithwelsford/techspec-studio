@@ -87,3 +87,7 @@ pids
 .yarn/install-state.gz
 .pnp.*
 server/temp/
+
+# Test/reference documents (user uploads)
+*.docx
+~$*.docx

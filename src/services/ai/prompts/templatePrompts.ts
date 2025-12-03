@@ -3,10 +3,33 @@
  *
  * Generic prompt builders that work with any template configuration.
  * Maps template section definitions to appropriate prompt generation logic.
+ *
+ * ROUTING STRATEGY:
+ * - Legacy 3GPP prompts: Used for backward compatibility with existing templates.
+ *   These are imported from documentPrompts.ts which re-exports from legacyTelecomPrompts.ts.
+ *   They are DEPRECATED and will be phased out in future versions.
+ *
+ * - Flexible prompts: Use 'buildFlexibleSectionPrompt' key in your template's section.promptKey
+ *   to use the new domain-agnostic sectionPrompts.ts system. This is the RECOMMENDED approach
+ *   for new templates and domains beyond telecommunications.
+ *
+ * - Generic fallback: If no specific builder exists, falls back to buildGenericSectionPrompt()
+ *   which provides a basic domain-agnostic template.
  */
 
-import type { TemplateSectionDefinition, BRSDocument } from '../../../types';
-import type { BRSAnalysis } from '../types';
+import type { TemplateSectionDefinition, BRSDocument, FlexibleSection, DomainConfig } from '../../../types';
+
+// BRSAnalysis type for template prompt builders
+interface BRSAnalysis {
+  components?: string[];
+  interfaces?: Array<{ name: string; between: string[]; standard?: string; protocol?: string }>;
+  requirementCategories?: Record<string, string[]>;
+  procedures?: Array<{ name: string; steps: string[]; participants: string[] }>;
+  standards?: Array<{ id: string; title: string }>;
+  [key: string]: any;
+}
+
+// Legacy 3GPP prompt builders (DEPRECATED - use flexible prompts instead)
 import {
   build3GPPScopePrompt,
   buildServiceOverviewPrompt,
@@ -17,6 +40,10 @@ import {
   buildOpenItemsPrompt,
   buildAppendicesPrompt,
 } from './documentPrompts';
+
+// New domain-agnostic flexible prompts (RECOMMENDED)
+import { buildFlexibleSectionPrompt as flexiblePromptBuilder } from './sectionPrompts';
+
 import { DIAGRAM_PLACEHOLDER_REQUIREMENTS } from './systemPrompts';
 
 /**
@@ -30,6 +57,8 @@ export interface PromptBuilderContext {
   template: {
     name: string;
     formatGuidance: string;
+    /** Domain hint for flexible prompts (e.g., 'telecommunications', 'software', 'healthcare') */
+    domain?: string;
   };
   userGuidance?: string;
   availableDiagrams?: Array<{ id: string; title: string; type: string }>;
@@ -48,8 +77,62 @@ type PromptBuilder = (
  * Registry mapping promptKey → prompt builder function
  */
 const promptBuilders: Record<string, PromptBuilder> = {
-  // 3GPP prompts
-  'build3GPPScopePrompt': (section, context) => {
+  // =============================================================================
+  // FLEXIBLE PROMPTS (RECOMMENDED for new templates)
+  // =============================================================================
+  // Use these for domain-agnostic specifications. They adapt to any domain
+  // based on the DomainConfig provided in the template.
+  // =============================================================================
+
+  /**
+   * Flexible section prompt - adapts to any domain
+   * Use this as the promptKey in your template's section definition
+   */
+  'buildFlexibleSectionPrompt': (section, context) => {
+    // Convert TemplateSectionDefinition to FlexibleSection
+    const flexibleSection: FlexibleSection = {
+      id: section.id,
+      title: section.title,
+      description: section.description,
+      isRequired: section.required ?? false,
+      // Allow subsections hint can be used to suggest subsections
+      suggestedSubsections: section.allowSubsections ? [] : undefined,
+      contentGuidance: context.userGuidance,
+      order: 0,  // Not used in prompt generation
+    };
+
+    // Build domain config from template (can be extended in the future)
+    const domainConfig: DomainConfig | undefined = context.template.domain
+      ? {
+          domain: context.template.domain,
+          standards: [],  // Can be extracted from BRS analysis
+        }
+      : undefined;
+
+    // Build previous sections context as string
+    const previousContent = context.previousSections.length > 0
+      ? context.previousSections.map(s => `# ${s.title}\n\n${s.content}`).join('\n\n---\n\n')
+      : undefined;
+
+    return flexiblePromptBuilder(flexibleSection, {
+      brsContent: context.brsDocument.markdown,
+      previousSections: previousContent,
+      domainConfig,
+      userGuidance: context.userGuidance,
+      markdownGuidance: context.markdownGuidance || null,
+      sectionNumber: section.number,
+    });
+  },
+
+  // =============================================================================
+  // LEGACY 3GPP PROMPTS (DEPRECATED - will be removed in future versions)
+  // =============================================================================
+  // These are maintained for backward compatibility with existing 3GPP templates.
+  // For new templates, use 'buildFlexibleSectionPrompt' instead.
+  // =============================================================================
+
+  // 3GPP prompts (DEPRECATED)
+  'build3GPPScopePrompt': (_section, context) => {
     return build3GPPScopePrompt(
       context.specTitle,
       context.brsAnalysis,
@@ -58,7 +141,7 @@ const promptBuilders: Record<string, PromptBuilder> = {
     );
   },
 
-  'buildServiceOverviewPrompt': (section, context) => {
+  'buildServiceOverviewPrompt': (_section, context) => {
     return buildServiceOverviewPrompt(
       context.specTitle,
       context.brsAnalysis,
@@ -67,7 +150,7 @@ const promptBuilders: Record<string, PromptBuilder> = {
     );
   },
 
-  'build3GPPFunctionalRequirementsPrompt': (section, context) => {
+  'build3GPPFunctionalRequirementsPrompt': (_section, context) => {
     return build3GPPFunctionalRequirementsPrompt(
       context.brsAnalysis,
       context.userGuidance
@@ -79,35 +162,35 @@ const promptBuilders: Record<string, PromptBuilder> = {
     return buildArchitectureAndProceduresPrompt(section, context);
   },
 
-  'buildNonFunctionalRequirementsPrompt': (section, context) => {
+  'buildNonFunctionalRequirementsPrompt': (_section, context) => {
     return buildNonFunctionalRequirementsPrompt(
       context.brsAnalysis,
       context.userGuidance
     );
   },
 
-  'buildOSSBSSPrompt': (section, context) => {
+  'buildOSSBSSPrompt': (_section, context) => {
     return buildOSSBSSPrompt(
       context.brsAnalysis,
       context.userGuidance
     );
   },
 
-  'buildSLASummaryPrompt': (section, context) => {
+  'buildSLASummaryPrompt': (_section, context) => {
     return buildSLASummaryPrompt(
       context.brsAnalysis,
       context.userGuidance
     );
   },
 
-  'buildOpenItemsPrompt': (section, context) => {
+  'buildOpenItemsPrompt': (_section, context) => {
     return buildOpenItemsPrompt(
       context.brsAnalysis,
       context.userGuidance
     );
   },
 
-  'buildAppendicesPrompt': (section, context) => {
+  'buildAppendicesPrompt': (_section, context) => {
     return buildAppendicesPrompt(
       context.brsAnalysis,
       context.brsDocument.markdown,
@@ -259,7 +342,7 @@ Generate the complete section now in markdown format:`;
 // ========== 3GPP-Specific Helpers ==========
 
 function buildArchitectureAndProceduresPrompt(
-  section: TemplateSectionDefinition,
+  _section: TemplateSectionDefinition,
   context: PromptBuilderContext
 ): string {
   // This is the combined Section 4 from the existing implementation

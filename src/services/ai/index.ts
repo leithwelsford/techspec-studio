@@ -59,3 +59,53 @@ export {
 } from './parsers/mermaidParser';
 
 export type { ParseResult } from './parsers/blockDiagramParser';
+
+// Token Counter
+export {
+  countTokens,
+  countChatTokens,
+  estimateContextTokens,
+  getModelContextLimit,
+  checkContextFits,
+  truncateToTokenLimit,
+  splitIntoChunks,
+  formatTokenCount,
+  cleanup as cleanupTokenCounter
+} from './tokenCounter';
+
+// Flexible Section Prompts
+export {
+  buildFlexibleSectionPrompt,
+  buildIntroductionSectionPrompt,
+  buildArchitectureSectionPrompt,
+  buildRequirementsSectionPrompt,
+  buildProceduresSectionPrompt,
+  DIAGRAM_PLACEHOLDER_REQUIREMENTS
+} from './prompts/sectionPrompts';
+
+// Context Manager
+export {
+  calculateTokenBudget,
+  extractRelevantExcerpts,
+  buildOptimizedContext,
+  formatBudgetInfo
+} from './contextManager';
+export type { ContextAllocation } from './contextManager';
+
+// Web Search
+export {
+  searchBrave,
+  searchForSectionContext,
+  formatSearchResultsForContext,
+  generateSearchQueries,
+  buildSearchHintForPrompt,
+  isWebSearchAvailable,
+  hasBuiltinSearch,
+  getSearchCapability,
+  MODELS_WITH_BUILTIN_SEARCH
+} from './webSearch';
+export type {
+  WebSearchResult,
+  WebSearchResponse,
+  WebSearchConfig
+} from './webSearch';

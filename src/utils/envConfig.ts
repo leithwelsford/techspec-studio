@@ -98,3 +98,45 @@ export function getEnvEnableStreaming(): boolean | null {
   if (streaming === 'false') return false;
   return null;
 }
+
+/**
+ * Get Brave Search API key from environment variable
+ * @returns API key from VITE_BRAVE_API_KEY or null if not set
+ */
+export function getBraveApiKey(): string | null {
+  const apiKey = import.meta.env.VITE_BRAVE_API_KEY;
+  return apiKey && typeof apiKey === 'string' && apiKey.length > 0 ? apiKey : null;
+}
+
+/**
+ * Check if Brave Search API key is configured
+ * @returns true if VITE_BRAVE_API_KEY is set
+ */
+export function hasBraveApiKey(): boolean {
+  return getBraveApiKey() !== null;
+}
+
+/**
+ * Get a masked version of the Brave API key for display
+ * @returns Masked API key or null
+ */
+export function getMaskedBraveApiKey(): string | null {
+  const apiKey = getBraveApiKey();
+  if (!apiKey) return null;
+
+  // Show first 4 chars and last 4 chars
+  if (apiKey.length > 12) {
+    return `${apiKey.substring(0, 4)}****${apiKey.substring(apiKey.length - 4)}`;
+  }
+
+  return '****';
+}
+
+/**
+ * Check if web search is enabled via environment variable
+ * @returns true if VITE_ENABLE_WEB_SEARCH is 'true'
+ */
+export function isWebSearchEnabled(): boolean {
+  const enabled = import.meta.env.VITE_ENABLE_WEB_SEARCH;
+  return enabled === 'true';
+}
