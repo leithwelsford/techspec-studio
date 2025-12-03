@@ -153,6 +153,9 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
     setStep('customize');
   };
 
+  // Get the store action for fetching PDF references
+  const getPDFReferencesForGeneration = useProjectStore(state => state.getPDFReferencesForGeneration);
+
   const handleGenerate = async () => {
     // Diagnostic logging
     console.log('🚀 Generate button clicked - checking prerequisites:');
@@ -161,6 +164,7 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
     console.log('  aiConfig:', !!aiConfig);
     console.log('  selectedTemplate:', !!selectedTemplate);
     console.log('  activeTemplateConfig:', !!activeTemplateConfig);
+    console.log('  pdfReferenceCount:', pdfReferenceCount);
 
     if (!canGenerate || !brsDocument || !aiConfig || !selectedTemplate || !activeTemplateConfig) {
       console.error('❌ Generation blocked - missing prerequisite(s)');
@@ -191,6 +195,28 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
         apiKey: decryptedKey
       });
 
+      // Check if model supports vision for PDF processing
+      const isVisionModel = aiService.isVisionModel();
+      console.log(`📄 Model vision capability: ${isVisionModel ? 'Yes (native PDF support)' : 'No (will use text extraction)'}`);
+
+      // Fetch PDF references for generation
+      // For non-vision models, request text extraction fallback
+      let pdfReferences;
+      if (pdfReferenceCount > 0) {
+        setProgress({ current: 0, total: enabledCount + 1, section: 'Loading reference documents...' });
+        pdfReferences = await getPDFReferencesForGeneration({
+          extractTextFallback: !isVisionModel
+        });
+        console.log(`📚 Loaded ${pdfReferences.length} PDF reference(s) for generation:`,
+          pdfReferences.map(r => ({
+            title: r.title,
+            hasBase64: !!r.base64Data,
+            hasExtractedText: !!r.extractedText,
+            tokenEstimate: r.tokenEstimate
+          }))
+        );
+      }
+
       // Build context
       const context = {
         availableReferences: project?.references || [],
@@ -217,7 +243,9 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
         markdownGuidance
       };
 
-      // Generate specification using template system
+      setProgress({ current: 0, total: enabledCount + 1, section: 'Analyzing BRS...' });
+
+      // Generate specification using template system with PDF references
       const result = await aiService.generateSpecificationFromTemplate(
         {
           title: brsDocument.title,
@@ -234,7 +262,8 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
         context,
         (current, total, section) => {
           setProgress({ current, total, section });
-        }
+        },
+        pdfReferences // Pass PDF references for multimodal generation
       );
 
       // Update usage stats
