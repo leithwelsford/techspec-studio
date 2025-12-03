@@ -74,6 +74,7 @@ export class AIService {
 
   /**
    * Initialize AI service with configuration
+   * Also pre-fetches model list to populate context length cache
    */
   initialize(config: AIConfig): void {
     this.config = config;
@@ -81,6 +82,10 @@ export class AIService {
     switch (config.provider) {
       case 'openrouter':
         this.provider = new OpenRouterProvider(config.apiKey);
+        // Pre-fetch models to populate context length cache (non-blocking)
+        this.provider.listModels().catch(err => {
+          console.warn('Failed to pre-fetch OpenRouter models:', err);
+        });
         break;
       default:
         throw new Error(`Unsupported AI provider: ${config.provider}`);

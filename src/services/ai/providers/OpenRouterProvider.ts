@@ -39,6 +39,16 @@ export interface StreamChunk {
   done: boolean;
 }
 
+// Cache for model data from OpenRouter API
+interface ModelCache {
+  data: Map<string, { name: string; context_length: number; modality?: string }>;
+  timestamp: number;
+}
+
+// Module-level cache (persists across provider instances)
+let modelCache: ModelCache | null = null;
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
 export class OpenRouterProvider {
   private apiKey: string;
   private baseURL = 'https://openrouter.ai/api/v1';
@@ -220,7 +230,7 @@ export class OpenRouterProvider {
   }
 
   /**
-   * List available models
+   * List available models and populate cache
    */
   async listModels(): Promise<Array<{ id: string; name: string; context_length: number }>> {
     try {
@@ -233,10 +243,79 @@ export class OpenRouterProvider {
       if (!response.ok) return this.getDefaultModels();
 
       const data = await response.json();
-      return data.data || this.getDefaultModels();
+      const models = data.data || [];
+
+      // Populate cache with fresh data
+      if (models.length > 0) {
+        const cacheMap = new Map<string, { name: string; context_length: number; modality?: string }>();
+        for (const model of models) {
+          cacheMap.set(model.id, {
+            name: model.name,
+            context_length: model.context_length,
+            modality: model.architecture?.modality,
+          });
+        }
+        modelCache = {
+          data: cacheMap,
+          timestamp: Date.now(),
+        };
+        console.log(`📊 Cached ${cacheMap.size} models from OpenRouter API`);
+      }
+
+      return models.length > 0 ? models : this.getDefaultModels();
     } catch (error) {
+      console.warn('Failed to fetch models from OpenRouter:', error);
       return this.getDefaultModels();
     }
+  }
+
+  /**
+   * Get context length for a specific model from OpenRouter API
+   * Uses cached data if available, otherwise fetches fresh data
+   *
+   * @param modelId - The model identifier (e.g., "openai/gpt-5.1")
+   * @returns Context length in tokens, or null if model not found
+   */
+  async getModelContextLength(modelId: string): Promise<number | null> {
+    // Check if cache is valid
+    const cacheValid = modelCache && (Date.now() - modelCache.timestamp < CACHE_TTL_MS);
+
+    if (cacheValid && modelCache) {
+      const cached = modelCache.data.get(modelId);
+      if (cached) {
+        return cached.context_length;
+      }
+    }
+
+    // Refresh cache by listing models
+    await this.listModels();
+
+    // Check again after refresh
+    if (modelCache) {
+      const cached = modelCache.data.get(modelId);
+      if (cached) {
+        return cached.context_length;
+      }
+    }
+
+    return null; // Model not found in OpenRouter
+  }
+
+  /**
+   * Get context length synchronously from cache (no API call)
+   * Returns null if not in cache - use getModelContextLength for async fetch
+   */
+  static getModelContextLengthFromCache(modelId: string): number | null {
+    if (!modelCache) return null;
+    const cached = modelCache.data.get(modelId);
+    return cached?.context_length ?? null;
+  }
+
+  /**
+   * Check if model cache has been populated
+   */
+  static isCachePopulated(): boolean {
+    return modelCache !== null && modelCache.data.size > 0;
   }
 
   /**
@@ -248,9 +327,12 @@ export class OpenRouterProvider {
       { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', context_length: 200000 },
       { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku', context_length: 200000 },
       { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', context_length: 128000 },
+      { id: 'openai/gpt-4o', name: 'GPT-4o', context_length: 128000 },
       { id: 'openai/gpt-4', name: 'GPT-4', context_length: 8192 },
+      { id: 'openai/gpt-5.1', name: 'GPT-5.1', context_length: 400000 },
       { id: 'openai/gpt-3.5-turbo', name: 'GPT-3.5 Turbo', context_length: 16385 },
       { id: 'google/gemini-pro', name: 'Gemini Pro', context_length: 32760 },
+      { id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro', context_length: 1000000 },
       { id: 'meta-llama/llama-3-70b-instruct', name: 'Llama 3 70B', context_length: 8192 },
     ];
   }

@@ -9,6 +9,7 @@
  */
 
 import type { TokenEstimate, ReferenceDocument } from '../../types';
+import { OpenRouterProvider } from './providers/OpenRouterProvider';
 
 /**
  * Count tokens in a text string
@@ -109,9 +110,16 @@ export function estimateContextTokens(context: {
 
 /**
  * Get model context window limits
- * These are approximate limits - actual limits may vary
+ * First checks OpenRouter API cache, then falls back to static lookup
  */
 export function getModelContextLimit(modelId: string): number {
+  // Priority 1: Check OpenRouter API cache (most accurate, real-time data)
+  const cachedLimit = OpenRouterProvider.getModelContextLengthFromCache(modelId);
+  if (cachedLimit !== null) {
+    return cachedLimit;
+  }
+
+  // Priority 2: Fall back to static lookup table
   const modelLimits: Record<string, number> = {
     // Claude models (Anthropic)
     'anthropic/claude-3.5-sonnet': 200000,
