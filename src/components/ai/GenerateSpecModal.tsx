@@ -183,11 +183,25 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
 
     try {
       // Decrypt API key
+      // Keys starting with 'sk-or-' are plaintext OpenRouter keys
+      // Otherwise, they're encrypted and need decryption
       const isPlainText = aiConfig.apiKey?.startsWith('sk-or-');
-      const decryptedKey = isPlainText ? aiConfig.apiKey : decrypt(aiConfig.apiKey);
+      let decryptedKey: string;
+
+      if (isPlainText) {
+        decryptedKey = aiConfig.apiKey;
+      } else {
+        decryptedKey = decrypt(aiConfig.apiKey);
+        // If decryption returns empty string or the result doesn't look like an API key,
+        // it likely failed due to device fingerprint change
+        if (!decryptedKey || (!decryptedKey.startsWith('sk-') && decryptedKey.length < 20)) {
+          console.error('API key decryption failed. Key may have been encrypted on a different device/browser.');
+          throw new Error('Failed to decrypt API key. This can happen if you changed browsers or cleared browser data. Please re-enter your API key in AI Settings.');
+        }
+      }
 
       if (!decryptedKey) {
-        throw new Error('Failed to decrypt API key. Please reconfigure your AI settings.');
+        throw new Error('No API key found. Please configure your AI settings.');
       }
 
       await aiService.initialize({
