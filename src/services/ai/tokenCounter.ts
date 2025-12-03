@@ -113,25 +113,43 @@ export function estimateContextTokens(context: {
  */
 export function getModelContextLimit(modelId: string): number {
   const modelLimits: Record<string, number> = {
-    // Claude models
+    // Claude models (Anthropic)
     'anthropic/claude-3.5-sonnet': 200000,
     'anthropic/claude-3-sonnet': 200000,
     'anthropic/claude-3-opus': 200000,
     'anthropic/claude-3-haiku': 200000,
     'anthropic/claude-2': 100000,
 
-    // OpenAI models
+    // OpenAI models - GPT-4 series
     'openai/gpt-4-turbo': 128000,
+    'openai/gpt-4o': 128000,
+    'openai/gpt-4o-mini': 128000,
     'openai/gpt-4': 8192,
     'openai/gpt-4-32k': 32768,
     'openai/gpt-3.5-turbo': 16385,
     'openai/gpt-3.5-turbo-16k': 16385,
+
+    // OpenAI models - GPT-4.1/5 series (newer models with large context)
+    'openai/gpt-4.1': 1000000,
+    'openai/gpt-4.1-mini': 1000000,
+    'openai/gpt-4.1-nano': 1000000,
+    'openai/gpt-5': 1000000,
+    'openai/gpt-5.1': 1000000,
+
+    // OpenAI reasoning models (o1, o3 series)
+    'openai/o1': 200000,
     'openai/o1-preview': 128000,
     'openai/o1-mini': 128000,
+    'openai/o3': 200000,
+    'openai/o3-mini': 200000,
 
     // Google models
     'google/gemini-pro': 32000,
     'google/gemini-pro-1.5': 1000000,
+    'google/gemini-1.5-pro': 1000000,
+    'google/gemini-1.5-flash': 1000000,
+    'google/gemini-2.0-flash': 1000000,
+    'google/gemini-2.0-flash-exp': 1000000,
 
     // Perplexity (online models)
     'perplexity/llama-3.1-sonar-large-128k-online': 128000,
@@ -140,23 +158,69 @@ export function getModelContextLimit(modelId: string): number {
     // Meta models
     'meta-llama/llama-3-70b-instruct': 8192,
     'meta-llama/llama-3.1-405b-instruct': 128000,
+    'meta-llama/llama-3.1-70b-instruct': 128000,
+    'meta-llama/llama-3.2-90b-vision-instruct': 128000,
+
+    // Mistral models
+    'mistralai/mistral-large': 128000,
+    'mistralai/mistral-medium': 32000,
+    'mistralai/mixtral-8x7b-instruct': 32000,
+
+    // DeepSeek models
+    'deepseek/deepseek-chat': 128000,
+    'deepseek/deepseek-coder': 128000,
   };
+
+  const modelIdLower = modelId.toLowerCase();
 
   // Try exact match first
   if (modelLimits[modelId]) {
     return modelLimits[modelId];
   }
 
-  // Try prefix match
-  for (const [prefix, limit] of Object.entries(modelLimits)) {
-    const modelPart = prefix.split('/')[1];
-    if (modelPart && modelId.toLowerCase().includes(modelPart.toLowerCase())) {
+  // Try prefix/partial match with normalized model ID
+  for (const [knownModel, limit] of Object.entries(modelLimits)) {
+    const knownModelLower = knownModel.toLowerCase();
+    // Check if the model ID starts with a known prefix
+    if (modelIdLower.startsWith(knownModelLower)) {
+      return limit;
+    }
+    // Check if a key part matches (e.g., "gpt-4.1" in "openai/gpt-4.1-mini-2025-04-14")
+    const modelPart = knownModel.split('/')[1]?.toLowerCase();
+    if (modelPart && modelIdLower.includes(modelPart)) {
       return limit;
     }
   }
 
-  // Default to conservative limit
-  return 8192;
+  // Smart fallback based on model name patterns
+  // Newer models generally have larger context windows
+  if (modelIdLower.includes('gpt-5') || modelIdLower.includes('gpt-4.1')) {
+    return 1000000; // 1M tokens for latest GPT models
+  }
+  if (modelIdLower.includes('gpt-4') || modelIdLower.includes('o1') || modelIdLower.includes('o3')) {
+    return 128000; // 128K for GPT-4 variants
+  }
+  if (modelIdLower.includes('claude-3') || modelIdLower.includes('claude-4')) {
+    return 200000; // 200K for Claude 3+
+  }
+  if (modelIdLower.includes('gemini')) {
+    return 1000000; // 1M for Gemini models
+  }
+  if (modelIdLower.includes('llama-3.1') || modelIdLower.includes('llama-3.2')) {
+    return 128000; // 128K for newer Llama models
+  }
+  if (modelIdLower.includes('128k') || modelIdLower.includes('200k')) {
+    // Extract context size from model name if mentioned
+    const match = modelIdLower.match(/(\d+)k/);
+    if (match) {
+      return parseInt(match[1]) * 1000;
+    }
+  }
+
+  // Default to a reasonable modern default (not overly conservative)
+  // Most modern models support at least 32K
+  console.warn(`Unknown model "${modelId}" - defaulting to 32K context limit`);
+  return 32000;
 }
 
 /**
