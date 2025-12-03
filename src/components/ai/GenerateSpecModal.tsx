@@ -73,6 +73,11 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
       r => r.dataRef && (r.type === 'PDF' || r.type === 'DOCX')
     ) || [];
 
+    // Check if current model is a vision model (affects how PDFs are processed)
+    const isVisionModel = aiConfig?.model
+      ? new OpenRouterProvider('').isVisionModel(aiConfig.model)
+      : false;
+
     // Use the enhanced PDF-aware token estimation
     const pdfEstimate = estimateTotalContextWithPDFs(
       brsDocument.markdown,
@@ -83,8 +88,10 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
         pageCount: r.pageCount,
         extractedText: r.extractedText,
         tokenEstimate: r.tokenEstimate,
+        fileType: r.type, // Pass file type for accurate estimation
       })),
-      2000 // Base system prompt tokens
+      2000, // Base system prompt tokens
+      { isVisionModel } // Pass vision model status
     );
 
     // Also calculate text-based references (non-PDF)
@@ -113,7 +120,7 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
       pdfWarnings: pdfEstimate.warnings,
       pdfDetails: pdfEstimate.referenceDetails,
     };
-  }, [brsDocument, activeTemplateConfig?.customGuidance, project?.references, pdfReferenceCount]);
+  }, [brsDocument, activeTemplateConfig?.customGuidance, project?.references, pdfReferenceCount, aiConfig?.model]);
 
   // Check if context fits within model limits
   const contextFitInfo = useMemo(() => {

@@ -454,11 +454,44 @@ export function estimatePDFTokensFromSize(fileSizeBytes: number): {
 }
 
 /**
+ * Estimate tokens for a DOCX document based on file size
+ *
+ * DOCX files are compressed XML, so file size correlates differently with text content.
+ * A typical DOCX has ~10-20 chars of text per byte of file size (after decompression).
+ * Using ~15 chars/byte average → ~3.75 tokens per byte (at 4 chars/token)
+ *
+ * @param fileSizeBytes - File size in bytes
+ * @returns Estimated token count
+ */
+export function estimateDOCXTokensFromSize(fileSizeBytes: number): {
+  estimatedTokens: number;
+  confidence: 'low' | 'medium' | 'high';
+} {
+  // DOCX compression ratio varies widely:
+  // - Text-only docs: ~15-20 chars per byte
+  // - Docs with images: ~5-10 chars per byte
+  // Using conservative estimate of ~12 chars per byte → 3 tokens per byte
+  const tokensPerByte = 3;
+  const estimatedTokens = Math.ceil(fileSizeBytes * tokensPerByte);
+
+  // Confidence based on typical file sizes
+  let confidence: 'low' | 'medium' | 'high' = 'medium';
+  if (fileSizeBytes < 5000 || fileSizeBytes > 50000000) {
+    confidence = 'low'; // Very small or very large files
+  } else if (fileSizeBytes >= 10000 && fileSizeBytes <= 10000000) {
+    confidence = 'high'; // Typical document range
+  }
+
+  return { estimatedTokens, confidence };
+}
+
+/**
  * Estimate total context usage including reference documents
  *
  * @param brsContent - BRS document content
  * @param referenceDocuments - Array of reference documents with size/page info
  * @param systemPromptTokens - Tokens used by system prompt
+ * @param options - Additional options for estimation
  * @returns Total usage breakdown with warnings
  */
 export function estimateTotalContextWithPDFs(
@@ -470,8 +503,12 @@ export function estimateTotalContextWithPDFs(
     pageCount?: number;
     extractedText?: string;
     tokenEstimate?: number;
+    fileType?: 'PDF' | 'DOCX' | string;
   }>,
-  systemPromptTokens: number = 2000
+  systemPromptTokens: number = 2000,
+  options?: {
+    isVisionModel?: boolean;  // If false, PDFs will use text extraction (smaller)
+  }
 ): {
   total: number;
   breakdown: {
@@ -502,33 +539,58 @@ export function estimateTotalContextWithPDFs(
 
   const warnings: string[] = [];
 
+  const isVisionModel = options?.isVisionModel ?? false;
+
   for (const ref of referenceDocuments) {
     let tokens = 0;
     let source: 'pageCount' | 'fileSize' | 'text' | 'stored' = 'fileSize';
+    const isDOCX = ref.fileType === 'DOCX' || ref.title?.toLowerCase().endsWith('.docx');
 
-    // Priority 1: Use stored token estimate
+    // Priority 1: Use stored token estimate (from actual text extraction)
     if (ref.tokenEstimate && ref.tokenEstimate > 0) {
       tokens = ref.tokenEstimate;
       source = 'stored';
     }
-    // Priority 2: Use page count
-    else if (ref.pageCount && ref.pageCount > 0) {
-      tokens = estimatePDFTokens(ref.pageCount, 'mixed');
-      source = 'pageCount';
-    }
-    // Priority 3: Use extracted text
+    // Priority 2: Use extracted text (most accurate for non-vision models)
     else if (ref.extractedText) {
       tokens = countTokens(ref.extractedText);
       source = 'text';
     }
-    // Priority 4: Estimate from file size
+    // Priority 3: Use page count (only for PDFs with vision models)
+    else if (ref.pageCount && ref.pageCount > 0 && !isDOCX && isVisionModel) {
+      tokens = estimatePDFTokens(ref.pageCount, 'mixed');
+      source = 'pageCount';
+    }
+    // Priority 4: Estimate from file size (different heuristics for PDF vs DOCX)
     else if (ref.size && ref.size > 0) {
-      const estimate = estimatePDFTokensFromSize(ref.size);
-      tokens = estimate.estimatedTokens;
-      source = 'fileSize';
+      if (isDOCX) {
+        // DOCX files always use text extraction, not multimodal
+        // Use DOCX-specific estimation (much more conservative)
+        const estimate = estimateDOCXTokensFromSize(ref.size);
+        tokens = estimate.estimatedTokens;
+        source = 'fileSize';
 
-      if (estimate.confidence === 'low') {
-        warnings.push(`Token estimate for "${ref.title}" may be inaccurate (unusual file size)`);
+        if (estimate.confidence === 'low') {
+          warnings.push(`Token estimate for "${ref.title}" may be inaccurate (unusual DOCX file size)`);
+        }
+      } else if (isVisionModel) {
+        // PDF with vision model - use page-based estimation (multimodal)
+        const estimate = estimatePDFTokensFromSize(ref.size);
+        tokens = estimate.estimatedTokens;
+        source = 'fileSize';
+
+        if (estimate.confidence === 'low') {
+          warnings.push(`Token estimate for "${ref.title}" may be inaccurate (unusual PDF file size)`);
+        }
+      } else {
+        // PDF without vision model - will use text extraction
+        // Estimate is much lower since only text is sent, not the full PDF
+        // Use DOCX-like estimation since text extraction is similar
+        const estimate = estimateDOCXTokensFromSize(ref.size);
+        tokens = estimate.estimatedTokens;
+        source = 'fileSize';
+
+        warnings.push(`"${ref.title}" will use text extraction (non-vision model)`);
       }
     }
 

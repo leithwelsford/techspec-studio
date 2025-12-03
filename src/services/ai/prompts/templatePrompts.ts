@@ -267,6 +267,22 @@ const promptBuilders: Record<string, PromptBuilder> = {
 };
 
 /**
+ * List of legacy prompt keys that have hardcoded section numbers
+ * These need post-processing to inject the correct dynamic section number
+ */
+const LEGACY_PROMPTS_WITH_HARDCODED_NUMBERS = [
+  'build3GPPScopePrompt',
+  'buildServiceOverviewPrompt',
+  'build3GPPFunctionalRequirementsPrompt',
+  'buildArchitectureAndProceduresPrompt',
+  'buildNonFunctionalRequirementsPrompt',
+  'buildOSSBSSPrompt',
+  'buildSLASummaryPrompt',
+  'buildOpenItemsPrompt',
+  'buildAppendicesPrompt',
+];
+
+/**
  * Build a section prompt using template configuration
  *
  * @param section - Template section definition
@@ -285,7 +301,29 @@ export function buildSectionPrompt(
     return buildGenericSectionPrompt(section, context);
   }
 
-  return builder(section, context);
+  let prompt = builder(section, context);
+
+  // For legacy prompts with hardcoded section numbers, inject the correct dynamic number
+  if (LEGACY_PROMPTS_WITH_HARDCODED_NUMBERS.includes(section.promptKey) && section.number) {
+    prompt = injectDynamicSectionNumber(prompt, section.number, section.title);
+  }
+
+  return prompt;
+}
+
+/**
+ * Inject dynamic section number instruction into legacy prompts
+ * This ensures the LLM uses the correct section number even when sections are reordered
+ */
+function injectDynamicSectionNumber(prompt: string, sectionNumber: string, sectionTitle: string): string {
+  return `**IMPORTANT: Section Numbering Override**
+This section should be numbered as Section ${sectionNumber} (${sectionTitle}).
+Use "## ${sectionNumber} ${sectionTitle}" as the main heading and "${sectionNumber}.X" for any subsections.
+DO NOT use any other section number - the section order has been customized.
+
+---
+
+${prompt}`;
 }
 
 /**
