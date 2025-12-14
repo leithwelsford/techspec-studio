@@ -520,7 +520,25 @@ export const useProjectStore = create<ProjectState>()(
         // Store file in IndexedDB
         const stored = await documentStorage.storeFile(file);
 
-        // Create reference document entry
+        // Extract text and calculate token estimate at upload time
+        // This ensures accurate token estimates are always available
+        let extractedText: string | undefined;
+        let tokenEstimate: number | undefined;
+
+        try {
+          console.log(`📝 Extracting text from ${file.name}...`);
+          const extraction = await documentStorage.extractTextFromStoredDocument(stored.id);
+          if (extraction) {
+            extractedText = extraction.text;
+            tokenEstimate = extraction.tokenEstimate;
+            console.log(`✅ Extracted ${extractedText.length} chars (~${tokenEstimate} tokens) from ${file.name}`);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Could not extract text from ${file.name}:`, error);
+          // Continue without extraction - fallback estimation will be used
+        }
+
+        // Create reference document entry with token estimate
         const ref: Omit<ReferenceDocument, 'id'> = {
           title: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
           type: file.name.toLowerCase().endsWith('.pdf') ? 'PDF' : 'DOCX',
@@ -530,7 +548,8 @@ export const useProjectStore = create<ProjectState>()(
           size: stored.size,
           uploadedAt: stored.uploadedAt,
           dataRef: stored.id, // Reference to IndexedDB
-          // Token estimate will be calculated separately
+          extractedText,  // Store extracted text for non-vision models
+          tokenEstimate,  // Store token estimate for accurate context calculation
         };
 
         // Add to project references
@@ -546,7 +565,7 @@ export const useProjectStore = create<ProjectState>()(
           };
         });
 
-        console.log('📁 Added PDF reference:', { id, filename: stored.filename, size: stored.size });
+        console.log('📁 Added PDF reference:', { id, filename: stored.filename, size: stored.size, tokenEstimate });
         return id;
       },
 

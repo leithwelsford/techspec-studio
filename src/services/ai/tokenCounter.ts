@@ -456,9 +456,12 @@ export function estimatePDFTokensFromSize(fileSizeBytes: number): {
 /**
  * Estimate tokens for a DOCX document based on file size
  *
- * DOCX files are compressed XML, so file size correlates differently with text content.
- * A typical DOCX has ~10-20 chars of text per byte of file size (after decompression).
- * Using ~15 chars/byte average → ~3.75 tokens per byte (at 4 chars/token)
+ * DOCX files are heavily compressed XML with embedded assets.
+ * The actual text content is typically only 5-15% of total file size.
+ * - Text-heavy docs: ~10-15% text content
+ * - Docs with images/formatting: ~1-5% text content
+ *
+ * Using 10% as middle ground: ~0.1 chars per byte → ~0.025 tokens per byte
  *
  * @param fileSizeBytes - File size in bytes
  * @returns Estimated token count
@@ -467,19 +470,18 @@ export function estimateDOCXTokensFromSize(fileSizeBytes: number): {
   estimatedTokens: number;
   confidence: 'low' | 'medium' | 'high';
 } {
-  // DOCX compression ratio varies widely:
-  // - Text-only docs: ~15-20 chars per byte
-  // - Docs with images: ~5-10 chars per byte
-  // Using conservative estimate of ~12 chars per byte → 3 tokens per byte
-  const tokensPerByte = 3;
-  const estimatedTokens = Math.ceil(fileSizeBytes * tokensPerByte);
+  // DOCX is heavily compressed with embedded assets (styles, fonts, images)
+  // Actual text content is typically only 5-15% of file size
+  // For an 8MB DOCX, expect ~400-800KB of text = ~100-200K tokens
+  // Using 10% estimate: 0.1 chars per byte → 0.025 tokens per byte
+  const tokensPerByte = 0.025;
+  const estimatedTokens = Math.max(100, Math.ceil(fileSizeBytes * tokensPerByte));
 
-  // Confidence based on typical file sizes
-  let confidence: 'low' | 'medium' | 'high' = 'medium';
-  if (fileSizeBytes < 5000 || fileSizeBytes > 50000000) {
-    confidence = 'low'; // Very small or very large files
-  } else if (fileSizeBytes >= 10000 && fileSizeBytes <= 10000000) {
-    confidence = 'high'; // Typical document range
+  // Confidence is always low for file-size estimation since it varies wildly
+  // Text extraction should be used when possible
+  let confidence: 'low' | 'medium' | 'high' = 'low';
+  if (fileSizeBytes >= 50000 && fileSizeBytes <= 5000000) {
+    confidence = 'medium'; // Typical document range, slightly more reliable
   }
 
   return { estimatedTokens, confidence };

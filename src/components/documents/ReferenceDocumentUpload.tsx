@@ -14,7 +14,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { validateFile, getMaxFileSizeMB } from '../../services/storage/documentStorage';
-import { estimatePDFTokensFromSize, formatTokenCount } from '../../services/ai/tokenCounter';
+import { estimatePDFTokensFromSize, estimateDOCXTokensFromSize, formatTokenCount } from '../../services/ai/tokenCounter';
 import type { ReferenceDocument } from '../../types';
 
 interface ReferenceDocumentUploadProps {
@@ -227,10 +227,13 @@ function DocumentItem({ document, onRemove, disabled }: DocumentItemProps) {
   const [isRemoving, setIsRemoving] = useState(false);
 
   // Estimate tokens from file size if not already stored
+  // Use appropriate estimation based on file type
   const tokenInfo = document.tokenEstimate
     ? { estimatedTokens: document.tokenEstimate, confidence: 'stored' as const }
     : document.size
-      ? estimatePDFTokensFromSize(document.size)
+      ? (document.type === 'DOCX'
+          ? estimateDOCXTokensFromSize(document.size)
+          : estimatePDFTokensFromSize(document.size))
       : { estimatedTokens: 0, confidence: 'low' as const };
 
   const handleRemove = async () => {
