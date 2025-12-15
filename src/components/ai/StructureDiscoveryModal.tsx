@@ -114,10 +114,7 @@ export default function StructureDiscoveryModal({
       setInferredDomain(result.domainInference);
 
       // Update usage stats
-      updateUsageStats({
-        tokens: result.tokensUsed,
-        cost: result.cost,
-      });
+      updateUsageStats(result.tokensUsed, result.cost);
 
       setStep('reviewing');
     } catch (err) {
