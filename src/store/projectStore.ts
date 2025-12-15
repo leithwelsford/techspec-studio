@@ -1763,6 +1763,21 @@ export const useProjectStore = create<ProjectState>()(
         merged.isGenerating = false;
         merged.currentTaskId = null;
 
+        // Ensure structurePlanning exists (for migration from older versions)
+        if (!merged.structurePlanning) {
+          merged.structurePlanning = {
+            isPlanning: false,
+            planningStep: 'input',
+            proposedStructure: null,
+            structureVersions: [],
+            inferredDomain: null,
+            domainOverride: null,
+            planningChatHistory: [],
+            structureApproved: false,
+            userGuidance: '',
+          };
+        }
+
         return merged;
       },
     }
