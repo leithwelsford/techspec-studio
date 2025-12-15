@@ -111,7 +111,7 @@ export interface MermaidDiagram {
 export interface ReferenceDocument {
   id: string;
   title: string;
-  type: '3GPP' | 'PDF' | 'DOCX' | 'URL' | 'Other';
+  type: '3GPP' | 'PDF' | 'DOCX' | 'TXT' | 'MD' | 'URL' | 'Other';
   source: string; // URL, file path, or base64
   metadata?: {
     spec?: string; // e.g., "TS 23.203"

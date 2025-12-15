@@ -328,9 +328,12 @@ export function validateFile(file: File): { valid: boolean; error?: string } {
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
     'application/msword', // .doc
+    'text/plain', // .txt
+    'text/markdown', // .md
+    'text/x-markdown', // .md (alternative)
   ];
 
-  const allowedExtensions = ['.pdf', '.docx', '.doc'];
+  const allowedExtensions = ['.pdf', '.docx', '.doc', '.txt', '.md'];
 
   const hasValidType = allowedTypes.includes(file.type);
   const hasValidExtension = allowedExtensions.some(ext =>
@@ -340,7 +343,7 @@ export function validateFile(file: File): { valid: boolean; error?: string } {
   if (!hasValidType && !hasValidExtension) {
     return {
       valid: false,
-      error: `Invalid file type. Allowed: PDF, DOCX`,
+      error: `Invalid file type. Allowed: PDF, DOCX, TXT, MD`,
     };
   }
 
@@ -401,6 +404,25 @@ export async function extractTextFromStoredDocument(id: string): Promise<{
 
       return {
         text: result.value,
+        tokenEstimate,
+      };
+    }
+
+    // Check for plain text files (.txt, .md)
+    const isTextFile = doc.mimeType === 'text/plain' ||
+      doc.mimeType === 'text/markdown' ||
+      doc.mimeType === 'text/x-markdown' ||
+      doc.filename.toLowerCase().endsWith('.txt') ||
+      doc.filename.toLowerCase().endsWith('.md');
+
+    if (isTextFile) {
+      // Decode ArrayBuffer as UTF-8 text
+      const decoder = new TextDecoder('utf-8');
+      const text = decoder.decode(doc.data);
+      const tokenEstimate = Math.ceil(text.length / 4);
+
+      return {
+        text,
         tokenEstimate,
       };
     }

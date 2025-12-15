@@ -149,7 +149,7 @@ export function ReferenceDocumentUpload({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.docx,.doc"
+          accept=".pdf,.docx,.doc,.txt,.md"
           multiple
           onChange={handleFileSelect}
           className="hidden"
@@ -180,7 +180,7 @@ export function ReferenceDocumentUpload({
               )}
             </p>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              PDF or DOCX up to {getMaxFileSizeMB()}MB
+              PDF, DOCX, TXT, or MD up to {getMaxFileSizeMB()}MB
             </p>
           </div>
         )}

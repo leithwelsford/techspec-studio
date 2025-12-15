@@ -586,9 +586,16 @@ export const useProjectStore = create<ProjectState>()(
         }
 
         // Create reference document entry with token estimate
+        // Determine file type from extension
+        const fileName = file.name.toLowerCase();
+        let fileType: 'PDF' | 'DOCX' | 'TXT' | 'MD' = 'DOCX';
+        if (fileName.endsWith('.pdf')) fileType = 'PDF';
+        else if (fileName.endsWith('.txt')) fileType = 'TXT';
+        else if (fileName.endsWith('.md')) fileType = 'MD';
+
         const ref: Omit<ReferenceDocument, 'id'> = {
           title: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
-          type: file.name.toLowerCase().endsWith('.pdf') ? 'PDF' : 'DOCX',
+          type: fileType,
           source: '', // Not used for uploaded files
           filename: stored.filename,
           mimeType: stored.mimeType,
