@@ -567,7 +567,14 @@ export const useProjectStore = create<ProjectState>()(
 
         try {
           console.log(`📝 Extracting text from ${file.name}...`);
-          const extraction = await documentStorage.extractTextFromStoredDocument(stored.id);
+
+          // Add timeout to prevent hanging on large/complex PDFs (30 seconds)
+          const extractionPromise = documentStorage.extractTextFromStoredDocument(stored.id);
+          const timeoutPromise = new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error('Text extraction timed out after 30s')), 30000)
+          );
+
+          const extraction = await Promise.race([extractionPromise, timeoutPromise]);
           if (extraction) {
             extractedText = extraction.text;
             tokenEstimate = extraction.tokenEstimate;
