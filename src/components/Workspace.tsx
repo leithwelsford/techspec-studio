@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import AIConfigPanel from './ai/AIConfigPanel';
 import ChatPanel from './ai/ChatPanel';
 import ReviewPanel from './ai/ReviewPanel';
 import { GenerateSpecModal } from './ai/GenerateSpecModal';
 import { GenerateDiagramsModal } from './ai/GenerateDiagramsModal';
+import StructureDiscoveryModal from './ai/StructureDiscoveryModal';
 import MarkdownEditor from './editors/MarkdownEditor';
 import { BRSUpload } from './BRSUpload';
 import DiagramViewer from './DiagramViewer';
 import ExportModal from './ExportModal';
+import { aiService } from '../services/ai/AIService';
+import { decrypt } from '../utils/encryption';
+import type { ProposedStructure } from '../types';
 
 export default function Workspace() {
   const [showAIConfig, setShowAIConfig] = useState(false);
@@ -17,6 +21,8 @@ export default function Workspace() {
   const [showGenerateDiagramsModal, setShowGenerateDiagramsModal] = useState(false);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showStructureDiscovery, setShowStructureDiscovery] = useState(false);
+  const [isGeneratingFromStructure, setIsGeneratingFromStructure] = useState(false);
 
   // Use Zustand store for activeTab instead of local state
   const activeTab = useProjectStore((state) => state.activeTab);
@@ -32,6 +38,9 @@ export default function Workspace() {
   const pendingApprovals = useProjectStore((state) => state.pendingApprovals);
   const resetStore = useProjectStore((state) => state.resetStore);
   const docxTemplateAnalysis = useProjectStore((state) => state.docxTemplateAnalysis);
+  const updateSpecification = useProjectStore((state) => state.updateSpecification);
+  const updateUsageStats = useProjectStore((state) => state.updateUsageStats);
+  const addPendingApproval = useProjectStore((state) => state.addPendingApproval);
 
   // Show AI config on first load if not configured (but allow dismissal)
   const needsConfig = (!aiConfig?.apiKey || !aiConfig.apiKey.trim()) && !hasDismissedConfig;
@@ -43,6 +52,57 @@ export default function Workspace() {
       window.location.reload();
     }
   };
+
+  /**
+   * Handle generation from approved structure
+   */
+  const handleGenerateFromStructure = useCallback(async (structure: ProposedStructure) => {
+    if (!aiConfig || !brsDocument?.markdown) return;
+
+    setShowStructureDiscovery(false);
+    setIsGeneratingFromStructure(true);
+
+    try {
+      // Initialize AI service
+      const decryptedKey = decrypt(aiConfig.apiKey);
+      aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
+
+      // Generate specification from structure
+      const result = await aiService.generateFromApprovedStructure({
+        structure,
+        brsContent: brsDocument.markdown,
+        onProgress: (current, total, sectionTitle) => {
+          console.log(`Generating section ${current}/${total}: ${sectionTitle}`);
+        },
+      });
+
+      // Update usage stats
+      updateUsageStats({
+        tokens: result.totalTokens,
+        cost: result.totalCost,
+      });
+
+      // Create pending approval for the generated content
+      addPendingApproval({
+        id: crypto.randomUUID(),
+        taskId: `structure-gen-${Date.now()}`,
+        type: 'document',
+        status: 'pending',
+        originalContent: project?.specification?.markdown || '',
+        generatedContent: result.markdown,
+        createdAt: new Date(),
+      });
+
+      // Show the review panel
+      setShowReviewPanel(true);
+      alert(`✅ Generated ${result.sections.length} sections. Please review in the Review panel.`);
+    } catch (err) {
+      console.error('Generation from structure failed:', err);
+      alert(`Failed to generate specification: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsGeneratingFromStructure(false);
+    }
+  }, [aiConfig, brsDocument, updateUsageStats, addPendingApproval, project?.specification?.markdown]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
@@ -87,7 +147,23 @@ export default function Workspace() {
             </div>
           )}
 
-          {/* Generate Spec Button */}
+          {/* Plan Structure Button (new workflow) */}
+          {brsDocument && (
+            <button
+              onClick={() => setShowStructureDiscovery(true)}
+              disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim() || isGeneratingFromStructure}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md ${
+                aiConfig?.apiKey && aiConfig.apiKey.trim() && !isGeneratingFromStructure
+                  ? 'text-white bg-blue-600 hover:bg-blue-700'
+                  : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+              }`}
+              title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Plan document structure with AI'}
+            >
+              {isGeneratingFromStructure ? 'Generating...' : 'Plan Structure'}
+            </button>
+          )}
+
+          {/* Generate Spec Button (legacy workflow) */}
           {brsDocument && (
             <button
               onClick={() => setShowGenerateModal(true)}
@@ -97,7 +173,7 @@ export default function Workspace() {
                   ? 'text-white bg-green-600 hover:bg-green-700'
                   : 'text-gray-400 bg-gray-100 cursor-not-allowed'
               }`}
-              title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Generate technical specification from BRS'}
+              title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Generate technical specification from BRS (template-based)'}
             >
               Generate Spec
             </button>
@@ -299,6 +375,13 @@ export default function Workspace() {
       <GenerateDiagramsModal
         isOpen={showGenerateDiagramsModal}
         onClose={() => setShowGenerateDiagramsModal(false)}
+      />
+
+      {/* Structure Discovery Modal */}
+      <StructureDiscoveryModal
+        isOpen={showStructureDiscovery}
+        onClose={() => setShowStructureDiscovery(false)}
+        onGenerate={handleGenerateFromStructure}
       />
 
       {/* Review Panel Modal */}
