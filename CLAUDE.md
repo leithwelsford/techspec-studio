@@ -76,17 +76,22 @@ docker-compose down            # Stop services
 - [src/store/projectStore.ts](src/store/projectStore.ts) - Zustand store (single source of truth)
 - [src/types/index.ts](src/types/index.ts) - All TypeScript types (check before creating new ones)
 - [src/services/ai/AIService.ts](src/services/ai/AIService.ts) - AI orchestration (OpenRouter)
+- [src/services/ai/contextManager.ts](src/services/ai/contextManager.ts) - Token budget allocation
+- [server/pandoc-service.js](server/pandoc-service.js) - Pandoc backend (Express)
 - [docs/README.md](docs/README.md) - Documentation index (42+ files)
 
 ## Architecture
 
 ### State Management (Zustand)
 
-All application state lives in `projectStore.ts` with localStorage/IndexedDB persistence:
+All application state lives in `projectStore.ts` with IndexedDB persistence (custom middleware in `src/utils/indexedDBMiddleware.ts`):
 
 - **Project Data**: Specification (markdown), BRS document, block diagrams, sequence diagrams, references
 - **AI State**: Config (encrypted API key), chat history, pending approvals, usage stats
 - **Version History**: Automatic snapshots on significant changes
+- **PDF References**: Large files stored separately via `documentStorage.ts` (IndexedDB)
+
+**Storage Pattern**: Small state in Zustand store (auto-persisted), large binary data (PDFs, DOCX templates) stored via `documentStorage` service with references in store.
 
 ### AI Service Layer
 
@@ -122,12 +127,25 @@ await aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
 - `generateSection()` - Individual sections
 - `generateDiagrams()` - Block & Mermaid diagrams
 
+**Context Management**: The `contextManager.ts` handles token budget allocation with priorities:
+- BRS document (highest) → Previous sections → References → Web search
+- Model context limits are fetched dynamically from OpenRouter API
+- Excerpts are extracted when full documents exceed budget
+
+### Multimodal PDF References
+
+PDFs can be uploaded as reference documents for AI context:
+- Stored in IndexedDB via `documentStorage.ts` (avoids localStorage limits)
+- Vision-capable models receive PDF pages as images
+- Non-vision models receive extracted text fallback
+- Store actions: `addPDFReference()`, `removePDFReference()`, `getPDFReferencesForGeneration()`
+
 ### Diagram Types
 
 | Type | Technology | Editor |
 |------|------------|--------|
-| Block diagrams | Custom SVG | BlockDiagramEditor.tsx (998 lines) |
-| Sequence/Flow | Mermaid.js | SequenceDiagramEditor.tsx (359 lines) |
+| Block diagrams | Custom SVG | BlockDiagramEditor.tsx |
+| Sequence/Flow/State/Class | Mermaid.js | SequenceDiagramEditor.tsx |
 
 ### Data Flow
 
@@ -153,6 +171,14 @@ Documents use `{{fig:diagram-id}}` and `{{ref:3gpp-ts-23-203}}` syntax:
 Three built-in templates: 3GPP, IEEE 830, ISO 29148
 - Templates in [src/data/templates/](src/data/templates/)
 - Section customization with drag-and-drop reordering (@dnd-kit)
+
+### BRS Document Handling
+
+The BRS (Business Requirements Spec) is the input document that drives spec generation:
+- Uploaded as DOCX (parsed via `mammoth`) or entered as markdown
+- Text and token estimate extracted at upload time for efficient context building
+- Stored in `project.brsDocument` with `extractedText` and `tokenEstimate` fields
+- Used as primary context for all AI generation calls
 
 ### Export System
 
@@ -200,11 +226,12 @@ AI generated incomplete content. Retry the request or switch to Claude Opus for 
 Check browser console for localStorage/IndexedDB errors. Try `localStorage.clear()` if quota exceeded.
 
 ### Clearing persisted data
-Use browser DevTools console:
+Use the "Clear Data" button in the UI header (recommended), or via DevTools console:
 ```javascript
 localStorage.removeItem('tech-spec-project');  // Clear project data
-location.reload();                              // Reload app
-// Or clear everything: localStorage.clear()
+// For IndexedDB (PDF references, large files):
+indexedDB.deleteDatabase('techspec-documents');
+location.reload();
 ```
 
 ### Debugging store state

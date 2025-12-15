@@ -6,7 +6,7 @@
 ```bash
 npm run dev
 ```
-✅ Opens at http://localhost:3001
+Opens at http://localhost:3000
 
 ### Step 2: Create Your First Project
 1. Click **"Create New Project"**
@@ -99,7 +99,7 @@ Every AI response shows:
 - **Token count** - e.g., "2,341 tokens"
 - **Cost estimate** - e.g., "$0.023"
 
-Usage stats tracked in store (view in future version).
+Usage stats tracked in store and shown in AI config panel.
 
 ---
 
@@ -139,12 +139,14 @@ Usage stats tracked in store (view in future version).
    - Select paragraph
    - Click "Refine" → "Add more technical details"
 
-5. **Add diagrams** (future):
-   - In chat: "Create a block diagram of the architecture"
-   - Diagram appears in editor
+5. **Add diagrams**:
+   - Click "Generate Spec" and select diagram options
+   - Or use chat: "Create a block diagram of the architecture"
+   - Diagrams appear in Block Diagrams / Sequence Diagrams tabs
 
-6. **Export** (future):
-   - Click "Export" → DOCX
+6. **Export**:
+   - Click "Export" in header
+   - Choose DOCX (with optional Pandoc backend) or diagram export
    - Download professional document
 
 ---
@@ -160,7 +162,7 @@ Usage stats tracked in store (view in future version).
 2. **Use context**:
    - Add diagrams first
    - Reference them in prompts
-   - Upload reference documents (future)
+   - Upload BRS documents for AI context
 
 3. **Iterate**:
    - Generate rough draft
@@ -176,20 +178,20 @@ Usage stats tracked in store (view in future version).
 2. **Add References Early**:
    - Create diagrams first
    - Use {{fig:...}} syntax
-   - Will auto-number later
+   - Auto-numbered in preview and export
 
 3. **Save Often**:
-   - Auto-saves to localStorage
-   - But export regularly (future)
+   - Auto-saves to localStorage/IndexedDB
+   - Export regularly as backup
 
 ---
 
 ## 🔒 Security Notes
 
-- API keys encrypted in browser
+- API keys encrypted in browser (AES)
 - Device-specific (can't decrypt on other devices)
 - Not sent to any server except OpenRouter
-- Clear on logout (future feature)
+- Use "Clear Data" button to reset all data
 
 ---
 
@@ -204,10 +206,10 @@ Usage stats tracked in store (view in future version).
 
 ## 🆘 Need Help?
 
-1. Check **TROUBLESHOOTING.md**
-2. Check **PHASE2_PROGRESS.md** for features
+1. Check **TROUBLESHOOTING.md** for common issues
+2. Check **docs/OUTSTANDING_DEVELOPMENT.md** for feature status
 3. Check browser console for errors
-4. Review **CLAUDE.md** for architecture
+4. Review **CLAUDE.md** for architecture details
 
 ---
 

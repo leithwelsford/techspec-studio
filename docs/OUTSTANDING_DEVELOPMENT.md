@@ -1,7 +1,7 @@
 # Outstanding Development Work
 
-**Last Updated**: 2025-11-26
-**Current Phase**: Phase 4 Complete ✅
+**Last Updated**: 2025-12-15
+**Current Phase**: Phase 4 Complete (Beta)
 
 ---
 
@@ -435,39 +435,43 @@ and the AI can use them for context when generating content.
 ## 📊 Priority Summary
 
 ### High Priority (Do First)
-1. ✅ **Pandoc Double Numbering** - Choose solution and implement (0.5-5 hours)
+1. **AI Structure Discovery Workflow** - Replace template-first with AI-assisted structure planning (20-30 hours)
+   - See: [plans/AI_STRUCTURE_DISCOVERY_PLAN.md](plans/AI_STRUCTURE_DISCOVERY_PLAN.md)
+2. ✅ **Pandoc Double Numbering** - Choose solution and implement (0.5-5 hours)
 
 ### Medium Priority (Do Next)
-2. **Reference Document Management** - Upload and parse 3GPP specs (8-12 hours)
-3. **Export Format Enhancements** - PDF, HTML export (8-16 hours per format)
-4. **Testing & QA** - Unit and integration tests (30-50 hours)
-5. **Deployment** - Production setup and CI/CD (15-25 hours)
+3. **Reference Document Management** - Upload and parse 3GPP specs (8-12 hours)
+4. **Export Format Enhancements** - PDF, HTML export (8-16 hours per format)
+5. **Testing & QA** - Unit and integration tests (30-50 hours)
+6. **Deployment** - Production setup and CI/CD (15-25 hours)
 
 ### Low Priority (Nice to Have)
-6. **Change Propagation** - AI-powered consistency checking (16-24 hours)
-7. **Template Customization** - Custom template creation (12-20 hours)
-8. **3GPP URL Fetching** - Auto-fetch specs from 3gpp.org (6-10 hours)
-9. **Performance Optimization** - Virtualization, lazy loading (10-15 hours)
+7. **Change Propagation** - AI-powered consistency checking (16-24 hours)
+8. **Template Customization** - Custom template creation (12-20 hours)
+9. **3GPP URL Fetching** - Auto-fetch specs from 3gpp.org (6-10 hours)
+10. **Performance Optimization** - Virtualization, lazy loading (10-15 hours)
 
 ### Future (Deferred)
-10. **Multi-Document Projects** - Project management (40-60 hours)
-11. **Collaboration Features** - Real-time co-editing (100+ hours)
-12. **Version Control Integration** - Git integration (30-50 hours)
-13. **Advanced Diagrams** - Auto-layout, complex interactions (50+ hours)
+11. **Multi-Document Projects** - Project management (40-60 hours)
+12. **Collaboration Features** - Real-time co-editing (100+ hours)
+13. **Version Control Integration** - Git integration (30-50 hours)
+14. **Advanced Diagrams** - Auto-layout, complex interactions (50+ hours)
 
 ### Ongoing
-14. **AI Model Improvements** - Continuous optimization
-15. **Documentation** - User guides and tutorials (20-30 hours)
+15. **AI Model Improvements** - Continuous optimization
+16. **Documentation** - User guides and tutorials (20-30 hours)
 
 ---
 
 ## 🎯 Recommended Next Steps
 
-1. **Immediate (Today)**:
-   - Decide on Pandoc numbering solution (Option 1 recommended)
-   - Implement chosen solution
-   - Test with real Word template
-   - Mark Pandoc implementation as 100% complete
+1. **High Priority - AI Structure Discovery Workflow**:
+   - Implement AI-assisted structure discovery (replaces template-first approach)
+   - See detailed plan: [plans/AI_STRUCTURE_DISCOVERY_PLAN.md](plans/AI_STRUCTURE_DISCOVERY_PLAN.md)
+   - Key deliverables:
+     - New `StructureDiscoveryModal` with embedded chat
+     - AI methods for structure proposal and refinement
+     - Post-generation revision enhancements
 
 2. **This Week**:
    - Implement References tab UI
@@ -516,5 +520,5 @@ and the AI can use them for context when generating content.
 
 ---
 
-**Last Updated**: 2025-11-26
-**Next Review**: After Pandoc issue resolution
+**Last Updated**: 2025-12-15
+**Next Review**: Ongoing

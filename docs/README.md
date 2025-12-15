@@ -19,7 +19,12 @@ Phase completion reports and status documentation:
 - **PHASE2C_COMPLETE.md** - Phase 2C: Approval Workflow & Version History
 - **PHASE2C_TROUBLESHOOTING.md** - Phase 2C-specific troubleshooting guide
 - **PHASE2_PROGRESS.md** - Overall Phase 2 progress tracking
-- **PHASE3_PROGRESS.md** - Phase 3: Diagram Editing & Integration (75% complete)
+- **PHASE3_PROGRESS.md** - Phase 3: Diagram Editing & Integration
+- **PHASE3_COMPLETE.md** - Phase 3 completion report
+- **PHASE3_SUMMARY.md** - Phase 3 summary
+- **PHASE4_COMPLETE.md** - Phase 4: Export & Finalization (100% complete)
+- **PANDOC_IMPLEMENTATION_COMPLETE.md** - Pandoc export backend implementation
+- **PANDOC_QUICK_TEST.md** - Pandoc testing guide
 
 ### ✨ Features (`features/`)
 Documentation of specific features and enhancements:
@@ -44,6 +49,13 @@ Documentation of specific features and enhancements:
 **TODO Features:**
 - **TODO_COMMENT_EXTRACTION_FEATURE.md** - Extract diagram requirements from TODO comments
 - **TODO_PRIORITY_ENHANCEMENT.md** - Give absolute priority to TODO comments (2025-11-19)
+
+**Template & Export Features:**
+- **TEMPLATE_SYSTEM.md** - Built-in templates (3GPP, IEEE, ISO) and customization
+- **TEMPLATE_DOCX_EXPORT.md** - DOCX export with template support
+- **PANDOC_TEMPLATE_EXPORT.md** - Professional Pandoc-based export
+- **PANDOC_DOUBLE_NUMBERING_INVESTIGATION.md** - Investigation of numbering conflict
+- **AUTO_CONTINUATION_ON_TRUNCATION.md** - Auto-continue on AI truncation
 
 **Other Features:**
 - **LINK_RESOLUTION_IMPLEMENTATION.md** - {{fig:...}} and {{ref:...}} link resolution
@@ -83,6 +95,15 @@ HTML utility tools for development and debugging:
 
 See [tools/README.md](tools/README.md) for detailed tool descriptions.
 
+### 📋 Plans (`plans/`)
+Implementation plans for upcoming features:
+- **AI_STRUCTURE_DISCOVERY_PLAN.md** - AI-assisted structure discovery workflow (HIGH PRIORITY)
+- **DYNAMIC_SECTIONS_IMPLEMENTATION_PLAN.md** - Plan for dynamic section customization
+- **MULTIMODAL_PDF_SUPPORT_PLAN.md** - Plan for multimodal PDF reference support
+
+### 📝 Outstanding Work
+- **OUTSTANDING_DEVELOPMENT.md** - Comprehensive list of remaining development work with priorities
+
 ## 🚀 Quick Links
 
 ### For New Developers
@@ -94,11 +115,11 @@ See [tools/README.md](tools/README.md) for detailed tool descriptions.
 1. Check [../TROUBLESHOOTING.md](../TROUBLESHOOTING.md) - Common issues and solutions
 2. Review [phases/PHASE2C_TROUBLESHOOTING.md](phases/PHASE2C_TROUBLESHOOTING.md) - Phase 2C specific issues
 
-### Latest Features (November 2025)
-- [features/DIAGRAM_REVIEW_ENHANCEMENT.md](features/DIAGRAM_REVIEW_ENHANCEMENT.md) - Preview diagrams before approving
-- [features/INTELLIGENT_DIAGRAM_GENERATION.md](features/INTELLIGENT_DIAGRAM_GENERATION.md) - Mandatory vs suggested diagrams
-- [features/TODO_PRIORITY_ENHANCEMENT.md](features/TODO_PRIORITY_ENHANCEMENT.md) - TODO comment priority
-- [bugs-and-fixes/SECTION_CONTENT_TRUNCATION_FIX.md](bugs-and-fixes/SECTION_CONTENT_TRUNCATION_FIX.md) - Critical context fix
+### Latest Features
+- [phases/PHASE4_COMPLETE.md](phases/PHASE4_COMPLETE.md) - DOCX export with templates
+- [features/PANDOC_TEMPLATE_EXPORT.md](features/PANDOC_TEMPLATE_EXPORT.md) - Professional Pandoc export
+- [features/TEMPLATE_SYSTEM.md](features/TEMPLATE_SYSTEM.md) - 3GPP, IEEE, ISO templates
+- [OUTSTANDING_DEVELOPMENT.md](OUTSTANDING_DEVELOPMENT.md) - Roadmap and priorities
 
 ### Critical Architecture
 - [architecture/AI_COPILOT_ARCHITECTURE.md](architecture/AI_COPILOT_ARCHITECTURE.md) - AI service design
@@ -142,6 +163,6 @@ When documenting new work:
 
 ---
 
-**Last Updated:** 2025-11-20
-**Documentation Files:** 42 files across 6 categories
-**Project Phase:** Phase 3 (75% complete)
+**Last Updated:** 2025-12-15
+**Documentation Files:** 50+ files across 7 categories
+**Project Phase:** Phase 4 Complete (Beta)
