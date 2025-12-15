@@ -38,9 +38,8 @@ export default function Workspace() {
   const pendingApprovals = useProjectStore((state) => state.pendingApprovals);
   const resetStore = useProjectStore((state) => state.resetStore);
   const docxTemplateAnalysis = useProjectStore((state) => state.docxTemplateAnalysis);
-  const updateSpecification = useProjectStore((state) => state.updateSpecification);
   const updateUsageStats = useProjectStore((state) => state.updateUsageStats);
-  const addPendingApproval = useProjectStore((state) => state.addPendingApproval);
+  const createApproval = useProjectStore((state) => state.createApproval);
 
   // Show AI config on first load if not configured (but allow dismissal)
   const needsConfig = (!aiConfig?.apiKey || !aiConfig.apiKey.trim()) && !hasDismissedConfig;
@@ -77,20 +76,15 @@ export default function Workspace() {
       });
 
       // Update usage stats
-      updateUsageStats({
-        tokens: result.totalTokens,
-        cost: result.totalCost,
-      });
+      updateUsageStats(result.totalTokens, result.totalCost);
 
       // Create pending approval for the generated content
-      addPendingApproval({
-        id: crypto.randomUUID(),
+      createApproval({
         taskId: `structure-gen-${Date.now()}`,
         type: 'document',
         status: 'pending',
         originalContent: project?.specification?.markdown || '',
         generatedContent: result.markdown,
-        createdAt: new Date(),
       });
 
       // Show the review panel
@@ -102,7 +96,7 @@ export default function Workspace() {
     } finally {
       setIsGeneratingFromStructure(false);
     }
-  }, [aiConfig, brsDocument, updateUsageStats, addPendingApproval, project?.specification?.markdown]);
+  }, [aiConfig, brsDocument, updateUsageStats, createApproval, project?.specification?.markdown]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
