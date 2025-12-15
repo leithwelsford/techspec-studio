@@ -39,9 +39,9 @@ export function ReferenceDocumentUpload({
   const addPDFReference = useProjectStore(state => state.addPDFReference);
   const removePDFReference = useProjectStore(state => state.removePDFReference);
 
-  // Get current PDF references
+  // Get current uploaded references (PDF, DOCX, TXT, MD)
   const pdfReferences = project?.references.filter(
-    r => r.dataRef && (r.type === 'PDF' || r.type === 'DOCX')
+    r => r.dataRef && (r.type === 'PDF' || r.type === 'DOCX' || r.type === 'TXT' || r.type === 'MD')
   ) || [];
 
   const canUploadMore = pdfReferences.length < maxFiles;
