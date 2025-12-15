@@ -147,6 +147,31 @@ export default function Workspace() {
             </div>
           )}
 
+          {/* New Project Button - shows when project has content */}
+          {(brsDocument || (project?.specification?.markdown && project.specification.markdown.trim().length > 0)) && (
+            <button
+              onClick={() => {
+                if (confirm('Start a new project?\n\nThis will clear:\n• BRS document\n• Technical specification\n• Diagrams\n• Chat history\n• Pending approvals\n\nYour AI settings will be preserved.\n\nContinue?')) {
+                  // Reset project data but keep AI config
+                  const currentAiConfig = useProjectStore.getState().aiConfig;
+                  const currentDarkMode = useProjectStore.getState().darkMode;
+                  resetStore();
+                  // Restore AI config and preferences
+                  if (currentAiConfig) {
+                    useProjectStore.getState().setAIConfig(currentAiConfig);
+                  }
+                  if (currentDarkMode !== useProjectStore.getState().darkMode) {
+                    useProjectStore.getState().toggleDarkMode();
+                  }
+                }
+              }}
+              className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+              title="Start a new project (preserves AI settings)"
+            >
+              New Project
+            </button>
+          )}
+
           {/* Plan Structure Button (new workflow) */}
           {brsDocument && (
             <button
