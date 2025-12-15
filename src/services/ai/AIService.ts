@@ -2527,6 +2527,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     structure: ProposedStructure;
     brsContent: string;
     referenceDocuments?: ReferenceDocumentContent[];
+    generationGuidance?: string;
     onProgress?: (current: number, total: number, sectionTitle: string) => void;
   }): Promise<{
     markdown: string;
@@ -2538,10 +2539,19 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       throw new Error('AI service not initialized');
     }
 
-    const { structure, brsContent, referenceDocuments, onProgress } = params;
+    const { structure, brsContent, referenceDocuments, generationGuidance, onProgress } = params;
     const sections = structure.sections.sort((a, b) => a.order - b.order);
 
+    // Combine format guidance with user's generation guidance
+    const combinedGuidance = [
+      structure.formatGuidance,
+      generationGuidance ? `\n\nAdditional User Guidance:\n${generationGuidance}` : '',
+    ].filter(Boolean).join('');
+
     console.log(`📝 Generating specification from ${sections.length} sections...`);
+    if (generationGuidance) {
+      console.log(`📋 Using generation guidance: ${generationGuidance.slice(0, 100)}...`);
+    }
 
     const generatedSections: Array<{ title: string; content: string; tokensUsed: number }> = [];
     let totalTokens = 0;
@@ -2568,7 +2578,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
           brsContent: brsContent.slice(0, 8000), // Truncate BRS for context
           previousSections: previousContent.slice(-4000), // Last 4k chars for continuity
           domainConfig: structure.domainConfig,
-          userGuidance: structure.formatGuidance,
+          userGuidance: combinedGuidance,
           sectionNumber: String(section.order),
         }
       );

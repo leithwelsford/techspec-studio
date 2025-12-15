@@ -3,7 +3,6 @@ import { useProjectStore } from '../store/projectStore';
 import AIConfigPanel from './ai/AIConfigPanel';
 import ChatPanel from './ai/ChatPanel';
 import ReviewPanel from './ai/ReviewPanel';
-import { GenerateSpecModal } from './ai/GenerateSpecModal';
 import { GenerateDiagramsModal } from './ai/GenerateDiagramsModal';
 import StructureDiscoveryModal from './ai/StructureDiscoveryModal';
 import MarkdownEditor from './editors/MarkdownEditor';
@@ -17,7 +16,6 @@ import type { ProposedStructure } from '../types';
 export default function Workspace() {
   const [showAIConfig, setShowAIConfig] = useState(false);
   const [hasDismissedConfig, setHasDismissedConfig] = useState(false);
-  const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showGenerateDiagramsModal, setShowGenerateDiagramsModal] = useState(false);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -70,6 +68,7 @@ export default function Workspace() {
       const result = await aiService.generateFromApprovedStructure({
         structure,
         brsContent: brsDocument.markdown,
+        generationGuidance: structure.generationGuidance,
         onProgress: (current, total, sectionTitle) => {
           console.log(`Generating section ${current}/${total}: ${sectionTitle}`);
         },
@@ -179,22 +178,6 @@ export default function Workspace() {
               title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Plan document structure with AI'}
             >
               {isGeneratingFromStructure ? 'Generating...' : 'Plan Structure'}
-            </button>
-          )}
-
-          {/* Generate Spec Button (legacy workflow) */}
-          {brsDocument && (
-            <button
-              onClick={() => setShowGenerateModal(true)}
-              disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim()}
-              className={`px-4 py-1.5 text-sm font-medium rounded-md ${
-                aiConfig?.apiKey && aiConfig.apiKey.trim()
-                  ? 'text-white bg-green-600 hover:bg-green-700'
-                  : 'text-gray-400 bg-gray-100 cursor-not-allowed'
-              }`}
-              title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Generate technical specification from BRS (template-based)'}
-            >
-              Generate Spec
             </button>
           )}
 
@@ -383,12 +366,6 @@ export default function Workspace() {
           setHasDismissedConfig(true);
         }} />
       )}
-
-      {/* Generate Specification Modal */}
-      <GenerateSpecModal
-        isOpen={showGenerateModal}
-        onClose={() => setShowGenerateModal(false)}
-      />
 
       {/* Generate Diagrams Modal */}
       <GenerateDiagramsModal

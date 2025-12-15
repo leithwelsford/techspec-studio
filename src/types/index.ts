@@ -929,6 +929,7 @@ export interface ProposedStructure {
   version: number;                 // Increments with each refinement
   createdAt: Date;
   lastModifiedAt: Date;
+  generationGuidance?: string;     // User-provided guidance for spec generation
 }
 
 /**

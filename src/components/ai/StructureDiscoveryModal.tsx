@@ -21,7 +21,7 @@ interface StructureDiscoveryModalProps {
   onGenerate: (structure: ProposedStructure) => void;
 }
 
-type Step = 'input' | 'analyzing' | 'reviewing' | 'generating';
+type Step = 'input' | 'analyzing' | 'reviewing' | 'configure' | 'generating';
 
 export default function StructureDiscoveryModal({
   isOpen,
@@ -49,6 +49,7 @@ export default function StructureDiscoveryModal({
   const [analysisProgress, setAnalysisProgress] = useState<string>('');
   const [showDomainOverride, setShowDomainOverride] = useState(false);
   const [showReferenceUpload, setShowReferenceUpload] = useState(false);
+  const [generationGuidance, setGenerationGuidance] = useState('');
   const [generationProgress, setGenerationProgress] = useState<{
     current: number;
     total: number;
@@ -134,14 +135,26 @@ export default function StructureDiscoveryModal({
   ]);
 
   /**
-   * Handle structure approval
+   * Handle structure approval - moves to configure step
    */
   const handleApprove = useCallback(() => {
     approveStructure();
+    setStep('configure');
+  }, [approveStructure]);
+
+  /**
+   * Handle starting generation with guidance
+   */
+  const handleStartGeneration = useCallback(() => {
     if (structurePlanning.proposedStructure) {
-      onGenerate(structurePlanning.proposedStructure);
+      // Pass the generation guidance along with the structure
+      const structureWithGuidance = {
+        ...structurePlanning.proposedStructure,
+        generationGuidance: generationGuidance.trim() || undefined,
+      };
+      onGenerate(structureWithGuidance);
     }
-  }, [approveStructure, structurePlanning.proposedStructure, onGenerate]);
+  }, [structurePlanning.proposedStructure, generationGuidance, onGenerate]);
 
   /**
    * Handle domain override
@@ -179,6 +192,7 @@ export default function StructureDiscoveryModal({
               {step === 'input' && 'Let AI analyze your BRS and propose an optimal document structure'}
               {step === 'analyzing' && 'Analyzing requirements and proposing structure...'}
               {step === 'reviewing' && 'Review and refine the proposed structure'}
+              {step === 'configure' && 'Configure generation settings before creating the specification'}
               {step === 'generating' && 'Generating specification content...'}
             </p>
           </div>
@@ -432,6 +446,85 @@ export default function StructureDiscoveryModal({
             </div>
           )}
 
+          {/* Configure Step - Generation Settings */}
+          {step === 'configure' && (
+            <div className="h-full p-6 overflow-y-auto">
+              <div className="max-w-3xl mx-auto space-y-6">
+                {/* Structure Summary */}
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="font-medium text-green-700 dark:text-green-300">Structure Approved</span>
+                  </div>
+                  <p className="text-sm text-green-600 dark:text-green-400">
+                    {structurePlanning.proposedStructure?.sections.length} sections ready for generation
+                  </p>
+                </div>
+
+                {/* Generation Guidance */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                    Generation Guidance (Optional)
+                  </label>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                    Provide additional context for the AI when generating the specification content.
+                    This guidance will be applied to all sections.
+                  </p>
+                  <textarea
+                    value={generationGuidance}
+                    onChange={(e) => setGenerationGuidance(e.target.value)}
+                    placeholder="Examples:
+• Constraints: 'Must support 10,000 concurrent users, 99.99% uptime SLA'
+• Design decisions: 'Use microservices architecture, prefer async communication'
+• Existing systems: 'Integrate with existing Oracle DB and Kafka cluster'
+• Standards: 'Follow 3GPP TS 23.501 for 5G architecture references'
+• Terminology: 'Use carrier-grade language, avoid vendor-specific terms'"
+                    rows={8}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Quick Guidance Templates */}
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Quick add:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: 'Performance constraints', text: '\n• Performance: [specify throughput, latency, concurrency requirements]' },
+                      { label: 'Security requirements', text: '\n• Security: Follow OWASP guidelines, implement defense in depth' },
+                      { label: 'Integration points', text: '\n• Integration: [specify existing systems to integrate with]' },
+                      { label: 'Compliance', text: '\n• Compliance: [specify regulatory requirements - GDPR, PCI-DSS, etc.]' },
+                    ].map((template) => (
+                      <button
+                        key={template.label}
+                        onClick={() => setGenerationGuidance(prev => prev + template.text)}
+                        className="px-3 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                      >
+                        + {template.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Domain Info */}
+                {structurePlanning.inferredDomain && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      <span className="font-medium">Domain:</span> {structurePlanning.inferredDomain.domain}
+                      {structurePlanning.inferredDomain.industry && ` (${structurePlanning.inferredDomain.industry})`}
+                    </p>
+                    {structurePlanning.inferredDomain.detectedStandards.length > 0 && (
+                      <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                        <span className="font-medium">Standards:</span> {structurePlanning.inferredDomain.detectedStandards.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Generating Step */}
           {step === 'generating' && (
             <div className="h-full flex flex-col items-center justify-center p-6">
@@ -483,7 +576,37 @@ export default function StructureDiscoveryModal({
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Approve & Generate
+                Approve Structure
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Footer - Configure Step */}
+        {step === 'configure' && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              {generationGuidance.trim() ? (
+                <span className="text-green-600 dark:text-green-400">✓ Generation guidance provided</span>
+              ) : (
+                <span>No additional guidance (using defaults)</span>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep('reviewing')}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleStartGeneration}
+                className="px-6 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Generate Specification
               </button>
             </div>
           </div>
