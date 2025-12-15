@@ -11,6 +11,12 @@ import type {
   MermaidDiagram,
   ReferenceDocumentContent,
   AIMessageMultimodal,
+  ReferenceDocument,
+  ProposedStructure,
+  DomainInference,
+  StructureProposalResult,
+  StructureRefinementResult,
+  StructureChange,
 } from '../../types';
 
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
@@ -25,6 +31,15 @@ import {
   buildFlowDiagramPrompt,
   buildDiagramSuggestionPrompt
 } from './prompts/diagramPrompts';
+import {
+  buildStructureProposalSystemPrompt,
+  buildStructureProposalPrompt,
+  buildStructureRefinementSystemPrompt,
+  buildStructureRefinementPrompt,
+  parseStructureProposalResponse,
+  parseStructureRefinementResponse,
+  generateDefaultStructure,
+} from './prompts/structurePrompts';
 import { parseBlockDiagram } from './parsers/blockDiagramParser';
 import { parseMermaidDiagram } from './parsers/mermaidParser';
 
@@ -2284,6 +2299,329 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       validation,
       totalTokens,
       totalCost
+    };
+  }
+
+  // ========== Structure Discovery Methods ==========
+
+  /**
+   * Analyze BRS content and propose document structure
+   * This is the main entry point for the AI-assisted structure discovery workflow
+   */
+  async analyzeAndProposeStructure(params: {
+    brsContent: string;
+    referenceDocuments?: ReferenceDocument[];
+    userGuidance: string;
+  }): Promise<StructureProposalResult> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    console.log('🔍 Analyzing BRS and proposing document structure...');
+
+    const systemPrompt = buildStructureProposalSystemPrompt();
+    const userPrompt = buildStructureProposalPrompt(params);
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+
+    try {
+      const result = await this.provider.generate(messages, {
+        model: this.config.model,
+        temperature: 0.3, // Lower temperature for more structured output
+        maxTokens: this.config.maxTokens
+      });
+
+      // Parse the response
+      const parsed = parseStructureProposalResponse(result.content);
+
+      if (!parsed) {
+        console.error('Failed to parse structure proposal response, using defaults');
+        // Return default structure as fallback
+        const defaultSections = generateDefaultStructure('general');
+        const now = new Date();
+
+        return {
+          proposedStructure: {
+            id: `structure-${Date.now()}`,
+            sections: defaultSections,
+            domainConfig: {
+              domain: 'general',
+              normativeLanguage: 'RFC2119',
+            },
+            formatGuidance: 'Use standard markdown formatting.',
+            rationale: 'Default structure provided due to parsing error.',
+            version: 1,
+            createdAt: now,
+            lastModifiedAt: now,
+          },
+          domainInference: {
+            domain: 'general',
+            industry: 'unspecified',
+            confidence: 0.5,
+            reasoning: 'Unable to infer domain from BRS content.',
+            detectedStandards: [],
+            suggestedTerminology: {},
+          },
+          tokensUsed: result.tokens?.total || 0,
+          cost: result.cost || 0,
+        };
+      }
+
+      const now = new Date();
+
+      console.log('✅ Structure proposal complete:', {
+        sectionCount: parsed.proposedStructure.sections.length,
+        domain: parsed.domainInference.domain,
+        confidence: parsed.domainInference.confidence,
+      });
+
+      return {
+        proposedStructure: {
+          ...parsed.proposedStructure,
+          id: `structure-${Date.now()}`,
+          version: 1,
+          createdAt: now,
+          lastModifiedAt: now,
+        },
+        domainInference: parsed.domainInference,
+        tokensUsed: result.tokens?.total || 0,
+        cost: result.cost || 0,
+      };
+    } catch (error) {
+      console.error('Structure proposal failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process a chat message to refine the proposed structure
+   * Returns updated structure and conversational response
+   */
+  async processStructureRefinement(params: {
+    currentStructure: ProposedStructure;
+    chatHistory: AIMessage[];
+    userMessage: string;
+  }): Promise<StructureRefinementResult> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    console.log('💬 Processing structure refinement request...');
+
+    const systemPrompt = buildStructureRefinementSystemPrompt();
+    const userPrompt = buildStructureRefinementPrompt(params);
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+
+    try {
+      const result = await this.provider.generate(messages, {
+        model: this.config.model,
+        temperature: 0.5, // Moderate temperature for conversational + structured output
+        maxTokens: this.config.maxTokens
+      });
+
+      // Parse the response
+      const parsed = parseStructureRefinementResponse(result.content);
+
+      // Apply changes to structure if any
+      let updatedStructure: ProposedStructure | null = null;
+      const structureChanges: StructureChange[] = [];
+
+      if (parsed.structureChanges.length > 0) {
+        // Create a new version of the structure with applied changes
+        const newSections = [...params.currentStructure.sections];
+
+        for (const change of parsed.structureChanges) {
+          structureChanges.push({
+            type: change.type,
+            sectionId: change.sectionId,
+            previousState: newSections.find(s => s.id === change.sectionId),
+            newState: change.updates,
+            reason: change.reason,
+          });
+
+          switch (change.type) {
+            case 'add':
+              if (change.updates) {
+                newSections.push({
+                  id: change.sectionId,
+                  title: change.updates.title || 'New Section',
+                  description: change.updates.description || '',
+                  rationale: change.updates.rationale || change.reason,
+                  order: newSections.length + 1,
+                  confidence: change.updates.confidence || 0.8,
+                  ...change.updates,
+                });
+              }
+              break;
+
+            case 'remove':
+              const removeIdx = newSections.findIndex(s => s.id === change.sectionId);
+              if (removeIdx >= 0) {
+                newSections.splice(removeIdx, 1);
+              }
+              break;
+
+            case 'modify':
+              const modifyIdx = newSections.findIndex(s => s.id === change.sectionId);
+              if (modifyIdx >= 0 && change.updates) {
+                newSections[modifyIdx] = {
+                  ...newSections[modifyIdx],
+                  ...change.updates,
+                };
+              }
+              break;
+
+            case 'reorder':
+              // Use updatedSections from response if provided for full reorder
+              if (parsed.updatedSections) {
+                newSections.length = 0;
+                newSections.push(...parsed.updatedSections);
+              }
+              break;
+          }
+        }
+
+        // Renumber sections after changes
+        newSections.forEach((section, idx) => {
+          section.order = idx + 1;
+        });
+
+        updatedStructure = {
+          ...params.currentStructure,
+          sections: newSections,
+          version: params.currentStructure.version + 1,
+          lastModifiedAt: new Date(),
+        };
+
+        console.log('✅ Structure updated:', {
+          changes: structureChanges.length,
+          newSectionCount: newSections.length,
+        });
+      }
+
+      return {
+        updatedStructure,
+        response: parsed.conversationalResponse,
+        structureChanges,
+        tokensUsed: result.tokens?.total || 0,
+        cost: result.cost || 0,
+      };
+    } catch (error) {
+      console.error('Structure refinement failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate specification from an approved structure
+   * This converts the ProposedStructure into actual document content
+   */
+  async generateFromApprovedStructure(params: {
+    structure: ProposedStructure;
+    brsContent: string;
+    referenceDocuments?: ReferenceDocumentContent[];
+    onProgress?: (current: number, total: number, sectionTitle: string) => void;
+  }): Promise<{
+    markdown: string;
+    sections: Array<{ title: string; content: string; tokensUsed: number }>;
+    totalTokens: number;
+    totalCost: number;
+  }> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    const { structure, brsContent, referenceDocuments, onProgress } = params;
+    const sections = structure.sections.sort((a, b) => a.order - b.order);
+
+    console.log(`📝 Generating specification from ${sections.length} sections...`);
+
+    const generatedSections: Array<{ title: string; content: string; tokensUsed: number }> = [];
+    let totalTokens = 0;
+    let totalCost = 0;
+    let previousContent = '';
+
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      onProgress?.(i + 1, sections.length, section.title);
+
+      // Import the flexible section prompt builder
+      const { buildFlexibleSectionPrompt } = await import('./prompts/sectionPrompts');
+
+      const prompt = buildFlexibleSectionPrompt(
+        {
+          id: section.id,
+          title: section.title,
+          description: section.description,
+          isRequired: true,
+          suggestedSubsections: section.suggestedSubsections,
+          order: section.order,
+        },
+        {
+          brsContent: brsContent.slice(0, 8000), // Truncate BRS for context
+          previousSections: previousContent.slice(-4000), // Last 4k chars for continuity
+          domainConfig: structure.domainConfig,
+          userGuidance: structure.formatGuidance,
+          sectionNumber: String(section.order),
+        }
+      );
+
+      try {
+        const result = await this.provider.generate(
+          [
+            { role: 'system', content: 'You are a technical specification writer. Generate only the requested section content in markdown format.' },
+            { role: 'user', content: prompt }
+          ],
+          {
+            model: this.config.model,
+            temperature: this.config.temperature,
+            maxTokens: this.config.maxTokens,
+          }
+        );
+
+        generatedSections.push({
+          title: section.title,
+          content: result.content,
+          tokensUsed: result.tokens?.total || 0,
+        });
+
+        previousContent += '\n\n' + result.content;
+        totalTokens += result.tokens?.total || 0;
+        totalCost += result.cost || 0;
+
+        console.log(`  ✓ Generated section ${i + 1}/${sections.length}: ${section.title}`);
+      } catch (error) {
+        console.error(`Failed to generate section "${section.title}":`, error);
+        // Add placeholder for failed section
+        generatedSections.push({
+          title: section.title,
+          content: `## ${section.order}. ${section.title}\n\n*[Section generation failed. Please regenerate or edit manually.]*\n`,
+          tokensUsed: 0,
+        });
+      }
+    }
+
+    // Combine all sections into final markdown
+    const markdown = generatedSections.map(s => s.content).join('\n\n---\n\n');
+
+    console.log('✅ Specification generation complete:', {
+      sections: generatedSections.length,
+      totalTokens,
+      totalCost: `$${totalCost.toFixed(4)}`,
+    });
+
+    return {
+      markdown,
+      sections: generatedSections,
+      totalTokens,
+      totalCost,
     };
   }
 }

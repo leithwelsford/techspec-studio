@@ -885,3 +885,131 @@ export interface MarkdownGenerationGuidance {
     pattern: string; // "\\pagebreak" or "---"
   };
 }
+
+// ========== AI Structure Discovery ==========
+
+/**
+ * AI-proposed document section
+ * Contains rationale and confidence for transparency
+ */
+export interface ProposedSection {
+  id: string;                      // Unique ID: "proposed-scope", "proposed-arch-1"
+  title: string;                   // Section title: "Scope and Objectives"
+  description: string;             // What this section should cover
+  rationale: string;               // Why AI proposed this section
+  suggestedSubsections?: string[]; // Optional subsection hints
+  order: number;                   // Position in document
+  confidence: number;              // 0-1: AI's confidence in this recommendation
+  sourceHints?: string[];          // BRS sections/references that informed this
+}
+
+/**
+ * AI-inferred domain configuration
+ * Detected from BRS analysis with reasoning
+ */
+export interface DomainInference {
+  domain: string;                  // Primary domain: "telecommunications", "software"
+  industry: string;                // Specific industry: "5G mobile networks"
+  confidence: number;              // 0-1: confidence in inference
+  reasoning: string;               // Why AI inferred this domain
+  detectedStandards: string[];     // Standards found: ["3GPP TS 23.501", "RFC 8200"]
+  suggestedTerminology: Record<string, string>; // Key terms detected: { "UE": "User Equipment" }
+}
+
+/**
+ * Complete proposed document structure
+ * AI's recommendation for spec organization
+ */
+export interface ProposedStructure {
+  id: string;
+  sections: ProposedSection[];
+  domainConfig: DomainConfig;
+  formatGuidance: string;          // AI's formatting recommendations
+  rationale: string;               // Overall rationale for structure
+  version: number;                 // Increments with each refinement
+  createdAt: Date;
+  lastModifiedAt: Date;
+}
+
+/**
+ * Structure change from chat refinement
+ * Tracks what changed and why
+ */
+export interface StructureChange {
+  type: 'add' | 'remove' | 'modify' | 'reorder';
+  sectionId: string;
+  previousState?: Partial<ProposedSection>;
+  newState?: Partial<ProposedSection>;
+  reason: string;                  // AI's explanation of the change
+}
+
+/**
+ * Structure refinement result from AI
+ * Response from processStructureRefinement()
+ */
+export interface StructureRefinementResult {
+  updatedStructure: ProposedStructure | null;  // null if no structural changes
+  response: string;                             // AI's conversational response
+  structureChanges: StructureChange[];          // What changed
+  tokensUsed: number;
+  cost: number;
+}
+
+/**
+ * Structure planning session state
+ * Manages the workflow from input → proposal → refinement → approval
+ */
+export interface StructurePlanningState {
+  // Session status
+  isPlanning: boolean;             // Planning session active
+  planningStep: 'input' | 'analyzing' | 'reviewing' | 'approved';
+
+  // Proposed structure
+  proposedStructure: ProposedStructure | null;
+  structureVersions: ProposedStructure[];  // History for undo
+
+  // Domain inference
+  inferredDomain: DomainInference | null;
+  domainOverride: DomainConfig | null;     // User's manual override
+
+  // Chat history (separate from main chat)
+  planningChatHistory: AIMessage[];
+
+  // Approval status
+  structureApproved: boolean;
+  approvedAt?: Date;
+
+  // Generation context
+  userGuidance: string;            // User's initial guidance prompt
+  selectedTemplateId?: string;     // Optional: template used as starting point
+}
+
+/**
+ * Structure proposal request parameters
+ */
+export interface StructureProposalParams {
+  brsContent: string;
+  referenceDocuments?: ReferenceDocument[];
+  userGuidance: string;
+  startingTemplateId?: string;     // Optional template to base structure on
+}
+
+/**
+ * Structure proposal result from AI
+ */
+export interface StructureProposalResult {
+  proposedStructure: ProposedStructure;
+  domainInference: DomainInference;
+  tokensUsed: number;
+  cost: number;
+}
+
+/**
+ * Structure refinement request parameters
+ */
+export interface StructureRefinementParams {
+  currentStructure: ProposedStructure;
+  chatHistory: AIMessage[];
+  userMessage: string;
+  domainConfig?: DomainConfig;
+}

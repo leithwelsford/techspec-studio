@@ -27,6 +27,12 @@ import type {
   MarkdownGenerationGuidance,
   SectionOverride,
   CustomSection,
+  // Structure Discovery types
+  StructurePlanningState,
+  ProposedStructure,
+  ProposedSection,
+  DomainInference,
+  DomainConfig,
 } from '../types';
 import * as documentStorage from '../services/storage/documentStorage';
 import { getEnvApiKey, getEnvModel, getEnvTemperature, getEnvMaxTokens, getEnvEnableStreaming } from '../utils/envConfig';
@@ -64,6 +70,9 @@ export interface ProjectState {
   // Template analysis
   docxTemplateAnalysis: DocxTemplateAnalysis | null;
   markdownGuidance: MarkdownGenerationGuidance | null;
+
+  // Structure Planning (AI-assisted structure discovery)
+  structurePlanning: StructurePlanningState;
 
   // Actions - Project
   createProject: (name: string) => void;
@@ -180,6 +189,24 @@ export interface ProjectState {
   getMarkdownGuidance: () => MarkdownGenerationGuidance | null;
   clearTemplateAnalysis: () => void;
 
+  // Actions - Structure Planning (AI-assisted structure discovery)
+  startPlanningSession: (userGuidance?: string, templateId?: string) => void;
+  endPlanningSession: () => void;
+  setPlanningStep: (step: StructurePlanningState['planningStep']) => void;
+  setProposedStructure: (structure: ProposedStructure) => void;
+  updateProposedSection: (sectionId: string, updates: Partial<ProposedSection>) => void;
+  addProposedSection: (section: ProposedSection) => void;
+  removeProposedSection: (sectionId: string) => void;
+  reorderProposedSections: (sectionIds: string[]) => void;
+  setInferredDomain: (inference: DomainInference) => void;
+  setDomainOverride: (config: DomainConfig | null) => void;
+  addPlanningMessage: (message: Omit<AIMessage, 'id' | 'timestamp'>) => void;
+  clearPlanningChat: () => void;
+  approveStructure: () => void;
+  revertStructureVersion: (versionIndex: number) => void;
+  convertStructureToTemplateConfig: () => ProjectTemplateConfig | null;
+  getEffectiveDomainConfig: () => DomainConfig | null;
+
   // Utilities
   getAllDiagrams: () => Array<{ id: string; type: string; title: string; figureNumber?: string }>;
   autoNumberFigures: () => void;
@@ -288,6 +315,19 @@ export const useProjectStore = create<ProjectState>()(
       // Template analysis initial state
       docxTemplateAnalysis: null,
       markdownGuidance: null,
+
+      // Structure planning initial state
+      structurePlanning: {
+        isPlanning: false,
+        planningStep: 'input',
+        proposedStructure: null,
+        structureVersions: [],
+        inferredDomain: null,
+        domainOverride: null,
+        planningChatHistory: [],
+        structureApproved: false,
+        userGuidance: '',
+      },
 
       // Project actions
       createProject: (name) => {
@@ -1369,6 +1409,297 @@ export const useProjectStore = create<ProjectState>()(
         });
       },
 
+      // Structure Planning actions
+      startPlanningSession: (userGuidance = '', templateId) => {
+        console.log('[Store] Starting planning session');
+        set((state) => ({
+          structurePlanning: {
+            ...state.structurePlanning,
+            isPlanning: true,
+            planningStep: 'input',
+            proposedStructure: null,
+            structureVersions: [],
+            inferredDomain: null,
+            domainOverride: null,
+            planningChatHistory: [],
+            structureApproved: false,
+            approvedAt: undefined,
+            userGuidance,
+            selectedTemplateId: templateId,
+          },
+        }));
+      },
+
+      endPlanningSession: () => {
+        console.log('[Store] Ending planning session');
+        set((state) => ({
+          structurePlanning: {
+            ...state.structurePlanning,
+            isPlanning: false,
+            planningStep: 'input',
+          },
+        }));
+      },
+
+      setPlanningStep: (step) => {
+        set((state) => ({
+          structurePlanning: {
+            ...state.structurePlanning,
+            planningStep: step,
+          },
+        }));
+      },
+
+      setProposedStructure: (structure) => {
+        console.log('[Store] Setting proposed structure:', structure.id);
+        set((state) => ({
+          structurePlanning: {
+            ...state.structurePlanning,
+            proposedStructure: structure,
+            // Add to version history
+            structureVersions: [
+              ...state.structurePlanning.structureVersions,
+              structure,
+            ],
+          },
+        }));
+      },
+
+      updateProposedSection: (sectionId, updates) => {
+        set((state) => {
+          if (!state.structurePlanning.proposedStructure) return state;
+
+          const updatedSections = state.structurePlanning.proposedStructure.sections.map(
+            (section) => section.id === sectionId ? { ...section, ...updates } : section
+          );
+
+          const updatedStructure: ProposedStructure = {
+            ...state.structurePlanning.proposedStructure,
+            sections: updatedSections,
+            version: state.structurePlanning.proposedStructure.version + 1,
+            lastModifiedAt: new Date(),
+          };
+
+          return {
+            structurePlanning: {
+              ...state.structurePlanning,
+              proposedStructure: updatedStructure,
+              structureVersions: [
+                ...state.structurePlanning.structureVersions,
+                updatedStructure,
+              ],
+            },
+          };
+        });
+      },
+
+      addProposedSection: (section) => {
+        set((state) => {
+          if (!state.structurePlanning.proposedStructure) return state;
+
+          const updatedStructure: ProposedStructure = {
+            ...state.structurePlanning.proposedStructure,
+            sections: [...state.structurePlanning.proposedStructure.sections, section],
+            version: state.structurePlanning.proposedStructure.version + 1,
+            lastModifiedAt: new Date(),
+          };
+
+          return {
+            structurePlanning: {
+              ...state.structurePlanning,
+              proposedStructure: updatedStructure,
+              structureVersions: [
+                ...state.structurePlanning.structureVersions,
+                updatedStructure,
+              ],
+            },
+          };
+        });
+      },
+
+      removeProposedSection: (sectionId) => {
+        set((state) => {
+          if (!state.structurePlanning.proposedStructure) return state;
+
+          const updatedStructure: ProposedStructure = {
+            ...state.structurePlanning.proposedStructure,
+            sections: state.structurePlanning.proposedStructure.sections.filter(
+              (s) => s.id !== sectionId
+            ),
+            version: state.structurePlanning.proposedStructure.version + 1,
+            lastModifiedAt: new Date(),
+          };
+
+          return {
+            structurePlanning: {
+              ...state.structurePlanning,
+              proposedStructure: updatedStructure,
+              structureVersions: [
+                ...state.structurePlanning.structureVersions,
+                updatedStructure,
+              ],
+            },
+          };
+        });
+      },
+
+      reorderProposedSections: (sectionIds) => {
+        set((state) => {
+          if (!state.structurePlanning.proposedStructure) return state;
+
+          // Reorder sections based on provided IDs
+          const sectionMap = new Map(
+            state.structurePlanning.proposedStructure.sections.map((s) => [s.id, s])
+          );
+
+          const reorderedSections: ProposedSection[] = [];
+          sectionIds.forEach((id, index) => {
+            const section = sectionMap.get(id);
+            if (section) {
+              reorderedSections.push({ ...section, order: index + 1 });
+            }
+          });
+
+          const updatedStructure: ProposedStructure = {
+            ...state.structurePlanning.proposedStructure,
+            sections: reorderedSections,
+            version: state.structurePlanning.proposedStructure.version + 1,
+            lastModifiedAt: new Date(),
+          };
+
+          return {
+            structurePlanning: {
+              ...state.structurePlanning,
+              proposedStructure: updatedStructure,
+              structureVersions: [
+                ...state.structurePlanning.structureVersions,
+                updatedStructure,
+              ],
+            },
+          };
+        });
+      },
+
+      setInferredDomain: (inference) => {
+        console.log('[Store] Setting inferred domain:', inference.domain);
+        set((state) => ({
+          structurePlanning: {
+            ...state.structurePlanning,
+            inferredDomain: inference,
+          },
+        }));
+      },
+
+      setDomainOverride: (config) => {
+        console.log('[Store] Setting domain override:', config?.domain);
+        set((state) => ({
+          structurePlanning: {
+            ...state.structurePlanning,
+            domainOverride: config,
+          },
+        }));
+      },
+
+      addPlanningMessage: (message) => {
+        const id = generateId();
+        const timestamp = new Date();
+        set((state) => ({
+          structurePlanning: {
+            ...state.structurePlanning,
+            planningChatHistory: [
+              ...state.structurePlanning.planningChatHistory,
+              { ...message, id, timestamp },
+            ],
+          },
+        }));
+      },
+
+      clearPlanningChat: () => {
+        set((state) => ({
+          structurePlanning: {
+            ...state.structurePlanning,
+            planningChatHistory: [],
+          },
+        }));
+      },
+
+      approveStructure: () => {
+        console.log('[Store] Approving structure');
+        set((state) => ({
+          structurePlanning: {
+            ...state.structurePlanning,
+            structureApproved: true,
+            approvedAt: new Date(),
+            planningStep: 'approved',
+          },
+        }));
+      },
+
+      revertStructureVersion: (versionIndex) => {
+        set((state) => {
+          const versions = state.structurePlanning.structureVersions;
+          if (versionIndex < 0 || versionIndex >= versions.length) return state;
+
+          const revertedStructure = versions[versionIndex];
+          return {
+            structurePlanning: {
+              ...state.structurePlanning,
+              proposedStructure: revertedStructure,
+              // Keep history but add reverted as new version
+              structureVersions: [
+                ...versions,
+                { ...revertedStructure, version: versions.length + 1 },
+              ],
+            },
+          };
+        });
+      },
+
+      convertStructureToTemplateConfig: () => {
+        const state = get();
+        const { proposedStructure, domainOverride, inferredDomain } = state.structurePlanning;
+
+        if (!proposedStructure) return null;
+
+        // Convert ProposedStructure to ProjectTemplateConfig
+        const config: ProjectTemplateConfig = {
+          templateId: 'ai-proposed', // Special ID for AI-proposed structures
+          enabledSections: proposedStructure.sections.map((s) => s.id),
+          sectionOrder: proposedStructure.sections
+            .sort((a, b) => a.order - b.order)
+            .map((s) => s.id),
+          customGuidance: proposedStructure.formatGuidance,
+          customSections: proposedStructure.sections.map((s) => ({
+            id: s.id,
+            title: s.title,
+            description: s.description,
+            isCustom: true as const,
+          })),
+        };
+
+        console.log('[Store] Converted structure to template config:', config);
+        return config;
+      },
+
+      getEffectiveDomainConfig: () => {
+        const state = get();
+        const { domainOverride, inferredDomain, proposedStructure } = state.structurePlanning;
+
+        // Priority: override > inferred > structure default
+        if (domainOverride) return domainOverride;
+
+        if (inferredDomain) {
+          return {
+            domain: inferredDomain.domain,
+            industry: inferredDomain.industry,
+            standards: inferredDomain.detectedStandards,
+            terminology: inferredDomain.suggestedTerminology,
+          };
+        }
+
+        return proposedStructure?.domainConfig || null;
+      },
+
       // Store management
       resetStore: () => {
         set({
@@ -1398,6 +1729,17 @@ export const useProjectStore = create<ProjectState>()(
           },
           availableTemplates: [],
           activeTemplateConfig: null,
+          structurePlanning: {
+            isPlanning: false,
+            planningStep: 'input',
+            proposedStructure: null,
+            structureVersions: [],
+            inferredDomain: null,
+            domainOverride: null,
+            planningChatHistory: [],
+            structureApproved: false,
+            userGuidance: '',
+          },
         });
       },
     }),
