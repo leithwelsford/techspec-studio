@@ -136,6 +136,8 @@ export class TemplateAnalyzer {
         usePageBreaks: analysis.documentStructure.sectionBreaks > 0,
         pattern: '\\pagebreak',
       },
+      // Pandoc custom-style attributes - derived from template special styles
+      pandocStyles: this.derivePandocStyles(analysis),
     };
 
     console.log('[Template Analyzer] Guidance generated:', guidance);
@@ -887,6 +889,101 @@ export class TemplateAnalyzer {
     }
     return 'Table {number}: {title}';
   }
+
+  /**
+   * Derive Pandoc custom-style settings from template analysis
+   * Maps detected template styles to Pandoc fenced div attributes
+   */
+  private derivePandocStyles(
+    analysis: DocxTemplateAnalysis
+  ): MarkdownGenerationGuidance['pandocStyles'] {
+    const { captionStyles, specialStyles } = analysis;
+
+    // Check if we have enough styles to enable Pandoc custom-style syntax
+    const hasCaptionStyle = captionStyles?.figureCaption?.exists || captionStyles?.tableCaption?.exists;
+    const hasSpecialStyles = specialStyles && (
+      specialStyles.title.exists ||
+      specialStyles.subtitle.exists ||
+      specialStyles.otherStyles.length > 0
+    );
+
+    // Only enable if template has relevant styles
+    if (!hasCaptionStyle && !hasSpecialStyles) {
+      return {
+        enabled: false,
+      };
+    }
+
+    // Build the pandoc styles mapping
+    const pandocStyles: NonNullable<MarkdownGenerationGuidance['pandocStyles']> = {
+      enabled: true,
+    };
+
+    // Figure caption style
+    if (captionStyles?.figureCaption?.exists && captionStyles.figureCaption.styleId) {
+      pandocStyles.figureCaption = captionStyles.figureCaption.styleId;
+    } else if (specialStyles?.otherStyles.find(s => /caption|figure/i.test(s.name))) {
+      const captionStyle = specialStyles.otherStyles.find(s => /caption|figure/i.test(s.name));
+      if (captionStyle) pandocStyles.figureCaption = captionStyle.styleId;
+    }
+
+    // Table caption style (may be same as figure caption or separate)
+    if (captionStyles?.tableCaption?.exists && captionStyles.tableCaption.styleId) {
+      pandocStyles.tableCaption = captionStyles.tableCaption.styleId;
+    } else if (pandocStyles.figureCaption) {
+      // Default to figure caption style if no separate table caption
+      pandocStyles.tableCaption = pandocStyles.figureCaption;
+    }
+
+    // Look for appendix heading style
+    const appendixStyle = specialStyles?.otherStyles.find(s =>
+      /appendix/i.test(s.name) || /appendix/i.test(s.styleId)
+    );
+    if (appendixStyle) {
+      pandocStyles.appendixHeading = appendixStyle.styleId;
+    }
+
+    // Look for note/warning styles
+    const noteStyle = specialStyles?.otherStyles.find(s =>
+      /note|warning|important|tip/i.test(s.name)
+    );
+    if (noteStyle) {
+      pandocStyles.noteStyle = noteStyle.styleId;
+    }
+
+    // Look for code style
+    const codeStyle = specialStyles?.otherStyles.find(s =>
+      /code|source|listing/i.test(s.name)
+    );
+    if (codeStyle) {
+      pandocStyles.codeStyle = codeStyle.styleId;
+    }
+
+    // Collect other notable styles that might be useful
+    const otherMappings: Record<string, string> = {};
+    for (const style of specialStyles?.otherStyles || []) {
+      // Skip ones we've already mapped
+      if (
+        style.styleId === pandocStyles.figureCaption ||
+        style.styleId === pandocStyles.tableCaption ||
+        style.styleId === pandocStyles.appendixHeading ||
+        style.styleId === pandocStyles.noteStyle ||
+        style.styleId === pandocStyles.codeStyle
+      ) {
+        continue;
+      }
+      // Map by style name normalized
+      const key = style.name.toLowerCase().replace(/\s+/g, '-');
+      otherMappings[key] = style.styleId;
+    }
+
+    if (Object.keys(otherMappings).length > 0) {
+      pandocStyles.otherStyles = otherMappings;
+    }
+
+    console.log('[Template Analyzer] Derived Pandoc styles:', pandocStyles);
+    return pandocStyles;
+  }
 }
 
 // Singleton instance
@@ -932,6 +1029,10 @@ export function getDefaultMarkdownGuidance(): MarkdownGenerationGuidance {
     sectionBreaks: {
       usePageBreaks: false,
       pattern: '---',
+    },
+    // No custom Pandoc styles by default - requires template analysis
+    pandocStyles: {
+      enabled: false,
     },
   };
 }

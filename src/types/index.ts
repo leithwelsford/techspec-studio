@@ -921,6 +921,16 @@ export interface MarkdownGenerationGuidance {
     usePageBreaks: boolean; // Include \pagebreak in markdown
     pattern: string; // "\\pagebreak" or "---"
   };
+  // Pandoc custom-style attributes for DOCX export
+  pandocStyles?: {
+    enabled: boolean; // Whether to use Pandoc fenced div syntax
+    figureCaption?: string; // Style name for figure captions (e.g., "Caption", "FigureCaption")
+    tableCaption?: string; // Style name for table captions (e.g., "TableCaption")
+    appendixHeading?: string; // Style name for appendix headings (e.g., "AppendixHeading")
+    noteStyle?: string; // Style name for notes/warnings (e.g., "Note")
+    codeStyle?: string; // Style name for code blocks (e.g., "Code")
+    otherStyles?: Record<string, string>; // Map of content type → style name
+  };
 }
 
 // ========== AI Structure Discovery ==========

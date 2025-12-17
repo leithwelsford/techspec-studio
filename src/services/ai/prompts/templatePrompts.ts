@@ -677,6 +677,47 @@ ${guidance.sectionBreaks.usePageBreaks
 5. **Link Format**: Use markdown links \`[text](url)\` not HTML \`<a href="">\`
 6. **Image Attributes**: Use simple \`![alt](path)\` format - Pandoc will apply template styling
 
+${guidance.pandocStyles?.enabled ? `
+## Pandoc Custom Styles (for Professional DOCX Export)
+
+Use fenced divs with \`custom-style\` attribute to apply specific Word styles:
+
+${guidance.pandocStyles.figureCaption ? `**Figure Captions**:
+\`\`\`markdown
+{{fig:diagram-id}}
+
+::: {custom-style="${guidance.pandocStyles.figureCaption}"}
+Figure 1: Diagram Title
+:::
+\`\`\`
+` : ''}
+${guidance.pandocStyles.tableCaption ? `**Table Captions**:
+\`\`\`markdown
+::: {custom-style="${guidance.pandocStyles.tableCaption}"}
+Table 1: Data Summary
+:::
+
+| Column 1 | Column 2 |
+|----------|----------|
+| Data     | Data     |
+\`\`\`
+` : ''}
+${guidance.pandocStyles.appendixHeading ? `**Appendix Headings** (use instead of # for appendices):
+\`\`\`markdown
+::: {custom-style="${guidance.pandocStyles.appendixHeading}"}
+Appendix A: Glossary
+:::
+\`\`\`
+` : ''}
+${guidance.pandocStyles.noteStyle ? `**Notes/Warnings**:
+\`\`\`markdown
+::: {custom-style="${guidance.pandocStyles.noteStyle}"}
+Note: Important information here.
+:::
+\`\`\`
+` : ''}
+**Important**: The \`::: {custom-style="StyleName"}\` syntax maps directly to Word paragraph styles in the template.
+` : ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Following these guidelines will ensure your markdown exports perfectly to the user's Word template.

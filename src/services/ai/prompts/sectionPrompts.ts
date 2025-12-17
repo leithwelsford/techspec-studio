@@ -293,6 +293,70 @@ function buildFormattingInstructions(guidance?: MarkdownGenerationGuidance | nul
     instructions += `**Code Blocks**: Use ${guidance.codeBlockStyle.fenced ? 'fenced (```)' : 'indented'} code blocks${guidance.codeBlockStyle.languageHints ? ' with language hints' : ''}\n\n`;
   }
 
+  // Add Pandoc custom-style instructions when enabled
+  if (guidance.pandocStyles?.enabled) {
+    instructions += `
+**Pandoc Custom Styles** (for professional DOCX export):
+
+Use fenced divs with \`custom-style\` attribute to apply Word styles from the template:
+
+`;
+
+    if (guidance.pandocStyles.figureCaption) {
+      instructions += `**Figure Captions**:
+\`\`\`markdown
+{{fig:diagram-id}}
+
+::: {custom-style="${guidance.pandocStyles.figureCaption}"}
+Figure 1: Diagram Title
+:::
+\`\`\`
+
+`;
+    }
+
+    if (guidance.pandocStyles.tableCaption) {
+      instructions += `**Table Captions**:
+\`\`\`markdown
+::: {custom-style="${guidance.pandocStyles.tableCaption}"}
+Table 1: Data Summary
+:::
+
+| Column 1 | Column 2 |
+|----------|----------|
+| Data     | Data     |
+\`\`\`
+
+`;
+    }
+
+    if (guidance.pandocStyles.appendixHeading) {
+      instructions += `**Appendix Headings** (use instead of # for appendices):
+\`\`\`markdown
+::: {custom-style="${guidance.pandocStyles.appendixHeading}"}
+Appendix A: Glossary
+:::
+\`\`\`
+
+`;
+    }
+
+    if (guidance.pandocStyles.noteStyle) {
+      instructions += `**Notes/Warnings**:
+\`\`\`markdown
+::: {custom-style="${guidance.pandocStyles.noteStyle}"}
+Note: Important information here.
+:::
+\`\`\`
+
+`;
+    }
+
+    instructions += `**Important**: The \`::: {custom-style="StyleName"}\` syntax maps directly to Word paragraph styles in the template. Use these for captions and special formatting to ensure consistent professional output.
+
+`;
+  }
+
   return instructions;
 }
 

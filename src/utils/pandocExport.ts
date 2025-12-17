@@ -14,6 +14,8 @@ export interface PandocExportOptions {
   includeTOC?: boolean;
   includeNumberSections?: boolean;
   includeFigures?: boolean;
+  includeFigureList?: boolean; // List of Figures
+  includeTableList?: boolean; // List of Tables
   includeBibliography?: boolean;
   embedDiagrams?: boolean;
   author?: string;
@@ -115,7 +117,72 @@ abstract: |
 
 `;
 
-  const markdownWithMetadata = yamlFrontMatter + resolvedMarkdown;
+  // Build front matter sections (TOC, LoF, LoT)
+  let frontMatterSections = '';
+
+  // List of Figures - raw OOXML field code
+  if (options.includeFigureList) {
+    frontMatterSections += `
+## List of Figures
+
+\`\`\`{=openxml}
+<w:p>
+  <w:r>
+    <w:fldChar w:fldCharType="begin"/>
+  </w:r>
+  <w:r>
+    <w:instrText xml:space="preserve"> TOC \\h \\z \\c "Figure" </w:instrText>
+  </w:r>
+  <w:r>
+    <w:fldChar w:fldCharType="separate"/>
+  </w:r>
+  <w:r>
+    <w:rPr><w:i/></w:rPr>
+    <w:t>Right-click and select "Update Field" to populate</w:t>
+  </w:r>
+  <w:r>
+    <w:fldChar w:fldCharType="end"/>
+  </w:r>
+</w:p>
+\`\`\`
+
+\\newpage
+
+`;
+  }
+
+  // List of Tables - raw OOXML field code
+  if (options.includeTableList) {
+    frontMatterSections += `
+## List of Tables
+
+\`\`\`{=openxml}
+<w:p>
+  <w:r>
+    <w:fldChar w:fldCharType="begin"/>
+  </w:r>
+  <w:r>
+    <w:instrText xml:space="preserve"> TOC \\h \\z \\c "Table" </w:instrText>
+  </w:r>
+  <w:r>
+    <w:fldChar w:fldCharType="separate"/>
+  </w:r>
+  <w:r>
+    <w:rPr><w:i/></w:rPr>
+    <w:t>Right-click and select "Update Field" to populate</w:t>
+  </w:r>
+  <w:r>
+    <w:fldChar w:fldCharType="end"/>
+  </w:r>
+</w:p>
+\`\`\`
+
+\\newpage
+
+`;
+  }
+
+  const markdownWithMetadata = yamlFrontMatter + frontMatterSections + resolvedMarkdown;
 
   console.log('[Pandoc Export] Markdown resolved:', markdownWithMetadata.length, 'characters');
 

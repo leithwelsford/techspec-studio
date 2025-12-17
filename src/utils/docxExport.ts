@@ -28,7 +28,9 @@ import { exportBlockDiagramAsPNG, exportMermaidDiagramAsPNG } from './diagramExp
 
 export interface ExportOptions {
   includeTOC: boolean;
-  includeListOfFigures: boolean;
+  includeListOfFigures: boolean;  // List of Figures (used by browser export)
+  includeFigureList?: boolean;    // Alias for Pandoc export compatibility
+  includeTableList?: boolean;     // List of Tables (Pandoc export only)
   includeBibliography: boolean;
   embedDiagrams: boolean;
   author?: string;
@@ -38,6 +40,8 @@ export interface ExportOptions {
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   includeTOC: false,  // Changed to false: Most markdown already has manual ToC
   includeListOfFigures: true,
+  includeFigureList: true,   // Default for Pandoc
+  includeTableList: false,   // Default for Pandoc (opt-in)
   includeBibliography: true,
   embedDiagrams: true,
 };

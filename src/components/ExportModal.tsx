@@ -412,11 +412,20 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                       <label className="flex items-center">
                         <input
                           type="checkbox"
-                          checked={options.includeFigureList}
-                          onChange={(e) => setOptions({ ...options, includeFigureList: e.target.checked })}
+                          checked={options.includeFigureList ?? options.includeListOfFigures}
+                          onChange={(e) => setOptions({ ...options, includeFigureList: e.target.checked, includeListOfFigures: e.target.checked })}
                           className="mr-2"
                         />
                         <span className="text-sm text-gray-700 dark:text-gray-300">Include List of Figures</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={options.includeTableList ?? false}
+                          onChange={(e) => setOptions({ ...options, includeTableList: e.target.checked })}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Include List of Tables</span>
                       </label>
                       <label className="flex items-center">
                         <input
