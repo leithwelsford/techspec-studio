@@ -276,7 +276,7 @@ export default function StructureDiscoveryModal({
       console.log('📄 Template analyzed:', {
         filename: file.name,
         headingStyles: analysis.headingStyles.length,
-        compatibility: analysis.compatibility.score,
+        compatibilityScore: analysis.compatibility.compatibilityScore,
       });
     } catch (err) {
       console.error('Template analysis failed:', err);
@@ -802,12 +802,69 @@ export default function StructureDiscoveryModal({
                         )}
 
                         {templateAnalysis && (
-                          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            {templateAnalysis.headingStyles.length} heading styles detected
-                            {templateAnalysis.compatibility.score < 1 && (
-                              <span className="ml-2 text-yellow-600 dark:text-yellow-400">
-                                ({Math.round(templateAnalysis.compatibility.score * 100)}% compatible)
-                              </span>
+                          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                            {/* Heading styles */}
+                            <div>
+                              <span className="font-medium">{templateAnalysis.headingStyles.length} heading styles:</span>{' '}
+                              {templateAnalysis.headingStyles.length > 0
+                                ? templateAnalysis.headingStyles
+                                    .sort((a, b) => a.level - b.level)
+                                    .map(h => `H${h.level}`)
+                                    .join(', ')
+                                : 'None detected'}
+                            </div>
+                            {templateAnalysis.headingStyles.length > 0 && (
+                              <div className="text-gray-400 dark:text-gray-500">
+                                {templateAnalysis.headingStyles.map(h =>
+                                  `${h.font} ${h.fontSize}pt${h.bold ? ' bold' : ''}`
+                                ).filter((v, i, a) => a.indexOf(v) === i).slice(0, 2).join(' • ')}
+                              </div>
+                            )}
+                            {/* Special styles */}
+                            {templateAnalysis.specialStyles && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {templateAnalysis.specialStyles.title.exists && (
+                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded text-[10px]">
+                                    Title
+                                  </span>
+                                )}
+                                {templateAnalysis.specialStyles.subtitle.exists && (
+                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded text-[10px]">
+                                    Subtitle
+                                  </span>
+                                )}
+                                {templateAnalysis.specialStyles.tocHeading.exists && (
+                                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 rounded text-[10px]">
+                                    TOC ({templateAnalysis.specialStyles.tocHeading.levels} levels)
+                                  </span>
+                                )}
+                                {templateAnalysis.specialStyles.tableStyles.exists && (
+                                  <span className="px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 rounded text-[10px]">
+                                    {templateAnalysis.specialStyles.tableStyles.styleIds.length} table style{templateAnalysis.specialStyles.tableStyles.styleIds.length !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                                {templateAnalysis.captionStyles.figureCaption.exists && (
+                                  <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 rounded text-[10px]">
+                                    Caption
+                                  </span>
+                                )}
+                                {templateAnalysis.specialStyles.otherStyles.length > 0 && (
+                                  <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 rounded text-[10px]">
+                                    +{templateAnalysis.specialStyles.otherStyles.length} other
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {/* Compatibility */}
+                            {templateAnalysis.compatibility.compatibilityScore < 100 && (
+                              <div className="text-yellow-600 dark:text-yellow-400">
+                                {Math.round(templateAnalysis.compatibility.compatibilityScore)}% Pandoc compatible
+                                {templateAnalysis.compatibility.issues.length > 0 && (
+                                  <span className="ml-1">
+                                    ({templateAnalysis.compatibility.issues.length} issue{templateAnalysis.compatibility.issues.length !== 1 ? 's' : ''})
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}

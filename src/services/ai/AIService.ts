@@ -1481,7 +1481,7 @@ Generate the complete Section 4 now in markdown format.`;
       // Reasoning tokens are separate and unlimited; maxTokens only applies to output
       const isReasoningModel = this.config.model.toLowerCase().includes('o1') ||
                                this.config.model.toLowerCase().includes('gpt-5');
-      const sectionMaxTokens = isReasoningModel ? 16000 : (this.config.maxTokens || 4000);
+      const sectionMaxTokens = isReasoningModel ? 64000 : (this.config.maxTokens || 8000);
 
       console.log(`🎯 Generating section with maxTokens: ${sectionMaxTokens} (reasoning model: ${isReasoningModel})`);
 
@@ -1847,9 +1847,9 @@ Generate the complete Section 4 now in markdown format.`;
       const sectionPrompt = buildSectionPrompt(section, promptContext);
 
       // Configure token limits based on model type
-      // Reasoning models: 32k for large sections (Architecture, Procedures, etc.)
-      // Non-reasoning models: Use configured maxTokens or 4k default
-      const sectionMaxTokens = isReasoning ? 32000 : (this.config.maxTokens || 4000);
+      // Reasoning models: 64k for large sections (Architecture, Procedures, etc.)
+      // Non-reasoning models: Use configured maxTokens or 8k default
+      const sectionMaxTokens = isReasoning ? 64000 : (this.config.maxTokens || 8000);
 
       console.log(`🎯 Generating section ${i + 1}/${enabledSections.length}: ${sectionTitle} (maxTokens: ${sectionMaxTokens})`);
 
@@ -2348,6 +2348,15 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
         console.warn('⚠️ Structure proposal response was truncated due to token limit');
       }
 
+      // Log response details for debugging
+      console.log('📊 Structure proposal response:', {
+        finishReason: result.finishReason,
+        nativeFinishReason: (result as { nativeFinishReason?: string }).nativeFinishReason,
+        contentLength: result.content?.length,
+        contentPreview: result.content?.slice(0, 300),
+        wasTruncated
+      });
+
       // Parse the response
       const parsed = parseStructureProposalResponse(result.content);
 
@@ -2545,18 +2554,30 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     brsContent: string;
     referenceDocuments?: ReferenceDocumentContent[];
     generationGuidance?: string;
-    onProgress?: (current: number, total: number, sectionTitle: string) => void;
+    onProgress?: (current: number, total: number, sectionTitle: string, status?: 'generating' | 'truncated' | 'retrying' | 'complete' | 'failed') => void;
+    autoRetryTruncated?: boolean; // If true, automatically retry truncated sections with continuation
+    maxRetries?: number; // Max retries per section (default 1)
   }): Promise<{
     markdown: string;
-    sections: Array<{ title: string; content: string; tokensUsed: number }>;
+    sections: Array<{ title: string; content: string; tokensUsed: number; wasTruncated: boolean }>;
     totalTokens: number;
     totalCost: number;
+    truncatedSections: string[]; // List of section titles that were truncated
+    warnings: string[]; // Warnings to display to user
   }> {
     if (!this.provider || !this.config) {
       throw new Error('AI service not initialized');
     }
 
-    const { structure, brsContent, referenceDocuments, generationGuidance, onProgress } = params;
+    const {
+      structure,
+      brsContent,
+      referenceDocuments,
+      generationGuidance,
+      onProgress,
+      autoRetryTruncated = true,
+      maxRetries = 1
+    } = params;
     const sections = structure.sections.sort((a, b) => a.order - b.order);
 
     // Combine format guidance with user's generation guidance
@@ -2570,14 +2591,22 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       console.log(`📋 Using generation guidance: ${generationGuidance.slice(0, 100)}...`);
     }
 
-    const generatedSections: Array<{ title: string; content: string; tokensUsed: number }> = [];
+    // Determine maxTokens based on model type
+    const isReasoningModel = this.config.model.toLowerCase().includes('o1') ||
+                             this.config.model.toLowerCase().includes('gpt-5');
+    const sectionMaxTokens = isReasoningModel ? 64000 : (this.config.maxTokens || 8000);
+    console.log(`🎯 Using maxTokens: ${sectionMaxTokens} (reasoning model: ${isReasoningModel})`);
+
+    const generatedSections: Array<{ title: string; content: string; tokensUsed: number; wasTruncated: boolean }> = [];
+    const truncatedSections: string[] = [];
+    const warnings: string[] = [];
     let totalTokens = 0;
     let totalCost = 0;
     let previousContent = '';
 
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i];
-      onProgress?.(i + 1, sections.length, section.title);
+      onProgress?.(i + 1, sections.length, section.title, 'generating');
 
       // Import the flexible section prompt builder
       const { buildFlexibleSectionPrompt } = await import('./prompts/sectionPrompts');
@@ -2601,7 +2630,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       );
 
       try {
-        const result = await this.provider.generate(
+        let result = await this.provider.generate(
           [
             { role: 'system', content: 'You are a technical specification writer. Generate only the requested section content in markdown format.' },
             { role: 'user', content: prompt }
@@ -2609,28 +2638,93 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
           {
             model: this.config.model,
             temperature: this.config.temperature,
-            maxTokens: this.config.maxTokens,
+            maxTokens: sectionMaxTokens,
           }
         );
 
+        // Check for truncation
+        let wasTruncated = result.finishReason === 'length' ||
+                           result.finishReason === 'max_tokens' ||
+                           (result as { nativeFinishReason?: string }).nativeFinishReason === 'max_output_tokens';
+
+        let finalContent = result.content;
+        let retryCount = 0;
+
+        // Auto-retry truncated sections with continuation
+        while (wasTruncated && autoRetryTruncated && retryCount < maxRetries) {
+          retryCount++;
+          console.warn(`⚠️ Section "${section.title}" was truncated. Attempting continuation (retry ${retryCount}/${maxRetries})...`);
+          onProgress?.(i + 1, sections.length, section.title, 'retrying');
+
+          // Request continuation
+          const continuationPrompt = `Continue the section from where you left off. The previous content ended with:
+
+---
+${finalContent.slice(-1500)}
+---
+
+Continue writing from this point. Do NOT repeat any content already written. Start immediately with the next part.`;
+
+          const continuationResult = await this.provider.generate(
+            [
+              { role: 'system', content: 'You are a technical specification writer. Continue the section exactly from where it was cut off. Do not repeat any content.' },
+              { role: 'user', content: continuationPrompt }
+            ],
+            {
+              model: this.config.model,
+              temperature: this.config.temperature,
+              maxTokens: sectionMaxTokens,
+            }
+          );
+
+          // Append continuation to original content
+          finalContent = finalContent + '\n\n' + continuationResult.content;
+          totalTokens += continuationResult.tokens?.total || 0;
+          totalCost += continuationResult.cost || 0;
+
+          // Check if continuation was also truncated
+          wasTruncated = continuationResult.finishReason === 'length' ||
+                         continuationResult.finishReason === 'max_tokens' ||
+                         (continuationResult as { nativeFinishReason?: string }).nativeFinishReason === 'max_output_tokens';
+
+          if (!wasTruncated) {
+            console.log(`  ✓ Continuation successful for "${section.title}"`);
+          }
+        }
+
+        // Track truncation even after retries
+        if (wasTruncated) {
+          truncatedSections.push(section.title);
+          warnings.push(`Section "${section.title}" was truncated even after ${retryCount} retry attempt(s). Content may be incomplete.`);
+          onProgress?.(i + 1, sections.length, section.title, 'truncated');
+          console.warn(`⚠️ WARNING: Section "${section.title}" remains truncated after ${retryCount} retries.`);
+        } else {
+          onProgress?.(i + 1, sections.length, section.title, 'complete');
+        }
+
         generatedSections.push({
           title: section.title,
-          content: result.content,
+          content: finalContent,
           tokensUsed: result.tokens?.total || 0,
+          wasTruncated,
         });
 
-        previousContent += '\n\n' + result.content;
+        previousContent += '\n\n' + finalContent;
         totalTokens += result.tokens?.total || 0;
         totalCost += result.cost || 0;
 
-        console.log(`  ✓ Generated section ${i + 1}/${sections.length}: ${section.title}`);
+        console.log(`  ✓ Generated section ${i + 1}/${sections.length}: ${section.title}${wasTruncated ? ' (TRUNCATED)' : ''}`);
       } catch (error) {
         console.error(`Failed to generate section "${section.title}":`, error);
+        onProgress?.(i + 1, sections.length, section.title, 'failed');
+        warnings.push(`Section "${section.title}" failed to generate: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
         // Add placeholder for failed section
         generatedSections.push({
           title: section.title,
           content: `## ${section.order}. ${section.title}\n\n*[Section generation failed. Please regenerate or edit manually.]*\n`,
           tokensUsed: 0,
+          wasTruncated: false,
         });
       }
     }
@@ -2638,17 +2732,25 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     // Combine all sections into final markdown
     const markdown = generatedSections.map(s => s.content).join('\n\n---\n\n');
 
+    // Summary logging
     console.log('✅ Specification generation complete:', {
       sections: generatedSections.length,
+      truncatedSections: truncatedSections.length,
       totalTokens,
       totalCost: `$${totalCost.toFixed(4)}`,
     });
+
+    if (truncatedSections.length > 0) {
+      console.warn(`⚠️ ${truncatedSections.length} section(s) were truncated:`, truncatedSections);
+    }
 
     return {
       markdown,
       sections: generatedSections,
       totalTokens,
       totalCost,
+      truncatedSections,
+      warnings,
     };
   }
 }

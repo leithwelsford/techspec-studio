@@ -22,6 +22,14 @@ export default function Workspace() {
   const [showStructureDiscovery, setShowStructureDiscovery] = useState(false);
   const [isGeneratingFromStructure, setIsGeneratingFromStructure] = useState(false);
 
+  // Generation progress state
+  const [generationProgress, setGenerationProgress] = useState<{
+    current: number;
+    total: number;
+    sectionTitle: string;
+    status: 'generating' | 'truncated' | 'retrying' | 'complete' | 'failed';
+  } | null>(null);
+
   // Use Zustand store for activeTab instead of local state
   const activeTab = useProjectStore((state) => state.activeTab);
   const setActiveTab = useProjectStore((state) => state.setActiveTab);
@@ -58,19 +66,23 @@ export default function Workspace() {
 
     setShowStructureDiscovery(false);
     setIsGeneratingFromStructure(true);
+    setGenerationProgress(null);
 
     try {
       // Initialize AI service
       const decryptedKey = decrypt(aiConfig.apiKey);
       aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
 
-      // Generate specification from structure
+      // Generate specification from structure with progress tracking
       const result = await aiService.generateFromApprovedStructure({
         structure,
         brsContent: brsDocument.markdown,
         generationGuidance: structure.generationGuidance,
-        onProgress: (current, total, sectionTitle) => {
-          console.log(`Generating section ${current}/${total}: ${sectionTitle}`);
+        autoRetryTruncated: true,
+        maxRetries: 1,
+        onProgress: (current, total, sectionTitle, status = 'generating') => {
+          console.log(`Generating section ${current}/${total}: ${sectionTitle} [${status}]`);
+          setGenerationProgress({ current, total, sectionTitle, status });
         },
       });
 
@@ -88,12 +100,24 @@ export default function Workspace() {
 
       // Show the review panel
       setShowReviewPanel(true);
-      alert(`✅ Generated ${result.sections.length} sections. Please review in the Review panel.`);
+
+      // Build result message
+      let message = `✅ Generated ${result.sections.length} sections.`;
+      if (result.truncatedSections.length > 0) {
+        message += `\n\n⚠️ Warning: ${result.truncatedSections.length} section(s) were truncated:\n• ${result.truncatedSections.join('\n• ')}\n\nThese sections may be incomplete. Consider regenerating them individually.`;
+      }
+      if (result.warnings.length > 0 && result.truncatedSections.length === 0) {
+        message += `\n\n⚠️ Warnings:\n• ${result.warnings.join('\n• ')}`;
+      }
+      message += '\n\nPlease review in the Review panel.';
+
+      alert(message);
     } catch (err) {
       console.error('Generation from structure failed:', err);
       alert(`Failed to generate specification: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsGeneratingFromStructure(false);
+      setGenerationProgress(null);
     }
   }, [aiConfig, brsDocument, updateUsageStats, createApproval, project?.specification?.markdown]);
 
@@ -391,6 +415,86 @@ export default function Workspace() {
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
       />
+
+      {/* Generation Progress Overlay */}
+      {isGeneratingFromStructure && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <div className="text-center">
+              {/* Animated spinner */}
+              <div className="relative mb-6">
+                <div className="w-16 h-16 mx-auto">
+                  <svg className="animate-spin" viewBox="0 0 24 24">
+                    <circle
+                      className="opacity-25 stroke-current text-blue-200 dark:text-blue-900"
+                      cx="12" cy="12" r="10" fill="none" strokeWidth="3"
+                    />
+                    <path
+                      className="opacity-75 fill-current text-blue-600 dark:text-blue-400"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                </div>
+              </div>
+
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                Generating Specification
+              </h3>
+
+              {generationProgress ? (
+                <>
+                  {/* Progress bar */}
+                  <div className="mb-4">
+                    <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
+                      <span>Section {generationProgress.current} of {generationProgress.total}</span>
+                      <span>{Math.round((generationProgress.current / generationProgress.total) * 100)}%</span>
+                    </div>
+                    <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 rounded-full ${
+                          generationProgress.status === 'truncated' ? 'bg-yellow-500' :
+                          generationProgress.status === 'retrying' ? 'bg-orange-500' :
+                          generationProgress.status === 'failed' ? 'bg-red-500' :
+                          'bg-blue-600 dark:bg-blue-500'
+                        }`}
+                        style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Current section */}
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    {generationProgress.status === 'generating' && '📝 Generating:'}
+                    {generationProgress.status === 'retrying' && '🔄 Retrying (truncated):'}
+                    {generationProgress.status === 'truncated' && '⚠️ Truncated:'}
+                    {generationProgress.status === 'complete' && '✅ Completed:'}
+                    {generationProgress.status === 'failed' && '❌ Failed:'}
+                  </div>
+                  <p className="font-medium text-gray-900 dark:text-white truncate">
+                    {generationProgress.sectionTitle}
+                  </p>
+
+                  {/* Status indicator */}
+                  {generationProgress.status === 'retrying' && (
+                    <p className="mt-2 text-xs text-orange-600 dark:text-orange-400">
+                      Section was cut off, attempting to continue...
+                    </p>
+                  )}
+                  {generationProgress.status === 'truncated' && (
+                    <p className="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
+                      Section may be incomplete
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Initializing...
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

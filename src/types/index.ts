@@ -707,6 +707,7 @@ export interface DocxTemplateAnalysis {
   headingStyles: HeadingStyleInfo[];
   paragraphStyles: ParagraphStyleInfo[];
   captionStyles: CaptionStyleInfo;
+  specialStyles: SpecialStylesInfo;  // Title, Subtitle, TOC, Table styles
 
   // Numbering analysis
   sectionNumbering: NumberingSchemeInfo;
@@ -778,6 +779,40 @@ export interface CaptionStyleInfo {
     format?: string;
     numbering?: 'continuous' | 'per-section';
   };
+}
+
+/**
+ * Special styles info (Title, Subtitle, TOC, Table styles)
+ */
+export interface SpecialStylesInfo {
+  title: {
+    exists: boolean;
+    styleId?: string;
+    font?: string;
+    fontSize?: number;
+  };
+  subtitle: {
+    exists: boolean;
+    styleId?: string;
+    font?: string;
+    fontSize?: number;
+  };
+  tocHeading: {
+    exists: boolean;
+    styleId?: string;
+    levels: number; // How many TOC levels (1-9)
+  };
+  tableStyles: {
+    exists: boolean;
+    styleIds: string[]; // List of table style IDs found
+    defaultStyle?: string;
+  };
+  // Other commonly used styles
+  otherStyles: {
+    styleId: string;
+    name: string;
+    type: 'paragraph' | 'character' | 'table';
+  }[];
 }
 
 /**

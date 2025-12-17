@@ -11,6 +11,7 @@ import type {
   HeadingStyleInfo,
   ParagraphStyleInfo,
   CaptionStyleInfo,
+  SpecialStylesInfo,
   NumberingSchemeInfo,
   ListNumberingInfo,
   DocumentStructureInfo,
@@ -45,6 +46,7 @@ export class TemplateAnalyzer {
     const headingStyles = this.analyzeHeadingStyles(stylesDoc);
     const paragraphStyles = this.analyzeParagraphStyles(stylesDoc);
     const captionStyles = this.analyzeCaptionStyles(stylesDoc);
+    const specialStyles = this.analyzeSpecialStyles(stylesDoc);
     const sectionNumbering = this.analyzeSectionNumbering(numberingDoc);
     const listNumbering = this.analyzeListNumbering(numberingDoc);
     const documentStructure = this.analyzeDocumentStructure(documentDoc);
@@ -72,6 +74,7 @@ export class TemplateAnalyzer {
       headingStyles,
       paragraphStyles,
       captionStyles,
+      specialStyles,
       sectionNumbering,
       listNumbering,
       documentStructure,
@@ -168,8 +171,14 @@ export class TemplateAnalyzer {
   }> {
     const extractFile = (path: string): string => {
       const file = zip.file(path);
-      return file ? file.asText() : '';
+      const content = file ? file.asText() : '';
+      console.log(`[Template Analyzer] Extracted ${path}: ${content.length} chars`);
+      return content;
     };
+
+    // Log all files in the ZIP for debugging
+    const allFiles = Object.keys(zip.files);
+    console.log('[Template Analyzer] Files in DOCX:', allFiles.filter(f => f.startsWith('word/')));
 
     return {
       styles: extractFile('word/styles.xml'),
@@ -188,17 +197,58 @@ export class TemplateAnalyzer {
     console.log('[Template Analyzer] Analyzing heading styles...');
     const headingStyles: HeadingStyleInfo[] = [];
 
-    // Query all style elements with styleId starting with "Heading"
-    const styleElements = stylesDoc.querySelectorAll('w\\:style');
+    // Try multiple selector approaches for cross-browser compatibility
+    // The w: namespace prefix can be tricky with querySelectorAll
+    let styleElements: Element[] = [];
+
+    // Approach 1: Try namespaced selector (works in some browsers)
+    const nsQuery = stylesDoc.querySelectorAll('w\\:style');
+    if (nsQuery.length > 0) {
+      styleElements = Array.from(nsQuery);
+      console.log(`[Template Analyzer] Found ${styleElements.length} styles via w\\:style selector`);
+    }
+
+    // Approach 2: Try without namespace escape (works in other browsers)
+    if (styleElements.length === 0) {
+      const altQuery = stylesDoc.querySelectorAll('style');
+      if (altQuery.length > 0) {
+        styleElements = Array.from(altQuery);
+        console.log(`[Template Analyzer] Found ${styleElements.length} styles via 'style' selector`);
+      }
+    }
+
+    // Approach 3: Use getElementsByTagName with local name
+    if (styleElements.length === 0) {
+      // This gets all elements and filters by local name
+      const allElements = stylesDoc.getElementsByTagName('*');
+      for (let i = 0; i < allElements.length; i++) {
+        const el = allElements[i];
+        if (el.localName === 'style' || el.tagName === 'w:style') {
+          styleElements.push(el);
+        }
+      }
+      console.log(`[Template Analyzer] Found ${styleElements.length} styles via getElementsByTagName`);
+    }
+
+    // Log raw XML for debugging if no styles found
+    if (styleElements.length === 0) {
+      console.warn('[Template Analyzer] No style elements found. XML structure:',
+        stylesDoc.documentElement?.outerHTML?.slice(0, 500) || 'empty');
+    }
 
     styleElements.forEach((styleEl) => {
-      const styleId = styleEl.getAttribute('w:styleId') || '';
+      // Try both attribute formats
+      const styleId = styleEl.getAttribute('w:styleId') || styleEl.getAttribute('styleId') || '';
+      const styleType = styleEl.getAttribute('w:type') || styleEl.getAttribute('type') || '';
 
       // Check if this is a heading style (Heading1, Heading2, etc.)
-      if (/^Heading\d$/.test(styleId)) {
-        const level = parseInt(
-          styleId.replace('Heading', '')
-        ) as 1 | 2 | 3 | 4 | 5 | 6;
+      // Also check for common variations like "heading 1", "Titre1" (French), etc.
+      const headingMatch = styleId.match(/^Heading(\d)$/i) ||
+                          styleId.match(/^heading\s*(\d)$/i) ||
+                          styleId.match(/^Titre(\d)$/i);
+
+      if (headingMatch) {
+        const level = parseInt(headingMatch[1]) as 1 | 2 | 3 | 4 | 5 | 6;
 
         if (level >= 1 && level <= 6) {
           headingStyles.push({
@@ -211,12 +261,23 @@ export class TemplateAnalyzer {
             numbering: this.extractNumbering(styleEl),
             spacing: this.extractSpacing(styleEl),
           });
+          console.log(`[Template Analyzer] Found heading style: ${styleId} (level ${level})`);
+        }
+      }
+
+      // Also detect styles that are based on headings (basedOn attribute)
+      const basedOnEl = styleEl.querySelector('basedOn') ||
+                        Array.from(styleEl.children).find(c => c.localName === 'basedOn');
+      if (basedOnEl) {
+        const basedOn = basedOnEl.getAttribute('w:val') || basedOnEl.getAttribute('val') || '';
+        if (/^Heading\d$/i.test(basedOn) && !headingMatch) {
+          console.log(`[Template Analyzer] Style ${styleId} is based on ${basedOn}`);
         }
       }
     });
 
     console.log(
-      `[Template Analyzer] Found ${headingStyles.length} heading styles`
+      `[Template Analyzer] Found ${headingStyles.length} heading styles total`
     );
     return headingStyles.sort((a, b) => a.level - b.level);
   }
@@ -227,17 +288,29 @@ export class TemplateAnalyzer {
     console.log('[Template Analyzer] Analyzing paragraph styles...');
     const paragraphStyles: ParagraphStyleInfo[] = [];
 
-    const styleElements = stylesDoc.querySelectorAll(
-      'w\\:style[w\\:type="paragraph"]'
-    );
+    // Get all style elements using the same robust approach
+    const allElements = stylesDoc.getElementsByTagName('*');
+    const styleElements: Element[] = [];
+    for (let i = 0; i < allElements.length; i++) {
+      const el = allElements[i];
+      if (el.localName === 'style' || el.tagName === 'w:style') {
+        // Check if it's a paragraph style
+        const styleType = el.getAttribute('w:type') || el.getAttribute('type') || '';
+        if (styleType === 'paragraph') {
+          styleElements.push(el);
+        }
+      }
+    }
 
     styleElements.forEach((styleEl) => {
-      const styleId = styleEl.getAttribute('w:styleId') || '';
-      const nameEl = styleEl.querySelector('w\\:name');
-      const name = nameEl?.getAttribute('w:val') || styleId;
+      const styleId = styleEl.getAttribute('w:styleId') || styleEl.getAttribute('styleId') || '';
+
+      // Find name element
+      const nameEl = Array.from(styleEl.children).find(c => c.localName === 'name');
+      const name = nameEl?.getAttribute('w:val') || nameEl?.getAttribute('val') || styleId;
 
       // Skip heading styles (already processed)
-      if (/^Heading\d$/.test(styleId)) return;
+      if (/^Heading\d$/i.test(styleId)) return;
 
       paragraphStyles.push({
         styleId,
@@ -259,9 +332,19 @@ export class TemplateAnalyzer {
     console.log('[Template Analyzer] Analyzing caption styles...');
 
     // Look for "Caption" style (common in Word templates)
-    const captionStyle = stylesDoc.querySelector(
-      'w\\:style[w\\:styleId="Caption"]'
-    );
+    // Use robust element finding approach
+    let captionStyle: Element | null = null;
+    const allElements = stylesDoc.getElementsByTagName('*');
+    for (let i = 0; i < allElements.length; i++) {
+      const el = allElements[i];
+      if (el.localName === 'style' || el.tagName === 'w:style') {
+        const styleId = el.getAttribute('w:styleId') || el.getAttribute('styleId') || '';
+        if (styleId.toLowerCase() === 'caption') {
+          captionStyle = el;
+          break;
+        }
+      }
+    }
 
     return {
       figureCaption: {
@@ -279,13 +362,156 @@ export class TemplateAnalyzer {
     };
   }
 
+  private analyzeSpecialStyles(stylesDoc: Document): SpecialStylesInfo {
+    console.log('[Template Analyzer] Analyzing special styles...');
+
+    // Get all style elements
+    const allElements = stylesDoc.getElementsByTagName('*');
+    const styleElements: Element[] = [];
+    for (let i = 0; i < allElements.length; i++) {
+      const el = allElements[i];
+      if (el.localName === 'style' || el.tagName === 'w:style') {
+        styleElements.push(el);
+      }
+    }
+
+    // Initialize result
+    const result: SpecialStylesInfo = {
+      title: { exists: false },
+      subtitle: { exists: false },
+      tocHeading: { exists: false, levels: 0 },
+      tableStyles: { exists: false, styleIds: [] },
+      otherStyles: [],
+    };
+
+    // Track TOC levels found
+    const tocLevels = new Set<number>();
+
+    // Notable style names to capture in otherStyles
+    const notableStylePatterns = [
+      /^caption$/i,
+      /^quote$/i,
+      /^footnote/i,
+      /^header$/i,
+      /^footer$/i,
+      /^code$/i,
+      /^list/i,
+      /^note$/i,
+      /^warning$/i,
+      /^figure/i,
+      /^table\s*caption/i,
+      /^block\s*text/i,
+    ];
+
+    styleElements.forEach((styleEl) => {
+      const styleId = styleEl.getAttribute('w:styleId') || styleEl.getAttribute('styleId') || '';
+      const styleType = styleEl.getAttribute('w:type') || styleEl.getAttribute('type') || '';
+
+      // Find name element
+      const nameEl = Array.from(styleEl.children).find(c => c.localName === 'name');
+      const name = nameEl?.getAttribute('w:val') || nameEl?.getAttribute('val') || styleId;
+
+      // Check for Title style
+      if (/^title$/i.test(styleId)) {
+        result.title = {
+          exists: true,
+          styleId,
+          font: this.extractFont(styleEl),
+          fontSize: this.extractFontSize(styleEl),
+        };
+        console.log(`[Template Analyzer] Found Title style: ${styleId}`);
+      }
+
+      // Check for Subtitle style
+      if (/^subtitle$/i.test(styleId)) {
+        result.subtitle = {
+          exists: true,
+          styleId,
+          font: this.extractFont(styleEl),
+          fontSize: this.extractFontSize(styleEl),
+        };
+        console.log(`[Template Analyzer] Found Subtitle style: ${styleId}`);
+      }
+
+      // Check for TOC Heading styles (TOC, TOCHeading, TOC1-TOC9)
+      const tocMatch = styleId.match(/^TOC\s*Heading$/i) || styleId.match(/^TOC(\d)$/i);
+      if (tocMatch) {
+        result.tocHeading.exists = true;
+        if (!result.tocHeading.styleId) {
+          result.tocHeading.styleId = styleId;
+        }
+        if (tocMatch[1]) {
+          tocLevels.add(parseInt(tocMatch[1]));
+        }
+        console.log(`[Template Analyzer] Found TOC style: ${styleId}`);
+      }
+
+      // Check for table styles (type="table")
+      if (styleType === 'table') {
+        result.tableStyles.exists = true;
+        result.tableStyles.styleIds.push(styleId);
+
+        // Check if it's the default table style
+        const defaultAttr = styleEl.getAttribute('w:default') || styleEl.getAttribute('default');
+        if (defaultAttr === '1' || defaultAttr === 'true') {
+          result.tableStyles.defaultStyle = styleId;
+        }
+        console.log(`[Template Analyzer] Found table style: ${styleId}`);
+      }
+
+      // Check for other notable styles
+      const isNotable = notableStylePatterns.some(pattern => pattern.test(styleId) || pattern.test(name));
+      if (isNotable && !result.otherStyles.find(s => s.styleId === styleId)) {
+        // Skip if already captured as Title, Subtitle, TOC, or Table
+        if (!/^(title|subtitle|toc)/i.test(styleId) && styleType !== 'table') {
+          let type: 'paragraph' | 'character' | 'table' = 'paragraph';
+          if (styleType === 'character') type = 'character';
+          if (styleType === 'table') type = 'table';
+
+          result.otherStyles.push({
+            styleId,
+            name,
+            type,
+          });
+          console.log(`[Template Analyzer] Found notable style: ${styleId} (${name})`);
+        }
+      }
+    });
+
+    // Set TOC levels count
+    result.tocHeading.levels = tocLevels.size > 0 ? Math.max(...tocLevels) : 0;
+
+    console.log(`[Template Analyzer] Special styles analysis complete:`, {
+      title: result.title.exists,
+      subtitle: result.subtitle.exists,
+      tocHeading: result.tocHeading.exists,
+      tableStyles: result.tableStyles.styleIds.length,
+      otherStyles: result.otherStyles.length,
+    });
+
+    return result;
+  }
+
   private analyzeSectionNumbering(
     numberingDoc: Document
   ): NumberingSchemeInfo {
     console.log('[Template Analyzer] Analyzing section numbering...');
 
+    // Helper to find elements by local name
+    const findByLocalName = (parent: Element | Document, localName: string): Element[] => {
+      const result: Element[] = [];
+      const allElements = parent.getElementsByTagName('*');
+      for (let i = 0; i < allElements.length; i++) {
+        if (allElements[i].localName === localName) {
+          result.push(allElements[i]);
+        }
+      }
+      return result;
+    };
+
     // Parse numbering definitions
-    const abstractNums = numberingDoc.querySelectorAll('w\\:abstractNum');
+    const abstractNums = findByLocalName(numberingDoc, 'abstractNum');
+    console.log(`[Template Analyzer] Found ${abstractNums.length} abstractNum elements`);
 
     if (abstractNums.length === 0) {
       return {
@@ -300,14 +526,16 @@ export class TemplateAnalyzer {
     const firstAbstractNum = abstractNums[0];
     const levels: { level: number; format: string; example: string }[] = [];
 
-    const lvls = firstAbstractNum.querySelectorAll('w\\:lvl');
+    const lvls = findByLocalName(firstAbstractNum, 'lvl');
     lvls.forEach((lvl) => {
-      const ilvl = parseInt(lvl.getAttribute('w:ilvl') || '0');
-      const numFmtEl = lvl.querySelector('w\\:numFmt');
-      const lvlTextEl = lvl.querySelector('w\\:lvlText');
+      const ilvl = parseInt(lvl.getAttribute('w:ilvl') || lvl.getAttribute('ilvl') || '0');
 
-      const numFmt = numFmtEl?.getAttribute('w:val') || 'decimal';
-      const lvlText = lvlTextEl?.getAttribute('w:val') || '%1';
+      // Find numFmt and lvlText children
+      const numFmtEl = Array.from(lvl.children).find(c => c.localName === 'numFmt');
+      const lvlTextEl = Array.from(lvl.children).find(c => c.localName === 'lvlText');
+
+      const numFmt = numFmtEl?.getAttribute('w:val') || numFmtEl?.getAttribute('val') || 'decimal';
+      const lvlText = lvlTextEl?.getAttribute('w:val') || lvlTextEl?.getAttribute('val') || '%1';
 
       levels.push({
         level: ilvl + 1,
@@ -344,8 +572,14 @@ export class TemplateAnalyzer {
   ): DocumentStructureInfo {
     console.log('[Template Analyzer] Analyzing document structure...');
 
-    // Check for section breaks
-    const sectionBreaks = documentDoc.querySelectorAll('w\\:sectPr').length;
+    // Check for section breaks using robust element finding
+    const allElements = documentDoc.getElementsByTagName('*');
+    let sectionBreaks = 0;
+    for (let i = 0; i < allElements.length; i++) {
+      if (allElements[i].localName === 'sectPr') {
+        sectionBreaks++;
+      }
+    }
 
     // Basic structure detection
     // More sophisticated detection would parse actual content
@@ -460,28 +694,55 @@ export class TemplateAnalyzer {
 
   // ===== Helper Methods =====
 
+  /**
+   * Helper to find child element by local name (handles namespaced XML)
+   */
+  private findChildByLocalName(parent: Element, localName: string): Element | null {
+    for (let i = 0; i < parent.children.length; i++) {
+      if (parent.children[i].localName === localName) {
+        return parent.children[i];
+      }
+    }
+    // Also search in descendants (not just direct children)
+    const allElements = parent.getElementsByTagName('*');
+    for (let i = 0; i < allElements.length; i++) {
+      if (allElements[i].localName === localName) {
+        return allElements[i];
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Helper to get attribute value (handles namespaced attributes)
+   */
+  private getAttr(el: Element | null, attrName: string): string | null {
+    if (!el) return null;
+    return el.getAttribute(`w:${attrName}`) || el.getAttribute(attrName);
+  }
+
   private extractFont(styleEl: Element): string {
-    const rFonts = styleEl.querySelector('w\\:rFonts');
+    const rFonts = this.findChildByLocalName(styleEl, 'rFonts');
     return (
-      rFonts?.getAttribute('w:ascii') ||
-      rFonts?.getAttribute('w:hAnsi') ||
+      this.getAttr(rFonts, 'ascii') ||
+      this.getAttr(rFonts, 'hAnsi') ||
       'Calibri'
     );
   }
 
   private extractFontSize(styleEl: Element): number {
-    const szEl = styleEl.querySelector('w\\:sz');
-    const sz = szEl?.getAttribute('w:val');
+    const szEl = this.findChildByLocalName(styleEl, 'sz');
+    const sz = this.getAttr(szEl, 'val');
     return sz ? parseInt(sz) / 2 : 11; // Word uses half-points
   }
 
   private extractColor(styleEl: Element): string {
-    const colorEl = styleEl.querySelector('w\\:color');
-    return colorEl?.getAttribute('w:val') || '000000';
+    const colorEl = this.findChildByLocalName(styleEl, 'color');
+    return this.getAttr(colorEl, 'val') || '000000';
   }
 
   private extractBold(styleEl: Element): boolean {
-    return !!styleEl.querySelector('w\\:b');
+    return !!this.findChildByLocalName(styleEl, 'b');
   }
 
   private extractNumbering(styleEl: Element): {
@@ -490,7 +751,7 @@ export class TemplateAnalyzer {
     separator: string;
   } {
     // Check if style has numbering reference
-    const numPr = styleEl.querySelector('w\\:numPr');
+    const numPr = this.findChildByLocalName(styleEl, 'numPr');
     if (!numPr) {
       return { enabled: false, format: '', separator: '' };
     }
@@ -506,9 +767,9 @@ export class TemplateAnalyzer {
     beforePt: number;
     afterPt: number;
   } {
-    const spacingEl = styleEl.querySelector('w\\:spacing');
-    const before = spacingEl?.getAttribute('w:before');
-    const after = spacingEl?.getAttribute('w:after');
+    const spacingEl = this.findChildByLocalName(styleEl, 'spacing');
+    const before = this.getAttr(spacingEl, 'before');
+    const after = this.getAttr(spacingEl, 'after');
 
     return {
       beforePt: before ? parseInt(before) / 20 : 0, // Convert from twips to points
@@ -517,8 +778,8 @@ export class TemplateAnalyzer {
   }
 
   private extractAlignment(styleEl: Element): 'left' | 'right' | 'center' | 'justify' {
-    const jcEl = styleEl.querySelector('w\\:jc');
-    const val = jcEl?.getAttribute('w:val') || 'left';
+    const jcEl = this.findChildByLocalName(styleEl, 'jc');
+    const val = this.getAttr(jcEl, 'val') || 'left';
 
     if (val === 'both') return 'justify';
     if (val === 'center') return 'center';
@@ -527,9 +788,9 @@ export class TemplateAnalyzer {
   }
 
   private extractLineSpacing(styleEl: Element): number {
-    const spacingEl = styleEl.querySelector('w\\:spacing');
-    const line = spacingEl?.getAttribute('w:line');
-    const lineRule = spacingEl?.getAttribute('w:lineRule');
+    const spacingEl = this.findChildByLocalName(styleEl, 'spacing');
+    const line = this.getAttr(spacingEl, 'line');
+    const lineRule = this.getAttr(spacingEl, 'lineRule');
 
     if (!line) return 1.0;
 
