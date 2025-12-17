@@ -630,3 +630,47 @@ export class TemplateAnalyzer {
 
 // Singleton instance
 export const templateAnalyzer = new TemplateAnalyzer();
+
+/**
+ * Get default markdown generation guidance
+ * Used when no DOCX template is provided
+ *
+ * These defaults produce markdown that:
+ * - Works well with Pandoc DOCX conversion
+ * - Aligns with common technical document standards
+ * - Maps cleanly to Word heading styles (# → Heading 1, ## → Heading 2, etc.)
+ */
+export function getDefaultMarkdownGuidance(): MarkdownGenerationGuidance {
+  return {
+    headingLevels: {
+      maxDepth: 6,
+      numberingStyle: 'decimal', // 1, 1.1, 1.1.1 - matches Pandoc --number-sections
+    },
+    figureFormat: {
+      captionPlacement: 'below',
+      numberingPattern: 'Figure {chapter}.{number}',
+      syntax: '{{fig:id}}',
+    },
+    tableFormat: {
+      captionPlacement: 'above',
+      numberingPattern: 'Table {chapter}.{number}',
+      useMarkdownTables: true,
+    },
+    listFormat: {
+      bulletChar: '-',
+      orderedStyle: '1.',
+    },
+    codeBlockStyle: {
+      fenced: true,
+      languageHints: true,
+    },
+    emphasis: {
+      bold: '**',
+      italic: '*',
+    },
+    sectionBreaks: {
+      usePageBreaks: false,
+      pattern: '---',
+    },
+  };
+}

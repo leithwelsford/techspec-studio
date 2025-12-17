@@ -13,7 +13,8 @@ import StructureProposalView from './StructureProposalView';
 import StructureChatPanel from './StructureChatPanel';
 import DomainOverridePanel from './DomainOverridePanel';
 import { ReferenceDocumentUpload } from '../documents/ReferenceDocumentUpload';
-import type { ProposedStructure, DomainConfig } from '../../types';
+import { getDefaultMarkdownGuidance } from '../../services/templateAnalyzer';
+import type { ProposedStructure, DomainConfig, MarkdownGenerationGuidance } from '../../types';
 
 interface StructureDiscoveryModalProps {
   isOpen: boolean;
@@ -41,6 +42,8 @@ export default function StructureDiscoveryModal({
   const setDomainOverride = useProjectStore((state) => state.setDomainOverride);
   const approveStructure = useProjectStore((state) => state.approveStructure);
   const updateUsageStats = useProjectStore((state) => state.updateUsageStats);
+  const updateDocumentMetadata = useProjectStore((state) => state.updateDocumentMetadata);
+  const setMarkdownGuidanceInStore = useProjectStore((state) => state.setMarkdownGuidance);
 
   // Local state
   const [step, setStep] = useState<Step>('input');
@@ -56,6 +59,21 @@ export default function StructureDiscoveryModal({
     sectionTitle: string;
   } | null>(null);
 
+  // Document metadata state (for front matter/title page)
+  const [docTitle, setDocTitle] = useState('');
+  const [docSubtitle, setDocSubtitle] = useState('');
+  const [docVersion, setDocVersion] = useState('1.0');
+  const [docAuthor, setDocAuthor] = useState('');
+
+  // Formatting options
+  const [useDefaultFormatting, setUseDefaultFormatting] = useState(true);
+  const [markdownGuidance, setMarkdownGuidance] = useState<MarkdownGenerationGuidance | null>(null);
+
+  // Get BRS content (must be before useEffect that uses it)
+  const brsDocument = project?.brsDocument;
+  const hasBRS = !!brsDocument?.markdown;
+  const brsPreview = brsDocument?.markdown?.slice(0, 500) || '';
+
   // Reset state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
@@ -63,15 +81,21 @@ export default function StructureDiscoveryModal({
       setUserGuidance(structurePlanning.userGuidance || '');
       setError(null);
       setAnalysisProgress('');
+
+      // Initialize document metadata from BRS/project
+      const projectName = brsDocument?.metadata?.projectName || project?.name || '';
+      setDocTitle(projectName ? `${projectName} - Technical Specification` : '');
+      setDocSubtitle('');
+      setDocVersion(project?.specification?.metadata?.version || '1.0');
+      setDocAuthor(project?.specification?.metadata?.author || '');
+
+      // Initialize default markdown guidance
+      setUseDefaultFormatting(true);
+      setMarkdownGuidance(getDefaultMarkdownGuidance());
     } else {
       endPlanningSession();
     }
-  }, [isOpen, structurePlanning.userGuidance, endPlanningSession]);
-
-  // Get BRS content
-  const brsDocument = project?.brsDocument;
-  const hasBRS = !!brsDocument?.markdown;
-  const brsPreview = brsDocument?.markdown?.slice(0, 500) || '';
+  }, [isOpen, structurePlanning.userGuidance, endPlanningSession, brsDocument, project]);
 
   // Get reference documents
   const references = project?.references || [];
@@ -153,14 +177,44 @@ export default function StructureDiscoveryModal({
    */
   const handleStartGeneration = useCallback(() => {
     if (structurePlanning.proposedStructure) {
+      // Save document metadata to store
+      updateDocumentMetadata({
+        author: docAuthor.trim() || undefined,
+        version: docVersion.trim() || undefined,
+        subtitle: docSubtitle.trim() || undefined,
+      });
+
+      // Save markdown guidance to store (default or from template)
+      if (markdownGuidance) {
+        setMarkdownGuidanceInStore(markdownGuidance);
+      }
+
       // Pass the generation guidance along with the structure
       const structureWithGuidance = {
         ...structurePlanning.proposedStructure,
         generationGuidance: generationGuidance.trim() || undefined,
       };
+
+      // Update spec title if provided
+      if (docTitle.trim()) {
+        // The title will be used by the generation process
+        structureWithGuidance.rationale = `Document Title: ${docTitle.trim()}\n\n${structureWithGuidance.rationale}`;
+      }
+
       onGenerate(structureWithGuidance);
     }
-  }, [structurePlanning.proposedStructure, generationGuidance, onGenerate]);
+  }, [
+    structurePlanning.proposedStructure,
+    generationGuidance,
+    onGenerate,
+    docTitle,
+    docSubtitle,
+    docVersion,
+    docAuthor,
+    markdownGuidance,
+    updateDocumentMetadata,
+    setMarkdownGuidanceInStore,
+  ]);
 
   /**
    * Handle domain override
@@ -469,6 +523,113 @@ export default function StructureDiscoveryModal({
                   </p>
                 </div>
 
+                {/* Document Metadata Section */}
+                <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Document Metadata (for title page)
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Document Title
+                      </label>
+                      <input
+                        type="text"
+                        value={docTitle}
+                        onChange={(e) => setDocTitle(e.target.value)}
+                        placeholder="e.g., Public Wi-Fi Technical Specification"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Subtitle (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={docSubtitle}
+                        onChange={(e) => setDocSubtitle(e.target.value)}
+                        placeholder="e.g., Carrier Wi-Fi / Hotspot Service"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Version
+                      </label>
+                      <input
+                        type="text"
+                        value={docVersion}
+                        onChange={(e) => setDocVersion(e.target.value)}
+                        placeholder="1.0"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Author (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={docAuthor}
+                        onChange={(e) => setDocAuthor(e.target.value)}
+                        placeholder="e.g., Engineering Team"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Content Formatting Section */}
+                <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                    Content Formatting
+                  </h3>
+                  <div className="space-y-3">
+                    <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <input
+                        type="radio"
+                        name="formatting"
+                        checked={useDefaultFormatting}
+                        onChange={() => {
+                          setUseDefaultFormatting(true);
+                          setMarkdownGuidance(getDefaultMarkdownGuidance());
+                        }}
+                        className="mt-1"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">Use default formatting</span>
+                        <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 rounded">recommended</span>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          # for H1, ## for H2, ### for H3 • Decimal numbering (1, 1.1, 1.1.1)
+                        </p>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-600 cursor-not-allowed opacity-60">
+                      <input
+                        type="radio"
+                        name="formatting"
+                        checked={!useDefaultFormatting}
+                        disabled
+                        className="mt-1"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">Match DOCX reference template</span>
+                        <span className="ml-2 px-2 py-0.5 text-xs bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 rounded">coming soon</span>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Upload a Word template to extract heading styles and numbering
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
                 {/* Generation Guidance */}
                 <div>
                   <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
@@ -487,7 +648,7 @@ export default function StructureDiscoveryModal({
 • Existing systems: 'Integrate with existing Oracle DB and Kafka cluster'
 • Standards: 'Follow 3GPP TS 23.501 for 5G architecture references'
 • Terminology: 'Use carrier-grade language, avoid vendor-specific terms'"
-                    rows={8}
+                    rows={6}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>

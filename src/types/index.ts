@@ -43,6 +43,8 @@ export interface DocumentMetadata {
   date?: string;
   version?: string;
   customer?: string;
+  subtitle?: string;      // Secondary title for title page
+  abstract?: string;      // Brief summary for Pandoc YAML front matter
   approvers?: Approver[];
   revisions?: Revision[];
 }

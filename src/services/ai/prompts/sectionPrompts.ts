@@ -200,41 +200,97 @@ ${result.description}
 
 /**
  * Build markdown formatting instructions
+ *
+ * These instructions ensure generated markdown aligns with DOCX export requirements.
+ * Heading levels in markdown map directly to Word heading styles:
+ * - # (H1) → Heading 1 in Word
+ * - ## (H2) → Heading 2 in Word
+ * - ### (H3) → Heading 3 in Word, etc.
  */
 function buildFormattingInstructions(guidance?: MarkdownGenerationGuidance | null): string {
   if (!guidance) {
+    // Default formatting guidance when no template is provided
     return `
-## Output Format
-- Use standard markdown formatting
-- Use # for main headings, ## for subsections, ### for sub-subsections
-- Use tables for structured data
-- Use bullet lists for enumerations
-- Use numbered lists for sequential steps
+## Output Format (DOCX-Aligned)
+
+**Heading Levels** (will map to Word heading styles):
+- \`#\` (H1) for main sections (1, 2, 3...) → Heading 1 in Word
+- \`##\` (H2) for subsections (1.1, 2.1...) → Heading 2 in Word
+- \`###\` (H3) for sub-subsections (1.1.1...) → Heading 3 in Word
+- Maximum depth: 6 levels (H6)
+
+**Numbering**: Decimal style (1, 1.1, 1.1.1) - include numbers in your headings
+
+**Figures**: Use \`{{fig:diagram-id}}\` syntax. Caption placement: below the figure.
+
+**Tables**: Use standard markdown tables. Caption placement: above the table.
+
+**Lists**:
+- Use \`-\` for bullet lists
+- Use \`1.\` for ordered/numbered lists
+
+**Emphasis**:
+- Use \`**bold**\` for emphasis
+- Use \`*italic*\` for technical terms on first use
 `;
   }
 
+  // Template-specific formatting guidance
   let instructions = `
-## Output Format (Template-Specific)
+## Output Format (DOCX-Aligned)
 
+**Heading Levels** (will map to Word heading styles):
+- \`#\` (H1) for main sections → Heading 1 in Word
+- \`##\` (H2) for subsections → Heading 2 in Word
+- \`###\` (H3) for sub-subsections → Heading 3 in Word
 `;
 
   if (guidance.headingLevels) {
-    instructions += `**Headings:** ${guidance.headingLevels.numberingStyle}\n`;
-    instructions += `Maximum depth: ${guidance.headingLevels.maxDepth} levels\n\n`;
+    instructions += `- Maximum depth: ${guidance.headingLevels.maxDepth} levels\n`;
+    if (guidance.headingLevels.numberingStyle === 'decimal') {
+      instructions += `- **Numbering**: Decimal style (1, 1.1, 1.1.1) - include numbers in headings\n`;
+    } else {
+      instructions += `- **Numbering**: ${guidance.headingLevels.numberingStyle}\n`;
+    }
+    instructions += '\n';
   }
 
   if (guidance.figureFormat) {
-    instructions += `**Figures:** ${guidance.figureFormat.numberingPattern}\n`;
-    instructions += `Caption placement: ${guidance.figureFormat.captionPlacement}\n\n`;
+    instructions += `**Figures**:
+- Pattern: ${guidance.figureFormat.numberingPattern}
+- Caption placement: ${guidance.figureFormat.captionPlacement}
+- Syntax: Use \`${guidance.figureFormat.syntax}\` for figure references
+
+`;
   }
 
   if (guidance.tableFormat) {
-    instructions += `**Tables:** ${guidance.tableFormat.numberingPattern}\n`;
-    instructions += `Caption placement: ${guidance.tableFormat.captionPlacement}\n\n`;
+    instructions += `**Tables**:
+- Pattern: ${guidance.tableFormat.numberingPattern}
+- Caption placement: ${guidance.tableFormat.captionPlacement}
+- Use ${guidance.tableFormat.useMarkdownTables ? 'standard markdown tables' : 'HTML tables if complex'}
+
+`;
   }
 
   if (guidance.listFormat) {
-    instructions += `**Lists:** Use "${guidance.listFormat.bulletChar}" for bullets, "${guidance.listFormat.orderedStyle}" for numbered\n\n`;
+    instructions += `**Lists**:
+- Bullets: Use \`${guidance.listFormat.bulletChar}\`
+- Numbered: Use \`${guidance.listFormat.orderedStyle}\`
+
+`;
+  }
+
+  if (guidance.emphasis) {
+    instructions += `**Emphasis**:
+- Bold: Use \`${guidance.emphasis.bold}text${guidance.emphasis.bold}\`
+- Italic: Use \`${guidance.emphasis.italic}text${guidance.emphasis.italic}\`
+
+`;
+  }
+
+  if (guidance.codeBlockStyle) {
+    instructions += `**Code Blocks**: Use ${guidance.codeBlockStyle.fenced ? 'fenced (```)' : 'indented'} code blocks${guidance.codeBlockStyle.languageHints ? ' with language hints' : ''}\n\n`;
   }
 
   return instructions;
