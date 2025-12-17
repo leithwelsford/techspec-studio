@@ -153,13 +153,16 @@ Generate the updated content for this section that reflects the primary change.
 ✅ Update procedures that depend on changed components
 ✅ Keep the same writing style and tone
 ✅ Preserve content that is NOT affected by the change
+✅ Keep the EXACT section number (${affectedSection.sectionId}) - do NOT change it
 ❌ Do NOT use placeholders like "[Previous content unchanged]"
 ❌ Do NOT summarize - provide the COMPLETE modified section
+❌ Do NOT add new section headings (####, ###, ##) within this section's content
+❌ Do NOT add horizontal rules (---) or section separators
+❌ Do NOT wrap your response in markdown code fences (\`\`\`)
 
 **OUTPUT:**
 Provide the complete modified section in markdown format, ready to replace the current content.
-
-Begin your response with the section heading and include all content:`;
+Start with the section heading "${affectedSection.sectionId} ${affectedSection.sectionTitle}" and include all content:`;
 }
 
 /**

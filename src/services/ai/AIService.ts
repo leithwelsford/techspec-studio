@@ -2120,6 +2120,9 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
             proposedContent = codeFenceMatch[1].trim();
           }
 
+          // Strip trailing horizontal rules that AI might add as separators
+          proposedContent = proposedContent.replace(/\n---+\s*$/, '').trim();
+
           // Check if AI response starts with a heading marker (#, ##, ###, ####)
           const hasHeading = /^#{1,4}\s+\d+/.test(proposedContent);
 
@@ -2130,6 +2133,34 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
               `Restoring original heading: "${originalHeading}"`
             );
             proposedContent = originalHeading + '\n\n' + proposedContent;
+          }
+
+          // Validate that AI kept the correct section number
+          // Extract the section number from the first line of the response
+          const responseHeadingMatch = proposedContent.match(/^#{1,4}\s+(\d+(?:\.\d+)*)/);
+          if (responseHeadingMatch) {
+            const responseSecNum = responseHeadingMatch[1];
+            if (responseSecNum !== affectedSection.sectionId) {
+              console.warn(
+                `⚠️ AI changed section number from ${affectedSection.sectionId} to ${responseSecNum}. ` +
+                `Correcting to original number.`
+              );
+              // Replace the wrong section number with the correct one
+              proposedContent = proposedContent.replace(
+                /^(#{1,4}\s+)\d+(?:\.\d+)*/,
+                `$1${affectedSection.sectionId}`
+              );
+            }
+          }
+
+          // Warn if AI added additional section headings within the content (excluding first line)
+          const contentAfterHeading = proposedContent.split('\n').slice(1).join('\n');
+          const additionalHeadings = contentAfterHeading.match(/^#{1,4}\s+\d+(?:\.\d+)*\s+/gm);
+          if (additionalHeadings && additionalHeadings.length > 0) {
+            console.warn(
+              `⚠️ AI added ${additionalHeadings.length} additional section heading(s) within section ${affectedSection.sectionId}. ` +
+              `This may cause section ordering issues. Headings found: ${additionalHeadings.map(h => h.trim()).join(', ')}`
+            );
           }
 
           propagatedChanges.push({
