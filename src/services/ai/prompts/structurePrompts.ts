@@ -106,8 +106,9 @@ export function buildStructureProposalPrompt(params: {
   brsContent: string;
   referenceDocuments?: ReferenceDocument[];
   userGuidance: string;
+  technicalGuidance?: string;
 }): string {
-  const { brsContent, referenceDocuments, userGuidance } = params;
+  const { brsContent, referenceDocuments, userGuidance, technicalGuidance } = params;
 
   let prompt = `# Analyze Requirements and Propose Document Structure
 
@@ -182,6 +183,19 @@ The following reference documents are available (content not yet extracted):
     prompt += `## User Guidance
 
 ${userGuidance}
+
+`;
+  }
+
+  // Add technical guidance if provided (helps inform structure decisions)
+  if (technicalGuidance && technicalGuidance.trim()) {
+    prompt += `## Technical Context
+
+The following technical constraints, design decisions, or system context should inform the document structure:
+
+${technicalGuidance}
+
+Consider these technical aspects when deciding which sections to include (e.g., if there are integration requirements, ensure architecture sections cover interfaces; if there are security requirements, include security-focused sections).
 
 `;
   }

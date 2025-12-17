@@ -52,6 +52,7 @@ export default function StructureDiscoveryModal({
   const [analysisProgress, setAnalysisProgress] = useState<string>('');
   const [showDomainOverride, setShowDomainOverride] = useState(false);
   const [showReferenceUpload, setShowReferenceUpload] = useState(false);
+  const [showTechnicalGuidance, setShowTechnicalGuidance] = useState(false);
   const [generationGuidance, setGenerationGuidance] = useState('');
   const [generationProgress, setGenerationProgress] = useState<{
     current: number;
@@ -128,9 +129,11 @@ export default function StructureDiscoveryModal({
       // Update progress message based on what's being analyzed
       const hasRefs = references.length > 0;
       const hasGuidance = userGuidance.trim().length > 0;
+      const hasTechContext = generationGuidance.trim().length > 0;
       const contextParts = ['BRS'];
       if (hasRefs) contextParts.push('reference documents');
       if (hasGuidance) contextParts.push('guidance');
+      if (hasTechContext) contextParts.push('technical context');
       setAnalysisProgress(`Analyzing ${contextParts.join(', ')}...`);
 
       // Analyze and propose structure
@@ -138,6 +141,7 @@ export default function StructureDiscoveryModal({
         brsContent: brsDocument.markdown,
         referenceDocuments: references,
         userGuidance,
+        technicalGuidance: generationGuidance.trim() || undefined,
       });
 
       // Update store with results
@@ -162,6 +166,7 @@ export default function StructureDiscoveryModal({
     setProposedStructure,
     setInferredDomain,
     updateUsageStats,
+    generationGuidance,
   ]);
 
   /**
@@ -405,6 +410,60 @@ export default function StructureDiscoveryModal({
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Provide any specific guidance for how the document should be structured.
                 </p>
+              </div>
+
+              {/* Technical Context / Generation Guidance - Collapsible */}
+              <div className="mb-6">
+                <div
+                  className={`rounded-lg border ${
+                    generationGuidance.trim()
+                      ? 'bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800'
+                      : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowTechnicalGuidance(!showTechnicalGuidance)}
+                    className="w-full p-4 flex items-center justify-between text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg className={`w-5 h-5 ${generationGuidance.trim() ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className={generationGuidance.trim() ? 'text-purple-700 dark:text-purple-300' : 'text-gray-500 dark:text-gray-400'}>
+                        {generationGuidance.trim() ? 'Technical Context Provided' : 'Add Technical Context (optional)'}
+                      </span>
+                    </div>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${showTechnicalGuidance ? 'rotate-180' : ''}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {showTechnicalGuidance && (
+                    <div className="px-4 pb-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                        Provide technical constraints, design decisions, or system context. This helps propose better-structured sections and will also be used during content generation.
+                      </p>
+                      <textarea
+                        value={generationGuidance}
+                        onChange={(e) => setGenerationGuidance(e.target.value)}
+                        placeholder="Examples:
+• Constraints: 'Must support 10,000 concurrent users, 99.99% uptime SLA'
+• Design decisions: 'Use microservices architecture, prefer async communication'
+• Existing systems: 'Integrate with existing Oracle DB and Kafka cluster'
+• Standards: 'Follow 3GPP TS 23.501 for 5G architecture references'"
+                        rows={5}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg dark:border-gray-600 dark:bg-gray-700 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Error Display */}

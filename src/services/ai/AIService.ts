@@ -2312,6 +2312,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     brsContent: string;
     referenceDocuments?: ReferenceDocument[];
     userGuidance: string;
+    technicalGuidance?: string;
   }): Promise<StructureProposalResult> {
     if (!this.provider || !this.config) {
       throw new Error('AI service not initialized');
