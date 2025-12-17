@@ -67,6 +67,12 @@ docker-compose down            # Stop services
    // Project, BlockDiagram, MermaidDiagram, PendingApproval, AIConfig, etc.
    ```
 
+6. **TypeScript strict mode enabled** - No implicit any, unused vars/params disallowed
+   ```typescript
+   // tsconfig.json has: strict: true, noUnusedLocals: true, noUnusedParameters: true
+   // Prefix unused params with underscore: (_event: Event) => {}
+   ```
+
 ## Project Overview
 
 **TechSpec Studio** - AI-powered technical specification authoring system for telecommunications (3GPP standards).
@@ -107,7 +113,8 @@ src/services/ai/
 │   ├── sectionPrompts.ts  # Flexible section generation
 │   ├── templatePrompts.ts # Template-specific prompts (3GPP, IEEE, ISO)
 │   ├── structurePrompts.ts # AI structure discovery prompts
-│   └── refinementPrompts.ts # Content refinement prompts
+│   ├── refinementPrompts.ts # Content refinement prompts
+│   └── legacyTelecomPrompts.ts # Backward-compatible telecom prompts
 ├── parsers/               # Block diagram JSON, Mermaid parsing
 ├── sectionAnalyzer.ts     # Section boundary detection
 ├── contextManager.ts      # Token budget calculation
@@ -211,7 +218,7 @@ All AI-generated content goes through approval:
 3. Approve → applies changes + creates version snapshot
 4. Reject → discards with optional feedback
 
-**PendingApproval types**: `'section'` | `'diagram'` | `'refinement'`
+**PendingApproval types**: `'section'` | `'diagram'` | `'refinement'` | `'cascaded-refinement'`
 
 ```typescript
 // Creating an approval (in AI service or component)
@@ -225,6 +232,22 @@ const approval: PendingApproval = {
 };
 addPendingApproval(approval);
 ```
+
+### Cascaded Refinement
+
+When refining a section, changes may need to propagate to other sections for consistency:
+- `CascadedRefinementApproval` type tracks primary change + propagated changes
+- Impact analysis identifies affected sections with confidence scores
+- Users can selectively approve/reject individual propagated changes
+- Types: `ImpactAnalysis`, `AffectedSection`, `PropagatedChange` in [src/types/index.ts](src/types/index.ts)
+
+### DOCX Template Analysis
+
+Upload Word templates for style-aware export:
+- `DocxTemplateAnalysis` stores extracted styles, numbering, structure info
+- `MarkdownGenerationGuidance` derived from analysis guides AI output format
+- Template stored in IndexedDB, analysis cached in store (`docxTemplateAnalysis`)
+- Pandoc export uses extracted styles for `custom-style` attributes
 
 ## Common Issues
 

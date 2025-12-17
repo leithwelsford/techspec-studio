@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -21,7 +21,10 @@ export default function MarkdownEditor() {
   const [viewMode, setViewMode] = useState<'split' | 'edit' | 'preview'>('split');
   const [generatingSection, setGeneratingSection] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [scrollSyncEnabled, setScrollSyncEnabled] = useState(true);
+  const isScrollingSyncRef = useRef(false); // Prevents infinite scroll loops
 
   // Enable autocomplete when textarea is available
   useEffect(() => {
@@ -29,6 +32,98 @@ export default function MarkdownEditor() {
       setShowAutocomplete(true);
     }
   }, [textareaRef.current]);
+
+  // Scroll sync: editor → preview
+  const handleEditorScroll = useCallback(() => {
+    if (!scrollSyncEnabled || isScrollingSyncRef.current || !textareaRef.current || !previewRef.current) return;
+
+    const editor = textareaRef.current;
+    const preview = previewRef.current;
+
+    // Calculate scroll percentage
+    const editorScrollPercent = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
+    const previewMaxScroll = preview.scrollHeight - preview.clientHeight;
+
+    isScrollingSyncRef.current = true;
+    preview.scrollTop = editorScrollPercent * previewMaxScroll;
+
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      isScrollingSyncRef.current = false;
+    }, 50);
+  }, [scrollSyncEnabled]);
+
+  // Scroll sync: preview → editor
+  const handlePreviewScroll = useCallback(() => {
+    if (!scrollSyncEnabled || isScrollingSyncRef.current || !textareaRef.current || !previewRef.current) return;
+
+    const editor = textareaRef.current;
+    const preview = previewRef.current;
+
+    // Calculate scroll percentage
+    const previewScrollPercent = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
+    const editorMaxScroll = editor.scrollHeight - editor.clientHeight;
+
+    isScrollingSyncRef.current = true;
+    editor.scrollTop = previewScrollPercent * editorMaxScroll;
+
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      isScrollingSyncRef.current = false;
+    }, 50);
+  }, [scrollSyncEnabled]);
+
+  // Click on preview heading → scroll editor to that heading
+  const handlePreviewClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const heading = target.closest('h1, h2, h3, h4, h5, h6');
+
+    if (heading && textareaRef.current) {
+      const headingText = heading.textContent?.trim();
+      if (!headingText) return;
+
+      const editor = textareaRef.current;
+      const markdown = editor.value;
+
+      // Find the heading in markdown (handles #, ##, ###, etc.)
+      // Match heading pattern: # Heading Text or ## 1.2 Heading Text
+      const headingLevel = heading.tagName.toLowerCase();
+      const hashCount = parseInt(headingLevel.replace('h', ''));
+
+      // Escape special regex characters in heading text
+      const escapedText = headingText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      // Try to find exact match first, then looser match
+      const patterns = [
+        new RegExp(`^#{${hashCount}}\\s+${escapedText}\\s*$`, 'mi'),
+        new RegExp(`^#{${hashCount}}\\s+[\\d.]*\\s*${escapedText}\\s*$`, 'mi'),
+        new RegExp(`^#+\\s+.*${escapedText}.*$`, 'mi'),
+      ];
+
+      for (const pattern of patterns) {
+        const match = markdown.match(pattern);
+        if (match && match.index !== undefined) {
+          // Calculate line number
+          const textBefore = markdown.substring(0, match.index);
+          const lineNumber = textBefore.split('\n').length - 1;
+
+          // Calculate scroll position based on line
+          const lines = markdown.split('\n');
+          const avgLineHeight = editor.scrollHeight / lines.length;
+          const targetScroll = lineNumber * avgLineHeight;
+
+          // Scroll and optionally select the heading
+          editor.scrollTop = Math.max(0, targetScroll - 50); // 50px offset from top
+
+          // Set cursor to the heading line
+          editor.setSelectionRange(match.index, match.index + match[0].length);
+          editor.focus();
+
+          break;
+        }
+      }
+    }
+  }, []);
 
   if (!project) {
     return (
@@ -374,10 +469,36 @@ export default function MarkdownEditor() {
             </svg>
             <span>Insert Figure Ref</span>
           </button>
+
+          {/* Scroll Sync Toggle - only show in split mode */}
+          {viewMode === 'split' && (
+            <>
+              <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
+              <button
+                onClick={() => setScrollSyncEnabled(!scrollSyncEnabled)}
+                className={`px-3 py-1 text-sm rounded-md flex items-center gap-2 ${
+                  scrollSyncEnabled
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                }`}
+                title={scrollSyncEnabled ? 'Scroll sync enabled - click to disable' : 'Scroll sync disabled - click to enable'}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                <span>Sync</span>
+              </button>
+            </>
+          )}
         </div>
 
-        <div className="text-xs text-gray-500 dark:text-gray-400">
-          {markdown.length} characters • {markdown.split('\n').length} lines
+        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+          {viewMode === 'split' && (
+            <span className="text-blue-600 dark:text-blue-400" title="Click headings in preview to jump to them in editor">
+              Click headings to navigate
+            </span>
+          )}
+          <span>{markdown.length} characters • {markdown.split('\n').length} lines</span>
         </div>
       </div>
 
@@ -390,6 +511,7 @@ export default function MarkdownEditor() {
               ref={textareaRef}
               value={markdown}
               onChange={(e) => handleChange(e.target.value)}
+              onScroll={handleEditorScroll}
               className="w-full h-full p-4 font-mono text-sm resize-none focus:outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
               placeholder="# My Technical Specification
 
@@ -407,9 +529,14 @@ Use {{fig:diagram-id}} to reference diagrams."
 
         {/* Preview Pane */}
         {(viewMode === 'preview' || viewMode === 'split') && (
-          <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900`}>
+          <div
+            ref={previewRef}
+            onScroll={handlePreviewScroll}
+            onClick={handlePreviewClick}
+            className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900`}
+          >
             <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 shadow-sm rounded-lg p-8">
-              <article className="prose prose-sm max-w-none dark:prose-invert dark:text-gray-100">
+              <article className="prose prose-sm max-w-none dark:prose-invert dark:text-gray-100 [&_h1]:cursor-pointer [&_h2]:cursor-pointer [&_h3]:cursor-pointer [&_h4]:cursor-pointer [&_h5]:cursor-pointer [&_h6]:cursor-pointer [&_h1:hover]:text-blue-600 [&_h2:hover]:text-blue-600 [&_h3:hover]:text-blue-600 [&_h4:hover]:text-blue-600 [&_h5:hover]:text-blue-600 [&_h6:hover]:text-blue-600 dark:[&_h1:hover]:text-blue-400 dark:[&_h2:hover]:text-blue-400 dark:[&_h3:hover]:text-blue-400 dark:[&_h4:hover]:text-blue-400 dark:[&_h5:hover]:text-blue-400 dark:[&_h6:hover]:text-blue-400">
                 <ReactMarkdown
                   remarkPlugins={[
                     remarkGfm,
