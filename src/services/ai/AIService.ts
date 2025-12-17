@@ -2112,8 +2112,16 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
           const originalHeading = sectionContent.split('\n')[0];
           let proposedContent = result.content.trim();
 
-          // Check if AI response starts with a heading marker (##, ###, ####)
-          const hasHeading = /^#{2,4}\s+\d+/.test(proposedContent);
+          // Strip markdown code fences if AI wrapped the response
+          // This happens because the prompt shows content in code fences and AI mimics the pattern
+          const codeFenceMatch = proposedContent.match(/^```(?:markdown)?\s*\n?([\s\S]*?)\n?```\s*$/);
+          if (codeFenceMatch) {
+            console.log(`🔧 Stripping markdown code fences from AI response for section ${affectedSection.sectionId}`);
+            proposedContent = codeFenceMatch[1].trim();
+          }
+
+          // Check if AI response starts with a heading marker (#, ##, ###, ####)
+          const hasHeading = /^#{1,4}\s+\d+/.test(proposedContent);
 
           if (!hasHeading) {
             // AI omitted the heading - restore it to prevent section lookup failures
