@@ -239,7 +239,10 @@ export function extractSection(
   const escapedId = sectionId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   // Try different patterns to find the section, from most specific to most general
+  // Note: Includes single # for top-level headings (consistent with MarkdownEditor extraction)
   const patterns = [
+    // "# 1 Introduction" (exact match with single #)
+    new RegExp(`^#\\s*${escapedId}\\s+${sectionTitle}.*?$`, 'im'),
     // "## 6.3 HSS Authentication Procedure" (exact match)
     new RegExp(`^##\\s*${escapedId}\\s+${sectionTitle}.*?$`, 'im'),
     // "### 6.3 HSS Authentication Procedure" (exact match with ###)
@@ -248,6 +251,8 @@ export function extractSection(
     new RegExp(`^####\\s*${escapedId}\\s+${sectionTitle}.*?$`, 'im'),
     // "## 6.3: HSS Authentication Procedure" (with colon)
     new RegExp(`^##\\s*${escapedId}:\\s+${sectionTitle}.*?$`, 'im'),
+    // Just section number with # (top-level - most lenient)
+    new RegExp(`^#\\s*${escapedId}\\s+.*?$`, 'im'),
     // Just section number with ## (most lenient - matches any title)
     new RegExp(`^##\\s*${escapedId}\\s+.*?$`, 'im'),
     // Just section number with ### (subsection)
@@ -303,8 +308,9 @@ export function parseMarkdownSections(markdown: string): Array<{
     content: string;
   }> = [];
 
-  // Match headings: ## 6.3 Title or ### 6.3.1 Subtitle
-  const headingRegex = /^(#{2,4})\s+(\d+(?:\.\d+)*)\s+(.+?)$/gm;
+  // Match headings: # 1 Title, ## 6.3 Title, or ### 6.3.1 Subtitle
+  // Note: Must use #{1,4} to match top-level # headings (consistent with MarkdownEditor extraction)
+  const headingRegex = /^(#{1,4})\s+(\d+(?:\.\d+)*)\s+(.+?)$/gm;
   let match;
 
   const matches: Array<{
@@ -361,10 +367,18 @@ export function replaceSectionById(
   newContent: string
 ): string | null {
   const sections = parseMarkdownSections(fullDocument);
+
+  // Debug: Log what sections were found
+  console.log(`[replaceSectionById] Looking for section ID: "${sectionId}"`);
+  console.log(`[replaceSectionById] Found ${sections.length} sections:`, sections.map(s => `"${s.id}" (${s.title})`).join(', '));
+  console.log(`[replaceSectionById] Document length: ${fullDocument.length} chars`);
+  console.log(`[replaceSectionById] Document starts with:`, fullDocument.substring(0, 200));
+
   const sectionToReplace = sections.find(s => s.id === sectionId);
 
   if (!sectionToReplace) {
-    console.error(`[replaceSectionById] Section ${sectionId} not found in document`);
+    console.error(`[replaceSectionById] Section "${sectionId}" not found in document`);
+    console.error(`[replaceSectionById] Available section IDs: [${sections.map(s => `"${s.id}"`).join(', ')}]`);
     return null;
   }
 

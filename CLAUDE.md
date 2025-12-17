@@ -10,10 +10,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install          # Install dependencies
 npm run dev          # Start dev server (http://localhost:3000)
 npm run build        # Type-check and build for production
+npm run preview      # Preview production build locally
 npm run lint         # Check for TypeScript/ESLint errors
 ```
 
-**Pandoc Export Backend** (optional, for professional DOCX export):
+**Pandoc Export Backend** (optional, for professional DOCX export, requires Node.js 18+):
 ```bash
 cd server && npm install && npm start  # Port 3001
 cd server && npm run dev               # Port 3001, with hot-reload
@@ -78,7 +79,7 @@ docker-compose down            # Stop services
 - [src/services/ai/AIService.ts](src/services/ai/AIService.ts) - AI orchestration (OpenRouter)
 - [src/services/ai/contextManager.ts](src/services/ai/contextManager.ts) - Token budget allocation
 - [server/pandoc-service.js](server/pandoc-service.js) - Pandoc backend (Express)
-- [docs/README.md](docs/README.md) - Documentation index (42+ files)
+- [docs/README.md](docs/README.md) - Documentation index (50+ files)
 
 ## Architecture
 
@@ -300,6 +301,14 @@ Detailed documentation in [docs/](docs/):
 - **idb** - IndexedDB wrapper for large data persistence
 - **diff** - Diff calculation for approval workflow
 
+## Browser Compatibility
+
+| Feature | Chrome | Firefox | Safari | Edge |
+|---------|--------|---------|--------|------|
+| Core editor | ✅ | ✅ | ✅ | ✅ |
+| File System API | ✅ | ❌ | ❌ | ✅ |
+| Clipboard API | ✅ | ✅ | ✅ | ✅ |
+
 ## Component Overview
 
 Key UI components in `src/components/`:
@@ -314,3 +323,27 @@ Key UI components in `src/components/`:
 - **editors/BlockDiagramEditor.tsx** - Custom SVG diagram editor (largest component)
 - **editors/SequenceDiagramEditor.tsx** - Mermaid-based sequence diagrams
 - **ExportModal.tsx** - DOCX/Pandoc export options
+
+## Keyboard Shortcuts
+
+**Editor:**
+- `Enter` - Send chat message
+- `Shift + Enter` - New line in chat input
+
+**Diagram Canvas:**
+- `Space + Drag` - Pan the canvas
+- `Scroll Wheel` - Zoom in/out
+- `Double-click` - Edit node/edge labels
+- `Drag corners` - Resize nodes
+
+## Git Commit Format
+
+Follow conventional commits:
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation changes
+- `refactor:` - Code refactoring
+- `test:` - Adding tests
+- `chore:` - Maintenance tasks
+
+Example: `feat: add SequenceDiagramEditor with live preview`

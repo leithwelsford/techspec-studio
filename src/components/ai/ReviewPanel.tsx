@@ -396,8 +396,17 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
 
                     console.log('🔄 Starting cascade refinement application...');
                     console.log('📄 Original document:', updatedMarkdown.length, 'chars');
-                    console.log('🎯 Primary change section:', primaryChange.sectionId);
+                    console.log('📄 Original document preview:', updatedMarkdown.substring(0, 500));
+                    console.log('🎯 Primary change section ID:', JSON.stringify(primaryChange.sectionId));
+                    console.log('🎯 Primary change section title:', primaryChange.sectionTitle);
                     console.log('🔀 Propagated changes selected:', selectedChanges.length);
+
+                    // Check if originalContent is actually the document or empty
+                    if (!updatedMarkdown || updatedMarkdown.length === 0) {
+                      console.error('❌ originalContent is empty! This should contain the full document.');
+                      alert('Error: The original document content is empty. Please reject this approval and try again.');
+                      return;
+                    }
 
                     // Import safe replacement functions
                     const { replaceSectionById, removeSectionById } = await import('../../services/ai/prompts/refinementPrompts');
