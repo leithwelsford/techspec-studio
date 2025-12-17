@@ -210,21 +210,21 @@ ${scope ? `Scope:\n${scope}\n` : ''}
 
 The introduction should include:
 
-### 1.1 Purpose
+## 1.1 Purpose
 - Clearly state the purpose of this specification
 - Identify the target audience
 - Explain how this document should be used
 
-### 1.2 Scope
+## 1.2 Scope
 - Define what is covered in this specification
 - Explicitly state what is out of scope
 - Identify any prerequisites or dependencies
 
-### 1.3 Document Structure
+## 1.3 Document Structure
 - Provide a brief overview of how the document is organized
 - Summarize what each major section covers
 
-### 1.4 References
+## 1.4 References
 - List key reference documents (link using {{ref:...}} syntax)
 - Identify relevant standards and specifications
 
@@ -232,12 +232,12 @@ ${context?.availableReferences && context.availableReferences.length > 0
   ? `Available References:\n${context.availableReferences.map(r => `- {{ref:${r.id}}} - ${r.title}`).join('\n')}\n`
   : ''}
 
-### 1.5 Definitions and Acronyms
+## 1.5 Definitions and Acronyms
 - Define key terms used throughout the document
 - List acronyms with full expansions
 - Include only the most critical terms here (detailed glossary may be in an appendix)
 
-Format: Use proper markdown with heading hierarchy (## for section, ### for subsections).
+Format: Use proper markdown with heading hierarchy (# for main sections, ## for subsections, ### for sub-subsections).
 Tone: Professional, clear, and welcoming to the target audience.
 
 Generate the complete Introduction section now.`;

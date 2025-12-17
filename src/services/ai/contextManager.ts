@@ -28,7 +28,7 @@ import type {
  * Default configuration for context management
  */
 const DEFAULT_CONFIG: ContextManagerConfig = {
-  maxTotalTokens: 100000,  // Default context budget
+  maxTotalTokens: 100000,  // Default context budget (overridden by model limit)
   reserveForOutput: 4000,  // Reserve for AI response
   priorities: {
     brs: 1.0,           // BRS is highest priority
@@ -37,8 +37,8 @@ const DEFAULT_CONFIG: ContextManagerConfig = {
     webSearch: 0.5,     // Web search results
     userGuidance: 1.0,  // User guidance always included
   },
-  minReferenceTokens: 500,   // Minimum tokens per reference
-  maxReferenceTokens: 5000,  // Maximum tokens per reference
+  minReferenceTokens: 500,   // Minimum tokens per reference when excerpting
+  maxReferenceTokens: 100000, // Maximum tokens per reference (generous default)
   excerptOverlap: 50,        // Overlap for context continuity
 };
 
@@ -146,10 +146,29 @@ export function calculateTokenBudget(
 }
 
 /**
+ * Score a reference document's overall relevance to the query
+ */
+function scoreReferenceRelevance(ref: ReferenceDocument, keywords: string[]): number {
+  if (!ref.content) return 0;
+
+  // Score based on title match
+  const titleScore = ref.title ? calculateRelevanceScore(ref.title, keywords) * 2 : 0;
+
+  // Score based on content (sample first 5000 chars for efficiency)
+  const contentSample = ref.content.slice(0, 5000);
+  const contentScore = calculateRelevanceScore(contentSample, keywords);
+
+  return Math.min(1, (titleScore + contentScore) / 2);
+}
+
+/**
  * Extract relevant excerpts from reference documents
  *
  * Uses keyword matching to find the most relevant paragraphs
  * from reference documents based on the query (BRS content or section title).
+ *
+ * Budget is distributed based on relevance scores - more relevant documents
+ * get a larger share of the token budget.
  *
  * @param references - Array of reference documents
  * @param query - Query text (BRS content or section title)
@@ -167,11 +186,39 @@ export function extractRelevantExcerpts(
   const keywords = extractKeywords(query);
 
   if (keywords.length === 0) {
-    return excerpts;
+    // No keywords - distribute budget evenly
+    return extractWithEvenDistribution(references, maxTokens);
   }
 
-  // Score and extract from each reference
-  for (const ref of references) {
+  // Score each reference for overall relevance
+  const scoredRefs = references
+    .filter(ref => ref.content)
+    .map(ref => ({
+      ref,
+      relevance: scoreReferenceRelevance(ref, keywords),
+      tokens: countTokens(ref.content || ''),
+    }));
+
+  // Calculate total relevance for proportional distribution
+  const totalRelevance = scoredRefs.reduce((sum, r) => sum + Math.max(r.relevance, 0.1), 0);
+
+  // Allocate budget proportionally based on relevance
+  // More relevant documents get more budget
+  const budgetAllocations = scoredRefs.map(scored => {
+    const relevanceWeight = Math.max(scored.relevance, 0.1); // Minimum 10% weight
+    const proportionalBudget = Math.floor((relevanceWeight / totalRelevance) * maxTokens);
+    // Ensure minimum useful budget per reference
+    return {
+      ...scored,
+      allocatedBudget: Math.max(proportionalBudget, 200),
+    };
+  });
+
+  // Sort by relevance (most relevant first for extraction)
+  budgetAllocations.sort((a, b) => b.relevance - a.relevance);
+
+  // Extract from each reference based on allocated budget
+  for (const { ref, allocatedBudget } of budgetAllocations) {
     if (!ref.content) continue;
 
     // Split into paragraphs
@@ -187,15 +234,27 @@ export function extractRelevantExcerpts(
     // Sort by score and take top paragraphs
     scoredParagraphs.sort((a, b) => b.score - a.score);
 
-    // Take paragraphs until we hit token limit
+    // Take paragraphs until we hit allocated budget for this reference
     let tokensUsed = 0;
-    const tokensPerRef = Math.floor(maxTokens / references.length);
 
     for (const para of scoredParagraphs) {
-      if (para.score < 0.1) break; // Ignore low-relevance paragraphs
+      if (para.score < 0.05) break; // Ignore very low-relevance paragraphs
 
       const paraTokens = countTokens(para.content);
-      if (tokensUsed + paraTokens > tokensPerRef) break;
+      if (tokensUsed + paraTokens > allocatedBudget) {
+        // Try to include a truncated version if there's room
+        const remaining = allocatedBudget - tokensUsed;
+        if (remaining > 100 && paraTokens > remaining) {
+          excerpts.push({
+            referenceId: ref.id,
+            referenceTitle: ref.title,
+            content: truncateToTokenLimit(para.content, remaining),
+            relevanceScore: para.score,
+            startPosition: para.position,
+          });
+        }
+        break;
+      }
 
       excerpts.push({
         referenceId: ref.id,
@@ -209,16 +268,16 @@ export function extractRelevantExcerpts(
     }
   }
 
-  // Sort all excerpts by relevance and trim to total budget
+  // Final sort by relevance score
   excerpts.sort((a, b) => b.relevanceScore - a.relevanceScore);
 
+  // Final trim to ensure we're within total budget
   let totalTokens = 0;
   const result: ExtractedExcerpt[] = [];
 
   for (const excerpt of excerpts) {
     const tokens = countTokens(excerpt.content);
     if (totalTokens + tokens > maxTokens) {
-      // Try to truncate this excerpt to fit remaining budget
       const remaining = maxTokens - totalTokens;
       if (remaining > 100) {
         excerpt.content = truncateToTokenLimit(excerpt.content, remaining);
@@ -231,6 +290,43 @@ export function extractRelevantExcerpts(
   }
 
   return result;
+}
+
+/**
+ * Extract excerpts with even budget distribution (fallback when no query)
+ */
+function extractWithEvenDistribution(
+  references: ReferenceDocument[],
+  maxTokens: number
+): ExtractedExcerpt[] {
+  const excerpts: ExtractedExcerpt[] = [];
+  const validRefs = references.filter(r => r.content);
+  const tokensPerRef = Math.floor(maxTokens / Math.max(validRefs.length, 1));
+
+  for (const ref of validRefs) {
+    const content = ref.content || '';
+    const refTokens = countTokens(content);
+
+    if (refTokens <= tokensPerRef) {
+      // Include full content
+      excerpts.push({
+        referenceId: ref.id,
+        referenceTitle: ref.title,
+        content,
+        relevanceScore: 1.0,
+      });
+    } else {
+      // Truncate to budget
+      excerpts.push({
+        referenceId: ref.id,
+        referenceTitle: ref.title,
+        content: truncateToTokenLimit(content, tokensPerRef),
+        relevanceScore: 1.0,
+      });
+    }
+  }
+
+  return excerpts;
 }
 
 /**

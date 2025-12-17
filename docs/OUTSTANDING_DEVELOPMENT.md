@@ -1,6 +1,6 @@
 # Outstanding Development Work
 
-**Last Updated**: 2025-12-15
+**Last Updated**: 2025-12-16
 **Current Phase**: Phase 4 Complete (Beta)
 
 ---
@@ -294,6 +294,9 @@ and the AI can use them for context when generating content.
 - ✅ Token tracking and cost estimation
 - ✅ Context building from spec + diagrams
 - ✅ Placeholder detection
+- ✅ Unlimited reference document uploads with token warning
+- ✅ Smart context allocation (full docs when they fit, relevance-based excerpting otherwise)
+- ✅ Model context limits from OpenRouter API with fallback
 
 **Enhancements Needed**:
 - [ ] Model-specific prompt optimization
@@ -304,7 +307,35 @@ and the AI can use them for context when generating content.
 - [ ] Prompt template versioning
 - [ ] A/B testing different prompts
 
-**Estimated Effort**: Ongoing (continuous improvement)
+**Reference Document Context Strategy** (Partially Complete):
+
+`contextManager.ts` now implements smart context allocation:
+
+1. ✅ **"Prefer Full Documents" Mode** (implemented):
+   - Full reference documents included when they fit within model context
+   - Only excerpts when total tokens exceed available budget
+   - `maxReferenceTokens` increased from 5000 to 100000
+
+2. ✅ **Relevance-Based Budget Distribution** (implemented):
+   - `scoreReferenceRelevance()` scores each document against BRS/query keywords
+   - Budget allocated proportionally (more relevant docs get more tokens)
+   - Each doc gets minimum 10% weight and 200 tokens to prevent exclusion
+   - Paragraphs extracted by relevance within each document's budget
+
+3. [ ] **"Excerpt Mode" UI Option** (future):
+   - User toggle for aggressive excerpting to reduce costs
+   - UI toggle in Generation Settings step
+
+4. [ ] **Cost Transparency** (future):
+   - Display estimated token cost before generation starts
+   - Show breakdown: BRS + References + System prompts + Output reserve
+   - Allow user to remove/reorder references to manage budget
+
+5. [ ] **RAG Integration** (future):
+   - Vector-based retrieval for large reference collections
+   - Would solve context limits for very large document sets
+
+**Estimated Remaining Effort**: 4-8 hours (UI options), 20-30 hours (with RAG)
 
 ---
 
@@ -520,5 +551,5 @@ and the AI can use them for context when generating content.
 
 ---
 
-**Last Updated**: 2025-12-15
+**Last Updated**: 2025-12-16
 **Next Review**: Ongoing

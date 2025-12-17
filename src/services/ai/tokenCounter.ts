@@ -109,6 +109,21 @@ export function estimateContextTokens(context: {
 }
 
 /**
+ * Get model context window limits with source indicator
+ * First checks OpenRouter API cache, then falls back to static lookup
+ */
+export function getModelContextLimitWithSource(modelId: string): { limit: number; source: 'api' | 'hardcoded' } {
+  // Priority 1: Check OpenRouter API cache (most accurate, real-time data)
+  const cachedLimit = OpenRouterProvider.getModelContextLengthFromCache(modelId);
+  if (cachedLimit !== null) {
+    return { limit: cachedLimit, source: 'api' };
+  }
+
+  // Fall back to hardcoded lookup
+  return { limit: getModelContextLimitFromLookup(modelId), source: 'hardcoded' };
+}
+
+/**
  * Get model context window limits
  * First checks OpenRouter API cache, then falls back to static lookup
  */
@@ -118,6 +133,14 @@ export function getModelContextLimit(modelId: string): number {
   if (cachedLimit !== null) {
     return cachedLimit;
   }
+
+  return getModelContextLimitFromLookup(modelId);
+}
+
+/**
+ * Internal lookup table for context limits
+ */
+function getModelContextLimitFromLookup(modelId: string): number {
 
   // Priority 2: Fall back to static lookup table
   const modelLimits: Record<string, number> = {
@@ -137,12 +160,13 @@ export function getModelContextLimit(modelId: string): number {
     'openai/gpt-3.5-turbo': 16385,
     'openai/gpt-3.5-turbo-16k': 16385,
 
-    // OpenAI models - GPT-4.1/5 series (newer models with large context)
+    // OpenAI models - GPT-4.1/5 series
     'openai/gpt-4.1': 1000000,
     'openai/gpt-4.1-mini': 1000000,
     'openai/gpt-4.1-nano': 1000000,
-    'openai/gpt-5': 1000000,
-    'openai/gpt-5.1': 1000000,
+    'openai/gpt-5': 400000,
+    'openai/gpt-5.1': 400000,
+    'openai/gpt-5.2': 400000,
 
     // OpenAI reasoning models (o1, o3 series)
     'openai/o1': 200000,
@@ -202,8 +226,11 @@ export function getModelContextLimit(modelId: string): number {
 
   // Smart fallback based on model name patterns
   // Newer models generally have larger context windows
-  if (modelIdLower.includes('gpt-5') || modelIdLower.includes('gpt-4.1')) {
-    return 1000000; // 1M tokens for latest GPT models
+  if (modelIdLower.includes('gpt-5')) {
+    return 400000; // 400K tokens for GPT-5 series
+  }
+  if (modelIdLower.includes('gpt-4.1')) {
+    return 1000000; // 1M tokens for GPT-4.1 series
   }
   if (modelIdLower.includes('gpt-4') || modelIdLower.includes('o1') || modelIdLower.includes('o3')) {
     return 128000; // 128K for GPT-4 variants

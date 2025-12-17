@@ -13,6 +13,8 @@ import type {
   DomainInference,
   AIMessage,
 } from '../../../types';
+import { extractRelevantExcerpts } from '../contextManager';
+import { countTokens } from '../tokenCounter';
 
 // ========== Constants ==========
 
@@ -62,7 +64,7 @@ You MUST respond with valid JSON in the following format:
 }
 \`\`\`
 
-CRITICAL: Your response must be ONLY the JSON object, no markdown code blocks, no explanations before or after.
+CRITICAL: Respond with ONLY the JSON object wrapped in a markdown code block. No explanations or text before or after the JSON.
 `;
 
 // ========== Prompt Builders ==========
@@ -115,21 +117,64 @@ ${brsContent}
 
 `;
 
-  // Add reference documents summary if available
+  // Add reference documents with content if available
   if (referenceDocuments && referenceDocuments.length > 0) {
-    prompt += `## Reference Documents Available
+    // Check if references have content
+    const refsWithContent = referenceDocuments.filter(ref => ref.content && ref.content.trim().length > 0);
 
-The following reference documents are available for context:
+    if (refsWithContent.length > 0) {
+      // Calculate token budget for references (generous allocation for structure planning)
+      const brsTokens = countTokens(brsContent);
+      const maxRefTokens = Math.min(50000, Math.max(10000, 100000 - brsTokens)); // Leave room for BRS
+
+      // Extract relevant excerpts based on BRS content
+      const excerpts = extractRelevantExcerpts(refsWithContent, brsContent, maxRefTokens);
+
+      if (excerpts.length > 0) {
+        prompt += `## Reference Documents
+
+The following reference documents provide context for structure decisions:
 
 `;
-    for (const ref of referenceDocuments) {
-      prompt += `- **${ref.title}** (${ref.type})`;
-      if (ref.metadata?.spec) {
-        prompt += ` - ${ref.metadata.spec}`;
+        // Group excerpts by reference
+        const byRef = new Map<string, typeof excerpts>();
+        for (const excerpt of excerpts) {
+          const existing = byRef.get(excerpt.referenceId) || [];
+          existing.push(excerpt);
+          byRef.set(excerpt.referenceId, existing);
+        }
+
+        Array.from(byRef.entries()).forEach(([refId, refExcerpts]) => {
+          const ref = refsWithContent.find(r => r.id === refId);
+          if (!ref) return;
+
+          prompt += `### ${ref.title}`;
+          if (ref.metadata?.spec) {
+            prompt += ` (${ref.metadata.spec})`;
+          }
+          prompt += '\n\n';
+
+          for (const excerpt of refExcerpts) {
+            prompt += excerpt.content + '\n\n';
+          }
+        });
+      }
+    } else {
+      // Fallback to just listing reference titles if no content available
+      prompt += `## Reference Documents Available
+
+The following reference documents are available (content not yet extracted):
+
+`;
+      for (const ref of referenceDocuments) {
+        prompt += `- **${ref.title}** (${ref.type})`;
+        if (ref.metadata?.spec) {
+          prompt += ` - ${ref.metadata.spec}`;
+        }
+        prompt += '\n';
       }
       prompt += '\n';
     }
-    prompt += '\n';
   }
 
   // Add user guidance if provided
@@ -265,32 +310,65 @@ export function parseStructureProposalResponse(response: string): {
   proposedStructure: Omit<ProposedStructure, 'id' | 'createdAt' | 'lastModifiedAt' | 'version'>;
   domainInference: DomainInference;
 } | null {
-  try {
-    // Try to extract JSON from the response
-    let jsonStr = response.trim();
+  console.log('📄 Parsing structure proposal response, length:', response.length);
 
-    // Remove markdown code blocks if present
-    const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
-    }
-
-    const parsed = JSON.parse(jsonStr);
-
-    // Validate required fields
-    if (!parsed.proposedStructure || !parsed.domainInference) {
-      console.error('Missing required fields in structure proposal response');
+  // Try multiple extraction strategies
+  const extractionStrategies = [
+    // Strategy 1: Extract from markdown code blocks (```json ... ``` or ``` ... ```)
+    () => {
+      const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+      return jsonMatch ? jsonMatch[1].trim() : null;
+    },
+    // Strategy 2: Find JSON object starting with { "proposedStructure"
+    () => {
+      const match = response.match(/\{\s*"proposedStructure"[\s\S]*\}/);
+      return match ? match[0] : null;
+    },
+    // Strategy 3: Find any JSON object that spans most of the response
+    () => {
+      const firstBrace = response.indexOf('{');
+      const lastBrace = response.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        return response.slice(firstBrace, lastBrace + 1);
+      }
       return null;
-    }
+    },
+    // Strategy 4: Try the entire response as-is
+    () => response.trim(),
+  ];
 
-    return {
-      proposedStructure: parsed.proposedStructure,
-      domainInference: parsed.domainInference,
-    };
-  } catch (error) {
-    console.error('Failed to parse structure proposal response:', error);
-    return null;
+  for (let i = 0; i < extractionStrategies.length; i++) {
+    const jsonStr = extractionStrategies[i]();
+    if (!jsonStr) continue;
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+
+      // Validate required fields
+      if (!parsed.proposedStructure || !parsed.domainInference) {
+        console.warn(`Strategy ${i + 1}: Parsed JSON but missing required fields`);
+        continue;
+      }
+
+      // Validate sections array exists
+      if (!Array.isArray(parsed.proposedStructure.sections)) {
+        console.warn(`Strategy ${i + 1}: proposedStructure.sections is not an array`);
+        continue;
+      }
+
+      console.log(`✅ Successfully parsed with strategy ${i + 1}`);
+      return {
+        proposedStructure: parsed.proposedStructure,
+        domainInference: parsed.domainInference,
+      };
+    } catch (error) {
+      console.warn(`Strategy ${i + 1} failed:`, error instanceof Error ? error.message : error);
+    }
   }
+
+  // Log first 500 chars of response for debugging
+  console.error('❌ All parsing strategies failed. Response preview:', response.slice(0, 500));
+  return null;
 }
 
 /**

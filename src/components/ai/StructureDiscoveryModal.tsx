@@ -98,10 +98,16 @@ export default function StructureDiscoveryModal({
       // Start planning session in store
       startPlanningSession(userGuidance);
 
-      setAnalysisProgress('Analyzing BRS content...');
-
       // Get reference documents
       const references = project?.references || [];
+
+      // Update progress message based on what's being analyzed
+      const hasRefs = references.length > 0;
+      const hasGuidance = userGuidance.trim().length > 0;
+      const contextParts = ['BRS'];
+      if (hasRefs) contextParts.push('reference documents');
+      if (hasGuidance) contextParts.push('guidance');
+      setAnalysisProgress(`Analyzing ${contextParts.join(', ')}...`);
 
       // Analyze and propose structure
       const result = await aiService.analyzeAndProposeStructure({
@@ -325,7 +331,7 @@ export default function StructureDiscoveryModal({
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                         Upload PDF or DOCX files that the AI should reference when planning the document structure.
                       </p>
-                      <ReferenceDocumentUpload maxFiles={5} />
+                      <ReferenceDocumentUpload />
                     </div>
                   )}
                 </div>
@@ -381,7 +387,7 @@ export default function StructureDiscoveryModal({
             <div className="h-full flex flex-col items-center justify-center p-6">
               <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mb-4"></div>
               <p className="text-lg font-medium text-gray-700 dark:text-gray-300">
-                Analyzing BRS Content...
+                Planning Document Structure
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
                 {analysisProgress}

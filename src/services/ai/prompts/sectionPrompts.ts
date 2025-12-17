@@ -267,9 +267,17 @@ export function buildFlexibleSectionPrompt(
     sectionNumber,
   } = context;
 
-  // Build the heading
+  // Build the heading - determine level from section number depth
+  // "1" → # (H1), "1.1" → ## (H2), "1.1.1" → ### (H3), etc.
+  const getHeadingLevel = (num?: string): string => {
+    if (!num) return '##'; // Default to H2 if no number
+    const depth = num.split('.').length;
+    return '#'.repeat(Math.min(depth, 6)); // Max H6
+  };
+
+  const headingPrefix = getHeadingLevel(sectionNumber);
   const heading = sectionNumber
-    ? `## ${sectionNumber} ${section.title}`
+    ? `${headingPrefix} ${sectionNumber} ${section.title}`
     : `## ${section.title}`;
 
   // Compose the prompt

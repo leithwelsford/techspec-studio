@@ -405,14 +405,14 @@ ${context.availableDiagrams && context.availableDiagrams.length > 0
   : ''}
 
 Section Structure:
-## 4 Solution Architecture and Design
+# 4 Solution Architecture and Design
 
-### 4.1 Overview
+## 4.1 Overview
 - High-level architecture description
 - Key architectural principles and design decisions
 - **Suggest block diagram**: {{fig:architecture-overview}} <!-- TODO: High-level system architecture -->
 
-### 4.2 Functional Elements
+## 4.2 Functional Elements
 For each component (PCRF, PCEF, TDF, P-GW, BNG/BRAS, OCS, OFCS, etc.):
 - **4.2.X Component Name**
   - Function and responsibilities
@@ -420,17 +420,17 @@ For each component (PCRF, PCEF, TDF, P-GW, BNG/BRAS, OCS, OFCS, etc.):
   - Standards compliance (3GPP TS references)
   - Deployment considerations
 
-### 4.3 Interfaces and Reference Points
+## 4.3 Interfaces and Reference Points
 For each interface (Gx, Sd, Gy, Gz, RADIUS):
 - Protocol specification
 - Message flows
 - Parameters and AVPs
 - Error handling
 
-### 4.4 Procedures
+## 4.4 Procedures
 For each procedure (Session Establishment, Policy Update, Handover, Charging, etc.):
 
-#### 4.4.X Procedure Name
+### 4.4.X Procedure Name
 - Overview and trigger conditions
 - Step-by-step sequence
 - **Suggest sequence diagram**: {{fig:procedure-name-flow}} <!-- TODO: Detailed message flow -->

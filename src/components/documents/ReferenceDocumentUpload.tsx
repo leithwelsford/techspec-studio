@@ -5,27 +5,26 @@
  * Features:
  * - Drag-and-drop or click to upload
  * - File size validation (max 20MB)
- * - Multiple file support
+ * - Multiple file support (unlimited)
  * - Upload progress indicator
  * - Token estimate display per document
+ * - Cumulative token tracking with context warning
  * - Remove document button
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { validateFile, getMaxFileSizeMB } from '../../services/storage/documentStorage';
-import { estimatePDFTokensFromSize, estimateDOCXTokensFromSize, formatTokenCount } from '../../services/ai/tokenCounter';
+import { estimatePDFTokensFromSize, estimateDOCXTokensFromSize, formatTokenCount, getModelContextLimitWithSource } from '../../services/ai/tokenCounter';
 import type { ReferenceDocument } from '../../types';
 
 interface ReferenceDocumentUploadProps {
-  maxFiles?: number;
   onUploadComplete?: (documentId: string) => void;
   onError?: (error: string) => void;
   disabled?: boolean;
 }
 
 export function ReferenceDocumentUpload({
-  maxFiles = 5,
   onUploadComplete,
   onError,
   disabled = false,
@@ -36,6 +35,7 @@ export function ReferenceDocumentUpload({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const project = useProjectStore(state => state.project);
+  const aiConfig = useProjectStore(state => state.aiConfig);
   const addPDFReference = useProjectStore(state => state.addPDFReference);
   const removePDFReference = useProjectStore(state => state.removePDFReference);
 
@@ -44,7 +44,26 @@ export function ReferenceDocumentUpload({
     r => r.dataRef && (r.type === 'PDF' || r.type === 'DOCX' || r.type === 'TXT' || r.type === 'MD')
   ) || [];
 
-  const canUploadMore = pdfReferences.length < maxFiles;
+  // Calculate cumulative token estimate
+  const { totalTokens, modelContextLimit, exceedsContext, contextSource } = useMemo(() => {
+    const total = pdfReferences.reduce((sum, ref) => {
+      return sum + (ref.tokenEstimate || 0);
+    }, 0);
+
+    const { limit: contextLimit, source } = aiConfig?.model
+      ? getModelContextLimitWithSource(aiConfig.model)
+      : { limit: 128000, source: 'hardcoded' as const };
+
+    return {
+      totalTokens: total,
+      modelContextLimit: contextLimit,
+      exceedsContext: total > contextLimit,
+      contextSource: source,
+    };
+  }, [pdfReferences, aiConfig?.model]);
+
+  // Always allow uploads (no file count limit)
+  const canUploadMore = true;
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -86,12 +105,8 @@ export function ReferenceDocumentUpload({
     setUploadError(null);
     setIsUploading(true);
 
-    // Limit to remaining slots
-    const remainingSlots = maxFiles - pdfReferences.length;
-    const filesToUpload = files.slice(0, remainingSlots);
-
     try {
-      for (const file of filesToUpload) {
+      for (const file of files) {
         // Validate file
         const validation = validateFile(file);
         if (!validation.valid) {
@@ -103,10 +118,6 @@ export function ReferenceDocumentUpload({
         // Upload file
         const documentId = await addPDFReference(file);
         onUploadComplete?.(documentId);
-      }
-
-      if (filesToUpload.length < files.length) {
-        setUploadError(`Only ${filesToUpload.length} of ${files.length} files uploaded (max ${maxFiles} files)`);
       }
     } catch (error: any) {
       const errorMsg = error.message || 'Failed to upload file';
@@ -170,14 +181,8 @@ export function ReferenceDocumentUpload({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              {canUploadMore ? (
-                <>
-                  <span className="font-medium text-blue-600 dark:text-blue-400">Click to upload</span>
-                  {' '}or drag and drop
-                </>
-              ) : (
-                <span className="text-amber-600 dark:text-amber-400">Maximum files reached ({maxFiles})</span>
-              )}
+              <span className="font-medium text-blue-600 dark:text-blue-400">Click to upload</span>
+              {' '}or drag and drop
             </p>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               PDF, DOCX, TXT, or MD up to {getMaxFileSizeMB()}MB
@@ -196,9 +201,39 @@ export function ReferenceDocumentUpload({
       {/* Uploaded Documents List */}
       {pdfReferences.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-            Reference Documents ({pdfReferences.length}/{maxFiles})
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              Reference Documents ({pdfReferences.length})
+            </p>
+            <p
+              className="text-xs text-gray-500 dark:text-gray-400"
+              title={`Model context: ${formatTokenCount(modelContextLimit)} (${contextSource === 'api' ? 'from OpenRouter API' : 'estimated fallback'})`}
+            >
+              ~{formatTokenCount(totalTokens)} / {formatTokenCount(modelContextLimit)}
+              {contextSource === 'api' ? (
+                <span className="ml-1 text-green-600 dark:text-green-400" title="Verified from OpenRouter API">✓</span>
+              ) : (
+                <span className="ml-1 text-amber-500" title="Estimated (API cache not loaded)">~</span>
+              )}
+            </p>
+          </div>
+
+          {/* Context Warning */}
+          {exceedsContext && (
+            <div className="flex items-start gap-2 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <svg className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div className="text-xs text-amber-700 dark:text-amber-300">
+                <p className="font-medium">Token limit exceeded</p>
+                <p className="mt-0.5">
+                  Total tokens (~{formatTokenCount(totalTokens)}) exceed the model's context limit (~{formatTokenCount(modelContextLimit)}).
+                  Content will be automatically excerpted during generation.
+                </p>
+              </div>
+            </div>
+          )}
+
           <ul className="space-y-2">
             {pdfReferences.map((ref) => (
               <DocumentItem

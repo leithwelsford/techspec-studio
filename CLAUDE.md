@@ -104,8 +104,11 @@ src/services/ai/
 │   ├── documentPrompts.ts # Tech spec generation prompts
 │   ├── diagramPrompts.ts  # Block & Mermaid diagram prompts
 │   ├── sectionPrompts.ts  # Flexible section generation
-│   └── templatePrompts.ts # Template-specific prompts (3GPP, IEEE, ISO)
+│   ├── templatePrompts.ts # Template-specific prompts (3GPP, IEEE, ISO)
+│   ├── structurePrompts.ts # AI structure discovery prompts
+│   └── refinementPrompts.ts # Content refinement prompts
 ├── parsers/               # Block diagram JSON, Mermaid parsing
+├── sectionAnalyzer.ts     # Section boundary detection
 ├── contextManager.ts      # Token budget calculation
 ├── tokenCounter.ts        # Token counting for cost estimation
 └── webSearch.ts           # Brave Search API integration (optional)
@@ -127,14 +130,17 @@ await aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
 - `generateSection()` - Individual sections
 - `generateDiagrams()` - Block & Mermaid diagrams
 
-**Context Management**: The `contextManager.ts` handles token budget allocation with priorities:
-- BRS document (highest) → Previous sections → References → Web search
-- Model context limits are fetched dynamically from OpenRouter API
-- Excerpts are extracted when full documents exceed budget
+**Context Management**: The `contextManager.ts` handles token budget allocation:
+- Priority order: BRS document (highest) → Previous sections → References → Web search
+- Model context limits fetched from OpenRouter API (`getModelContextLimitWithSource()`) with hardcoded fallbacks
+- **Smart allocation**: Full documents included when they fit; relevance-based excerpting only when budget exceeded
+- When excerpting: `scoreReferenceRelevance()` scores docs, budget distributed proportionally (more relevant = more tokens)
+- Config: `maxReferenceTokens: 100000` (generous default), `minReferenceTokens: 500`
 
-### Multimodal PDF References
+### Reference Documents
 
-PDFs can be uploaded as reference documents for AI context:
+Multiple file types can be uploaded as reference documents for AI context:
+- **Supported formats**: PDF, DOCX, TXT, MD
 - Stored in IndexedDB via `documentStorage.ts` (avoids localStorage limits)
 - Vision-capable models receive PDF pages as images
 - Non-vision models receive extracted text fallback
@@ -179,6 +185,17 @@ The BRS (Business Requirements Spec) is the input document that drives spec gene
 - Text and token estimate extracted at upload time for efficient context building
 - Stored in `project.brsDocument` with `extractedText` and `tokenEstimate` fields
 - Used as primary context for all AI generation calls
+
+### Structure Discovery Workflow
+
+AI-assisted document structure planning before generation:
+- State tracked in `structurePlanning` field of store (`StructurePlanningState` type)
+- `StructureDiscoveryModal.tsx` - Main wizard UI with multi-step flow
+- `StructureProposalView.tsx` - Displays AI-proposed sections for user review
+- `StructureChatPanel.tsx` - Interactive refinement of proposed structure
+- `DomainOverridePanel.tsx` - Domain configuration (telecom, general, etc.)
+
+**Flow**: BRS analysis → AI proposes structure → User reviews/edits → Approved structure guides generation
 
 ### Export System
 
@@ -279,6 +296,7 @@ Detailed documentation in [docs/](docs/):
 - **crypto-js 4** - API key encryption
 - **@dnd-kit** - Drag-and-drop for section reordering
 - **mammoth** - DOCX parsing for reference documents
+- **pdfjs-dist** - PDF page rendering for multimodal AI context
 - **idb** - IndexedDB wrapper for large data persistence
 - **diff** - Diff calculation for approval workflow
 
@@ -289,7 +307,9 @@ Key UI components in `src/components/`:
 - **ai/ChatPanel.tsx** - Interactive AI chat interface
 - **ai/ReviewPanel.tsx** - Approval workflow with diff view
 - **ai/GenerateSpecModal.tsx** - Full specification generation wizard
+- **ai/StructureDiscoveryModal.tsx** - AI-assisted structure planning wizard
 - **ai/SectionComposer.tsx** - Section-by-section editing
+- **ai/AIConfigPanel.tsx** - OpenRouter API configuration
 - **editors/MarkdownEditor.tsx** - Tech spec editor with preview
 - **editors/BlockDiagramEditor.tsx** - Custom SVG diagram editor (largest component)
 - **editors/SequenceDiagramEditor.tsx** - Mermaid-based sequence diagrams

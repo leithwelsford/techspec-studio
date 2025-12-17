@@ -426,7 +426,6 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
                   Vision models can analyze PDFs directly; other models will use text extraction.
                 </p>
                 <ReferenceDocumentUpload
-                  maxFiles={5}
                   disabled={isGenerating}
                 />
               </div>
