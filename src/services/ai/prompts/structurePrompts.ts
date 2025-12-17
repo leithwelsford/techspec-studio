@@ -30,32 +30,31 @@ You MUST respond with valid JSON in the following format:
       {
         "id": "unique-section-id",
         "title": "Section Title",
-        "description": "What this section should contain (2-4 sentences)",
-        "rationale": "Why this section is needed based on the BRS",
+        "description": "Brief description (1-2 sentences max)",
+        "rationale": "Brief rationale (1 sentence)",
         "suggestedSubsections": ["Subsection 1", "Subsection 2"],
         "order": 1,
         "confidence": 0.95,
-        "sourceHints": ["BRS section or reference that informed this"]
+        "sourceHints": ["BRS section reference"]
       }
     ],
     "domainConfig": {
       "domain": "telecommunications",
       "industry": "5G mobile networks",
-      "standards": ["3GPP TS 23.501", "3GPP TS 23.502"],
+      "standards": ["3GPP TS 23.501"],
       "terminology": {
-        "UE": "User Equipment",
-        "AMF": "Access and Mobility Management Function"
+        "UE": "User Equipment"
       },
       "normativeLanguage": "RFC2119"
     },
-    "formatGuidance": "Brief formatting recommendations",
-    "rationale": "Overall rationale for this structure"
+    "formatGuidance": "Brief formatting note",
+    "rationale": "Overall rationale (1-2 sentences)"
   },
   "domainInference": {
     "domain": "telecommunications",
     "industry": "5G mobile networks",
     "confidence": 0.9,
-    "reasoning": "Explanation of why this domain was inferred",
+    "reasoning": "Brief explanation (1-2 sentences)",
     "detectedStandards": ["3GPP TS 23.501"],
     "suggestedTerminology": {
       "UE": "User Equipment"
@@ -64,7 +63,13 @@ You MUST respond with valid JSON in the following format:
 }
 \`\`\`
 
-CRITICAL: Respond with ONLY the JSON object wrapped in a markdown code block. No explanations or text before or after the JSON.
+## CRITICAL CONSTRAINTS
+- Respond with ONLY the JSON object wrapped in a markdown code block
+- No explanations or text before or after the JSON
+- Keep descriptions and rationales BRIEF (1-2 sentences max)
+- Limit terminology to 5-10 most important terms
+- Limit suggestedSubsections to 3-5 per section
+- Limit standards to the most relevant ones (max 5)
 `;
 
 // ========== Prompt Builders ==========
@@ -356,11 +361,18 @@ export function parseStructureProposalResponse(response: string): {
     if (!jsonStr) continue;
 
     try {
-      const parsed = JSON.parse(jsonStr);
+      // Try to fix common JSON issues before parsing
+      let fixedJson = jsonStr;
+
+      // Remove trailing commas before } or ]
+      fixedJson = fixedJson.replace(/,(\s*[}\]])/g, '$1');
+
+      // Try parsing
+      const parsed = JSON.parse(fixedJson);
 
       // Validate required fields
       if (!parsed.proposedStructure || !parsed.domainInference) {
-        console.warn(`Strategy ${i + 1}: Parsed JSON but missing required fields`);
+        console.warn(`Strategy ${i + 1}: Parsed JSON but missing required fields. Keys found:`, Object.keys(parsed));
         continue;
       }
 
@@ -370,6 +382,14 @@ export function parseStructureProposalResponse(response: string): {
         continue;
       }
 
+      // Ensure domainConfig exists with defaults
+      if (!parsed.proposedStructure.domainConfig) {
+        parsed.proposedStructure.domainConfig = {
+          domain: parsed.domainInference?.domain || 'general',
+          normativeLanguage: 'RFC2119',
+        };
+      }
+
       console.log(`✅ Successfully parsed with strategy ${i + 1}`);
       return {
         proposedStructure: parsed.proposedStructure,
@@ -377,11 +397,17 @@ export function parseStructureProposalResponse(response: string): {
       };
     } catch (error) {
       console.warn(`Strategy ${i + 1} failed:`, error instanceof Error ? error.message : error);
+      // Log a snippet of what we tried to parse
+      if (jsonStr.length > 0) {
+        console.warn(`Strategy ${i + 1} attempted to parse (first 200 chars):`, jsonStr.slice(0, 200));
+      }
     }
   }
 
-  // Log first 500 chars of response for debugging
-  console.error('❌ All parsing strategies failed. Response preview:', response.slice(0, 500));
+  // Log more context for debugging
+  console.error('❌ All parsing strategies failed.');
+  console.error('Response preview (first 500 chars):', response.slice(0, 500));
+  console.error('Response preview (last 500 chars):', response.slice(-500));
   return null;
 }
 

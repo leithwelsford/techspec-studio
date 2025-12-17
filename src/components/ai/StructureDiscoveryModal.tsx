@@ -13,8 +13,8 @@ import StructureProposalView from './StructureProposalView';
 import StructureChatPanel from './StructureChatPanel';
 import DomainOverridePanel from './DomainOverridePanel';
 import { ReferenceDocumentUpload } from '../documents/ReferenceDocumentUpload';
-import { getDefaultMarkdownGuidance } from '../../services/templateAnalyzer';
-import type { ProposedStructure, DomainConfig, MarkdownGenerationGuidance } from '../../types';
+import { getDefaultMarkdownGuidance, templateAnalyzer } from '../../services/templateAnalyzer';
+import type { ProposedStructure, DomainConfig, MarkdownGenerationGuidance, DocxTemplateAnalysis } from '../../types';
 
 interface StructureDiscoveryModalProps {
   isOpen: boolean;
@@ -69,6 +69,10 @@ export default function StructureDiscoveryModal({
   // Formatting options
   const [useDefaultFormatting, setUseDefaultFormatting] = useState(true);
   const [markdownGuidance, setMarkdownGuidance] = useState<MarkdownGenerationGuidance | null>(null);
+  const [templateAnalysis, setTemplateAnalysis] = useState<DocxTemplateAnalysis | null>(null);
+  const [templateFileName, setTemplateFileName] = useState<string | null>(null);
+  const [isAnalyzingTemplate, setIsAnalyzingTemplate] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
 
   // Get BRS content (must be before useEffect that uses it)
   const brsDocument = project?.brsDocument;
@@ -241,6 +245,61 @@ export default function StructureDiscoveryModal({
     },
     [setProposedStructure]
   );
+
+  /**
+   * Handle DOCX template upload and analysis
+   */
+  const handleTemplateUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      setTemplateError('Please upload a .docx file');
+      return;
+    }
+
+    setIsAnalyzingTemplate(true);
+    setTemplateError(null);
+    setTemplateFileName(file.name);
+
+    try {
+      // Analyze the template
+      const analysis = await templateAnalyzer.analyzeTemplate(file);
+      setTemplateAnalysis(analysis);
+
+      // Generate markdown guidance from the analysis
+      const guidance = templateAnalyzer.generateMarkdownGuidance(analysis);
+      setMarkdownGuidance(guidance);
+      setUseDefaultFormatting(false);
+
+      console.log('📄 Template analyzed:', {
+        filename: file.name,
+        headingStyles: analysis.headingStyles.length,
+        compatibility: analysis.compatibility.score,
+      });
+    } catch (err) {
+      console.error('Template analysis failed:', err);
+      setTemplateError(err instanceof Error ? err.message : 'Failed to analyze template');
+      setTemplateAnalysis(null);
+      setTemplateFileName(null);
+      setUseDefaultFormatting(true);
+      setMarkdownGuidance(getDefaultMarkdownGuidance());
+    } finally {
+      setIsAnalyzingTemplate(false);
+    }
+  }, []);
+
+  /**
+   * Clear template and revert to default formatting
+   */
+  const handleClearTemplate = useCallback(() => {
+    setTemplateAnalysis(null);
+    setTemplateFileName(null);
+    setTemplateError(null);
+    setUseDefaultFormatting(true);
+    setMarkdownGuidance(getDefaultMarkdownGuidance());
+  }, []);
 
   if (!isOpen) return null;
 
@@ -670,22 +729,90 @@ export default function StructureDiscoveryModal({
                         </p>
                       </div>
                     </label>
-                    <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-600 cursor-not-allowed opacity-60">
-                      <input
-                        type="radio"
-                        name="formatting"
-                        checked={!useDefaultFormatting}
-                        disabled
-                        className="mt-1"
-                      />
-                      <div>
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">Match DOCX reference template</span>
-                        <span className="ml-2 px-2 py-0.5 text-xs bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 rounded">coming soon</span>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Upload a Word template to extract heading styles and numbering
-                        </p>
+                    <div className={`p-3 rounded-lg border ${!useDefaultFormatting ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-600'}`}>
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="formatting"
+                          checked={!useDefaultFormatting}
+                          onChange={() => {
+                            if (!templateAnalysis) {
+                              // If no template loaded, prompt to upload
+                              document.getElementById('template-upload')?.click();
+                            } else {
+                              setUseDefaultFormatting(false);
+                            }
+                          }}
+                          className="mt-1"
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">Match DOCX reference template</span>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Upload a Word template to extract heading styles and numbering
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Template upload area */}
+                      <div className="mt-3 ml-6">
+                        <input
+                          id="template-upload"
+                          type="file"
+                          accept=".docx"
+                          onChange={handleTemplateUpload}
+                          className="hidden"
+                        />
+
+                        {isAnalyzingTemplate ? (
+                          <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            Analyzing template...
+                          </div>
+                        ) : templateFileName && templateAnalysis ? (
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 px-2 py-1 bg-green-100 dark:bg-green-900/40 rounded text-sm">
+                              <svg className="w-4 h-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span className="text-green-700 dark:text-green-300">{templateFileName}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleClearTemplate}
+                              className="text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById('template-upload')?.click()}
+                            className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline"
+                          >
+                            + Upload DOCX template
+                          </button>
+                        )}
+
+                        {templateError && (
+                          <p className="mt-2 text-xs text-red-600 dark:text-red-400">{templateError}</p>
+                        )}
+
+                        {templateAnalysis && (
+                          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            {templateAnalysis.headingStyles.length} heading styles detected
+                            {templateAnalysis.compatibility.score < 1 && (
+                              <span className="ml-2 text-yellow-600 dark:text-yellow-400">
+                                ({Math.round(templateAnalysis.compatibility.score * 100)}% compatible)
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </label>
+                    </div>
                   </div>
                 </div>
 

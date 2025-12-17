@@ -2329,17 +2329,33 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     ];
 
     try {
+      // Use higher maxTokens for structure proposal - the JSON response can be large
+      // Minimum 8000 tokens to avoid truncation
+      const structureMaxTokens = Math.max(8000, this.config.maxTokens);
+
       const result = await this.provider.generate(messages, {
         model: this.config.model,
         temperature: 0.3, // Lower temperature for more structured output
-        maxTokens: this.config.maxTokens
+        maxTokens: structureMaxTokens
       });
+
+      // Check for truncation (response cut off due to max tokens)
+      const wasTruncated = result.finishReason === 'length' ||
+                           result.finishReason === 'max_tokens' ||
+                           (result as { nativeFinishReason?: string }).nativeFinishReason === 'max_output_tokens';
+
+      if (wasTruncated) {
+        console.warn('⚠️ Structure proposal response was truncated due to token limit');
+      }
 
       // Parse the response
       const parsed = parseStructureProposalResponse(result.content);
 
       if (!parsed) {
         console.error('Failed to parse structure proposal response, using defaults');
+        if (wasTruncated) {
+          console.error('This is likely due to the response being truncated. Try a model with higher output limits.');
+        }
         // Return default structure as fallback
         const defaultSections = generateDefaultStructure('general');
         const now = new Date();
