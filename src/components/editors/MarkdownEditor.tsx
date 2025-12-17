@@ -25,6 +25,8 @@ export default function MarkdownEditor() {
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [scrollSyncEnabled, setScrollSyncEnabled] = useState(true);
   const isScrollingSyncRef = useRef(false); // Prevents infinite scroll loops
+  const [currentHeadingId, setCurrentHeadingId] = useState<string | null>(null); // Track cursor position heading
+  const [currentHeadingText, setCurrentHeadingText] = useState<string | null>(null); // Display name for current heading
 
   // Enable autocomplete when textarea is available
   useEffect(() => {
@@ -32,6 +34,117 @@ export default function MarkdownEditor() {
       setShowAutocomplete(true);
     }
   }, [textareaRef.current]);
+
+  // Find the heading at cursor position and create a unique ID for it
+  const findCurrentHeading = useCallback((cursorPos: number, text: string): { id: string; text: string } | null => {
+    // Find all headings with their positions
+    const headingRegex = /^(#{1,6})\s+(.+)$/gm;
+    const headings: { level: number; text: string; start: number; end: number }[] = [];
+
+    let match;
+    while ((match = headingRegex.exec(text)) !== null) {
+      headings.push({
+        level: match[1].length,
+        text: match[2].trim(),
+        start: match.index,
+        end: match.index + match[0].length,
+      });
+    }
+
+    // Find the nearest heading before cursor position
+    let currentHeading: { level: number; text: string } | null = null;
+    for (const heading of headings) {
+      if (heading.start <= cursorPos) {
+        currentHeading = heading;
+      } else {
+        break;
+      }
+    }
+
+    if (!currentHeading) return null;
+
+    // Create a unique ID from level and text (slug-like)
+    const slug = currentHeading.text
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .substring(0, 50);
+    return {
+      id: `h${currentHeading.level}-${slug}`,
+      text: currentHeading.text,
+    };
+  }, []);
+
+  // Track cursor position and update current heading
+  const handleCursorChange = useCallback(() => {
+    if (!textareaRef.current || viewMode === 'preview') return;
+
+    const editor = textareaRef.current;
+    const cursorPos = editor.selectionStart;
+    const heading = findCurrentHeading(cursorPos, editor.value);
+
+    const newId = heading?.id || null;
+    const newText = heading?.text || null;
+
+    if (newId !== currentHeadingId) {
+      setCurrentHeadingId(newId);
+      setCurrentHeadingText(newText);
+    }
+  }, [findCurrentHeading, currentHeadingId, viewMode]);
+
+  // Debounced cursor tracking
+  useEffect(() => {
+    if (viewMode === 'preview') return;
+
+    const editor = textareaRef.current;
+    if (!editor) return;
+
+    // Track cursor on various events
+    const events = ['click', 'keyup', 'select'];
+
+    events.forEach(event => {
+      editor.addEventListener(event, handleCursorChange);
+    });
+
+    // Initial check
+    handleCursorChange();
+
+    return () => {
+      events.forEach(event => {
+        editor.removeEventListener(event, handleCursorChange);
+      });
+    };
+  }, [handleCursorChange, viewMode]);
+
+  // Highlight current heading in preview
+  useEffect(() => {
+    if (!previewRef.current || !currentHeadingId || viewMode === 'edit') return;
+
+    const preview = previewRef.current;
+
+    // Remove previous highlight
+    preview.querySelectorAll('.current-heading-highlight').forEach(el => {
+      el.classList.remove('current-heading-highlight', 'bg-blue-50', 'dark:bg-blue-900/30', 'rounded', '-mx-2', 'px-2');
+    });
+
+    // Find and highlight the matching heading
+    const headings = preview.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (const heading of headings) {
+      const level = parseInt(heading.tagName.replace('H', ''));
+      const text = heading.textContent?.trim() || '';
+      const slug = text
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .substring(0, 50);
+      const headingId = `h${level}-${slug}`;
+
+      if (headingId === currentHeadingId) {
+        heading.classList.add('current-heading-highlight', 'bg-blue-50', 'dark:bg-blue-900/30', 'rounded', '-mx-2', 'px-2');
+        break;
+      }
+    }
+  }, [currentHeadingId, viewMode]);
 
   // Scroll sync: editor → preview
   const handleEditorScroll = useCallback(() => {
@@ -493,6 +606,15 @@ export default function MarkdownEditor() {
         </div>
 
         <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+          {/* Current section indicator */}
+          {currentHeadingText && viewMode !== 'preview' && (
+            <span className="flex items-center gap-1 text-green-600 dark:text-green-400 max-w-[200px] truncate" title={`Current section: ${currentHeadingText}`}>
+              <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span className="truncate">{currentHeadingText}</span>
+            </span>
+          )}
           {viewMode === 'split' && (
             <span className="text-blue-600 dark:text-blue-400" title="Click headings in preview to jump to them in editor">
               Click headings to navigate
@@ -536,7 +658,7 @@ Use {{fig:diagram-id}} to reference diagrams."
             className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900`}
           >
             <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 shadow-sm rounded-lg p-8">
-              <article className="prose prose-sm max-w-none dark:prose-invert dark:text-gray-100 [&_h1]:cursor-pointer [&_h2]:cursor-pointer [&_h3]:cursor-pointer [&_h4]:cursor-pointer [&_h5]:cursor-pointer [&_h6]:cursor-pointer [&_h1:hover]:text-blue-600 [&_h2:hover]:text-blue-600 [&_h3:hover]:text-blue-600 [&_h4:hover]:text-blue-600 [&_h5:hover]:text-blue-600 [&_h6:hover]:text-blue-600 dark:[&_h1:hover]:text-blue-400 dark:[&_h2:hover]:text-blue-400 dark:[&_h3:hover]:text-blue-400 dark:[&_h4:hover]:text-blue-400 dark:[&_h5:hover]:text-blue-400 dark:[&_h6:hover]:text-blue-400">
+              <article className="prose prose-sm max-w-none dark:prose-invert dark:text-gray-100 [&_h1]:cursor-pointer [&_h2]:cursor-pointer [&_h3]:cursor-pointer [&_h4]:cursor-pointer [&_h5]:cursor-pointer [&_h6]:cursor-pointer [&_h1]:transition-all [&_h2]:transition-all [&_h3]:transition-all [&_h4]:transition-all [&_h5]:transition-all [&_h6]:transition-all [&_h1]:duration-200 [&_h2]:duration-200 [&_h3]:duration-200 [&_h4]:duration-200 [&_h5]:duration-200 [&_h6]:duration-200 [&_h1:hover]:text-blue-600 [&_h2:hover]:text-blue-600 [&_h3:hover]:text-blue-600 [&_h4:hover]:text-blue-600 [&_h5:hover]:text-blue-600 [&_h6:hover]:text-blue-600 dark:[&_h1:hover]:text-blue-400 dark:[&_h2:hover]:text-blue-400 dark:[&_h3:hover]:text-blue-400 dark:[&_h4:hover]:text-blue-400 dark:[&_h5:hover]:text-blue-400 dark:[&_h6:hover]:text-blue-400">
                 <ReactMarkdown
                   remarkPlugins={[
                     remarkGfm,
