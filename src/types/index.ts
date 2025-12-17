@@ -924,6 +924,8 @@ export interface MarkdownGenerationGuidance {
   // Pandoc custom-style attributes for DOCX export
   pandocStyles?: {
     enabled: boolean; // Whether to use Pandoc fenced div syntax
+    bulletList?: string; // Style name for bullet lists (e.g., "List Bullet", "Bullet List")
+    numberedList?: string; // Style name for numbered lists (e.g., "List Number", "Numbered List")
     figureCaption?: string; // Style name for figure captions (e.g., "Caption", "FigureCaption")
     tableCaption?: string; // Style name for table captions (e.g., "TableCaption")
     appendixHeading?: string; // Style name for appendix headings (e.g., "AppendixHeading")

@@ -5,7 +5,7 @@
  * Provides professional DOCX export with corporate branding preservation.
  */
 
-import type { Project } from '../types';
+import type { Project, MarkdownGenerationGuidance } from '../types';
 import { resolveAllLinks } from './linkResolver';
 
 const PANDOC_API_URL = import.meta.env.VITE_PANDOC_API_URL || 'http://localhost:3001/api';
@@ -20,6 +20,178 @@ export interface PandocExportOptions {
   embedDiagrams?: boolean;
   author?: string;
   company?: string;
+  // Template-derived style mappings
+  pandocStyles?: MarkdownGenerationGuidance['pandocStyles'];
+}
+
+// ========== Markdown Transformation for Pandoc Custom Styles ==========
+
+/**
+ * Apply Pandoc custom-style wrappers to markdown content
+ * Transforms lists and captions to use ::: {custom-style="..."} syntax
+ */
+export function applyPandocCustomStyles(
+  markdown: string,
+  pandocStyles?: MarkdownGenerationGuidance['pandocStyles']
+): string {
+  if (!pandocStyles?.enabled) {
+    console.log('[Pandoc Export] Custom styles disabled, skipping transformation');
+    return markdown;
+  }
+
+  console.log('[Pandoc Export] Applying custom styles:', pandocStyles);
+  let result = markdown;
+
+  // Transform bullet lists
+  if (pandocStyles.bulletList) {
+    result = wrapBulletLists(result, pandocStyles.bulletList);
+  }
+
+  // Transform numbered lists
+  if (pandocStyles.numberedList) {
+    result = wrapNumberedLists(result, pandocStyles.numberedList);
+  }
+
+  // Transform figure captions
+  if (pandocStyles.figureCaption) {
+    result = wrapFigureCaptions(result, pandocStyles.figureCaption);
+  }
+
+  // Transform table captions
+  if (pandocStyles.tableCaption) {
+    result = wrapTableCaptions(result, pandocStyles.tableCaption);
+  }
+
+  return result;
+}
+
+/**
+ * Wrap bullet lists with Pandoc custom-style div
+ * Finds contiguous bullet list blocks and wraps them
+ */
+function wrapBulletLists(markdown: string, styleName: string): string {
+  // Match contiguous bullet list blocks (lines starting with - or *)
+  // Must handle multi-line items and nested lists
+  const lines = markdown.split('\n');
+  const result: string[] = [];
+  let inList = false;
+  let listBuffer: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isBulletLine = /^(\s*)[-*]\s/.test(line);
+    const isContinuation = /^\s{2,}/.test(line) && !line.trim().startsWith('#'); // Indented continuation
+    const isEmptyInList = line.trim() === '' && inList && i + 1 < lines.length && /^(\s*)[-*]\s/.test(lines[i + 1]);
+
+    if (isBulletLine || (inList && (isContinuation || isEmptyInList))) {
+      if (!inList) {
+        inList = true;
+        listBuffer = [];
+      }
+      listBuffer.push(line);
+    } else {
+      if (inList) {
+        // End of list - wrap and flush
+        result.push(`::: {custom-style="${styleName}"}`);
+        result.push(...listBuffer);
+        result.push(':::');
+        result.push('');
+        inList = false;
+        listBuffer = [];
+      }
+      result.push(line);
+    }
+  }
+
+  // Handle list at end of document
+  if (inList && listBuffer.length > 0) {
+    result.push(`::: {custom-style="${styleName}"}`);
+    result.push(...listBuffer);
+    result.push(':::');
+  }
+
+  return result.join('\n');
+}
+
+/**
+ * Wrap numbered lists with Pandoc custom-style div
+ * Finds contiguous numbered list blocks and wraps them
+ */
+function wrapNumberedLists(markdown: string, styleName: string): string {
+  const lines = markdown.split('\n');
+  const result: string[] = [];
+  let inList = false;
+  let listBuffer: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isNumberedLine = /^(\s*)\d+\.\s/.test(line);
+    const isContinuation = /^\s{2,}/.test(line) && !line.trim().startsWith('#');
+    const isEmptyInList = line.trim() === '' && inList && i + 1 < lines.length && /^(\s*)\d+\.\s/.test(lines[i + 1]);
+
+    if (isNumberedLine || (inList && (isContinuation || isEmptyInList))) {
+      if (!inList) {
+        inList = true;
+        listBuffer = [];
+      }
+      listBuffer.push(line);
+    } else {
+      if (inList) {
+        // End of list - wrap and flush
+        result.push(`::: {custom-style="${styleName}"}`);
+        result.push(...listBuffer);
+        result.push(':::');
+        result.push('');
+        inList = false;
+        listBuffer = [];
+      }
+      result.push(line);
+    }
+  }
+
+  // Handle list at end of document
+  if (inList && listBuffer.length > 0) {
+    result.push(`::: {custom-style="${styleName}"}`);
+    result.push(...listBuffer);
+    result.push(':::');
+  }
+
+  return result.join('\n');
+}
+
+/**
+ * Wrap figure captions with Pandoc custom-style
+ * Matches patterns like: *Figure 1-1: Caption text*
+ */
+function wrapFigureCaptions(markdown: string, styleName: string): string {
+  // Match italic figure captions: *Figure X-X: text*
+  // Also match bold: **Figure X-X: text**
+  return markdown.replace(
+    /^(\*{1,2})(Figure\s+[\d\-\.]+:?\s+[^\*]+)\1\s*$/gim,
+    `::: {custom-style="${styleName}"}\n$1$2$1\n:::`
+  );
+}
+
+/**
+ * Wrap table captions with Pandoc custom-style
+ * Matches patterns like: *Table 1-1: Caption text*
+ * Also looks for "Table:" prefix before markdown tables
+ */
+function wrapTableCaptions(markdown: string, styleName: string): string {
+  // Match italic table captions: *Table X-X: text*
+  let result = markdown.replace(
+    /^(\*{1,2})(Table\s+[\d\-\.]+:?\s+[^\*]+)\1\s*$/gim,
+    `::: {custom-style="${styleName}"}\n$1$2$1\n:::`
+  );
+
+  // Also match plain table captions that precede a markdown table
+  // Pattern: "Table X-X: text" followed by a blank line and then "|"
+  result = result.replace(
+    /^(Table\s+[\d\-\.]+:?\s+.+)\n\n(\|)/gim,
+    `::: {custom-style="${styleName}"}\n$1\n:::\n\n$2`
+  );
+
+  return result;
 }
 
 /**
@@ -102,6 +274,12 @@ export async function exportWithPandoc(
   // Strip manual numbering from headings (e.g., "# 1. Introduction" → "# Introduction")
   // This prevents double-numbering when Pandoc's --number-sections is enabled
   resolvedMarkdown = resolvedMarkdown.replace(/^(#{1,6})\s+\d+(\.\d+)*\.?\s+/gm, '$1 ');
+
+  // Apply Pandoc custom-style wrappers for lists and captions
+  // This uses the template-derived style names from pandocStyles
+  if (options.pandocStyles) {
+    resolvedMarkdown = applyPandocCustomStyles(resolvedMarkdown, options.pandocStyles);
+  }
 
   // Add YAML front matter for title page metadata
   // This ensures title, subtitle, version, etc. are handled as metadata, not content

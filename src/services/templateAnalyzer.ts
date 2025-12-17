@@ -897,7 +897,7 @@ export class TemplateAnalyzer {
   private derivePandocStyles(
     analysis: DocxTemplateAnalysis
   ): MarkdownGenerationGuidance['pandocStyles'] {
-    const { captionStyles, specialStyles } = analysis;
+    const { captionStyles, specialStyles, paragraphStyles } = analysis;
 
     // Check if we have enough styles to enable Pandoc custom-style syntax
     const hasCaptionStyle = captionStyles?.figureCaption?.exists || captionStyles?.tableCaption?.exists;
@@ -906,9 +906,12 @@ export class TemplateAnalyzer {
       specialStyles.subtitle.exists ||
       specialStyles.otherStyles.length > 0
     );
+    const hasListStyles = specialStyles?.otherStyles.some(s =>
+      /list|bullet|number/i.test(s.name) || /list|bullet|number/i.test(s.styleId)
+    );
 
     // Only enable if template has relevant styles
-    if (!hasCaptionStyle && !hasSpecialStyles) {
+    if (!hasCaptionStyle && !hasSpecialStyles && !hasListStyles) {
       return {
         enabled: false,
       };
@@ -918,6 +921,34 @@ export class TemplateAnalyzer {
     const pandocStyles: NonNullable<MarkdownGenerationGuidance['pandocStyles']> = {
       enabled: true,
     };
+
+    // Look for bullet list style - check both specialStyles and paragraphStyles
+    // Common names: "List Bullet", "Bullet List", "ListBullet", "List Paragraph"
+    const bulletListStyle = specialStyles?.otherStyles.find(s =>
+      /list\s*bullet|bullet\s*list|listbullet/i.test(s.name) ||
+      /list\s*bullet|bullet\s*list|listbullet/i.test(s.styleId)
+    ) || paragraphStyles?.find(s =>
+      /list\s*bullet|bullet\s*list|listbullet/i.test(s.name) ||
+      /list\s*bullet|bullet\s*list|listbullet/i.test(s.styleId)
+    );
+    if (bulletListStyle) {
+      pandocStyles.bulletList = bulletListStyle.styleId;
+      console.log(`[Template Analyzer] Found bullet list style: ${bulletListStyle.styleId}`);
+    }
+
+    // Look for numbered list style
+    // Common names: "List Number", "Numbered List", "ListNumber"
+    const numberedListStyle = specialStyles?.otherStyles.find(s =>
+      /list\s*number|number\s*list|listnumber|ordered/i.test(s.name) ||
+      /list\s*number|number\s*list|listnumber|ordered/i.test(s.styleId)
+    ) || paragraphStyles?.find(s =>
+      /list\s*number|number\s*list|listnumber|ordered/i.test(s.name) ||
+      /list\s*number|number\s*list|listnumber|ordered/i.test(s.styleId)
+    );
+    if (numberedListStyle) {
+      pandocStyles.numberedList = numberedListStyle.styleId;
+      console.log(`[Template Analyzer] Found numbered list style: ${numberedListStyle.styleId}`);
+    }
 
     // Figure caption style
     if (captionStyles?.figureCaption?.exists && captionStyles.figureCaption.styleId) {

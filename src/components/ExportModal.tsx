@@ -27,6 +27,7 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const docxTemplateAnalysis = useProjectStore((state) => state.docxTemplateAnalysis);
   const setTemplateAnalysis = useProjectStore((state) => state.setTemplateAnalysis);
   const setMarkdownGuidance = useProjectStore((state) => state.setMarkdownGuidance);
+  const markdownGuidance = useProjectStore((state) => state.markdownGuidance);
   const clearTemplateAnalysis = useProjectStore((state) => state.clearTemplateAnalysis);
 
   // Tab state
@@ -146,7 +147,15 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
           throw new Error('Pandoc service is not available');
         }
         console.log('[Export] Using Pandoc...');
-        blob = await exportWithPandoc(project, templateFileForPandoc, exportOpts);
+
+        // Pass pandocStyles from template analysis for custom style mapping
+        const pandocExportOpts = {
+          ...exportOpts,
+          pandocStyles: markdownGuidance?.pandocStyles,
+        };
+        console.log('[Export] Pandoc styles:', markdownGuidance?.pandocStyles);
+
+        blob = await exportWithPandoc(project, templateFileForPandoc, pandocExportOpts);
         downloadPandocDocx(blob, filename);
 
       } else if (docxTemplate) {
