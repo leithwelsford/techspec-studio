@@ -62,7 +62,7 @@ export function PanZoomWrapper({ children, width = 1400, height = 800 }: PanZoom
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         style={{ cursor: isDragging ? 'grabbing' : 'grab', minHeight: '600px' }}
-        className="bg-white dark:bg-gray-900"
+        className="bg-gray-50 dark:bg-gray-900"
       >
         {/* Background (click to pan) */}
         <rect

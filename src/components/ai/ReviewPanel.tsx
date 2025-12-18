@@ -22,65 +22,110 @@ interface ReviewPanelProps {
   onClose: () => void;
 }
 
+// Node type for the normalized diagram format used in preview
+interface PreviewNode {
+  id: string;
+  label: string;
+  shape?: string;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+}
+
 // Helper component: Block Diagram Renderer (returns SVG content only, no <svg> wrapper)
-const BlockDiagramRenderer: React.FC<{ diagram: BlockDiagram }> = ({ diagram }) => {
-  console.log('🎨 BlockDiagramRenderer called with:', {
-    nodeCount: diagram.nodes.length,
-    edgeCount: diagram.edges.length,
-    nodes: diagram.nodes.map(n => ({ id: n.id, label: n.label, position: n.position, size: n.size }))
-  });
+// Handles the normalized diagram format where nodes is an array with embedded position/size
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const BlockDiagramRenderer: React.FC<{ diagram: any }> = ({ diagram }) => {
+  // The diagram.nodes is an array of normalized node objects with embedded position/size
+  const nodes: PreviewNode[] = Array.isArray(diagram.nodes) ? diagram.nodes : [];
+
+  // Create a lookup map for node positions (for edge rendering)
+  const nodeMap = new Map<string, PreviewNode>();
+  nodes.forEach(node => nodeMap.set(node.id, node));
+
+  // Render node shape based on type
+  const renderNodeShape = (node: PreviewNode) => {
+    const x = node.position.x;
+    const y = node.position.y;
+    const w = node.size.width;
+    const h = node.size.height;
+
+    // Default colors - white fill with blue border
+    const fill = '#ffffff';
+    const stroke = '#3b82f6';
+    const strokeWidth = 2;
+
+    switch (node.shape) {
+      case 'ellipse':
+        return (
+          <ellipse
+            cx={x + w / 2}
+            cy={y + h / 2}
+            rx={w / 2}
+            ry={h / 2}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+          />
+        );
+      case 'roundedRect':
+        return (
+          <rect
+            x={x}
+            y={y}
+            width={w}
+            height={h}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+            rx={Math.min(w, h) / 4}
+          />
+        );
+      case 'cloud':
+        return (
+          <path
+            d={`M ${x + w * 0.2},${y + h * 0.8}
+                C ${x - w * 0.05},${y + h * 0.8} ${x - w * 0.05},${y + h * 0.4} ${x + w * 0.15},${y + h * 0.35}
+                C ${x + w * 0.1},${y + h * 0.1} ${x + w * 0.35},${y} ${x + w * 0.5},${y + h * 0.15}
+                C ${x + w * 0.65},${y} ${x + w * 0.9},${y + h * 0.1} ${x + w * 0.85},${y + h * 0.35}
+                C ${x + w * 1.05},${y + h * 0.4} ${x + w * 1.05},${y + h * 0.8} ${x + w * 0.8},${y + h * 0.8}
+                Z`}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+          />
+        );
+      case 'diamond':
+        return (
+          <polygon
+            points={`${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+          />
+        );
+      case 'rect':
+      default:
+        return (
+          <rect
+            x={x}
+            y={y}
+            width={w}
+            height={h}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+            rx={4}
+          />
+        );
+    }
+  };
 
   return (
     <>
-      {/* Render nodes */}
-      {diagram.nodes.map((node) => (
-        <g key={node.id}>
-          {node.shape === 'cloud' ? (
-            <path
-              d={`M ${node.position.x},${node.position.y + 10}
-                  Q ${node.position.x - 10},${node.position.y} ${node.position.x},${node.position.y - 5}
-                  Q ${node.position.x + node.size.width / 4},${node.position.y - 15} ${node.position.x + node.size.width / 2},${node.position.y - 5}
-                  Q ${node.position.x + (3 * node.size.width) / 4},${node.position.y - 15} ${node.position.x + node.size.width},${node.position.y - 5}
-                  Q ${node.position.x + node.size.width + 10},${node.position.y} ${node.position.x + node.size.width},${node.position.y + 10}
-                  L ${node.position.x + node.size.width},${node.position.y + node.size.height - 10}
-                  Q ${node.position.x + node.size.width + 10},${node.position.y + node.size.height} ${node.position.x + node.size.width},${node.position.y + node.size.height + 5}
-                  Q ${node.position.x + (3 * node.size.width) / 4},${node.position.y + node.size.height + 15} ${node.position.x + node.size.width / 2},${node.position.y + node.size.height + 5}
-                  Q ${node.position.x + node.size.width / 4},${node.position.y + node.size.height + 15} ${node.position.x},${node.position.y + node.size.height + 5}
-                  Q ${node.position.x - 10},${node.position.y + node.size.height} ${node.position.x},${node.position.y + node.size.height - 10}
-                  Z`}
-              fill="white"
-              stroke="#3b82f6"
-              strokeWidth="2"
-            />
-          ) : (
-            <rect
-              x={node.position.x}
-              y={node.position.y}
-              width={node.size.width}
-              height={node.size.height}
-              fill="white"
-              stroke="#3b82f6"
-              strokeWidth="2"
-              rx="4"
-            />
-          )}
-          <text
-            x={node.position.x + node.size.width / 2}
-            y={node.position.y + node.size.height / 2}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="#1f2937"
-            fontSize="14"
-            fontWeight="500"
-          >
-            {node.label}
-          </text>
-        </g>
-      ))}
-      {/* Render edges */}
-      {diagram.edges.map((edge, idx) => {
-        const fromNode = diagram.nodes.find(n => n.id === edge.from);
-        const toNode = diagram.nodes.find(n => n.id === edge.to);
+      {/* Render edges first (below nodes) */}
+      {diagram.edges?.map((edge: { from: string; to: string; label?: string; style?: string }, idx: number) => {
+        const fromNode = nodeMap.get(edge.from);
+        const toNode = nodeMap.get(edge.to);
         if (!fromNode || !toNode) return null;
 
         const fromX = fromNode.position.x + fromNode.size.width / 2;
@@ -88,37 +133,64 @@ const BlockDiagramRenderer: React.FC<{ diagram: BlockDiagram }> = ({ diagram }) 
         const toX = toNode.position.x + toNode.size.width / 2;
         const toY = toNode.position.y + toNode.size.height / 2;
 
-        const strokeWidth = edge.style === 'bold' ? 4 : edge.style === 'solid' ? 1.6 : 1.2;
-        const strokeDasharray = edge.style === 'dashed' ? '5,5' : undefined;
+        const lineStrokeWidth = edge.style === 'bold' ? 3 : edge.style === 'dashed' ? 1.5 : 2;
+        const strokeDasharray = edge.style === 'dashed' ? '6,4' : undefined;
 
         return (
-          <g key={idx}>
+          <g key={`edge-${idx}`}>
             <line
               x1={fromX}
               y1={fromY}
               x2={toX}
               y2={toY}
-              stroke="#6b7280"
-              strokeWidth={strokeWidth}
+              stroke="#9ca3af"
+              strokeWidth={lineStrokeWidth}
               strokeDasharray={strokeDasharray}
             />
             {edge.label && (
-              <text
-                x={(fromX + toX) / 2}
-                y={(fromY + toY) / 2}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fill="#374151"
-                fontSize="12"
-                fontWeight="500"
-                style={{ pointerEvents: 'none' }}
-              >
-                {edge.label}
-              </text>
+              <g>
+                {/* Background for edge label */}
+                <rect
+                  x={(fromX + toX) / 2 - 60}
+                  y={(fromY + toY) / 2 - 9}
+                  width={120}
+                  height={18}
+                  fill="rgba(17, 24, 39, 0.9)"
+                  rx={3}
+                />
+                <text
+                  x={(fromX + toX) / 2}
+                  y={(fromY + toY) / 2}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="#e5e7eb"
+                  fontSize="10"
+                  fontWeight="500"
+                >
+                  {edge.label.length > 25 ? edge.label.slice(0, 25) + '...' : edge.label}
+                </text>
+              </g>
             )}
           </g>
         );
       })}
+      {/* Render nodes */}
+      {nodes.map((node) => (
+        <g key={node.id}>
+          {renderNodeShape(node)}
+          <text
+            x={node.position.x + node.size.width / 2}
+            y={node.position.y + node.size.height / 2}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#1f2937"
+            fontSize="12"
+            fontWeight="500"
+          >
+            {node.label.length > 25 ? node.label.slice(0, 25) + '...' : node.label}
+          </text>
+        </g>
+      ))}
     </>
   );
 };
@@ -157,14 +229,14 @@ const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram }> = ({ diagram
 
   if (renderError) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded">
-        <p className="text-sm text-red-800">⚠️ Diagram rendering error: {renderError}</p>
-        <pre className="mt-2 text-xs font-mono text-red-700 whitespace-pre-wrap">{diagram.mermaidCode}</pre>
+      <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded">
+        <p className="text-sm text-red-800 dark:text-red-200">⚠️ Diagram rendering error: {renderError}</p>
+        <pre className="mt-2 text-xs font-mono text-red-700 dark:text-red-300 whitespace-pre-wrap">{diagram.mermaidCode}</pre>
       </div>
     );
   }
 
-  return <div ref={containerRef} className="w-full h-full flex items-center justify-center" />;
+  return <div ref={containerRef} className="w-full h-full flex items-center justify-center [&_svg]:max-w-full" />;
 };
 
 export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => {
@@ -315,18 +387,18 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div>
-            <h2 className="text-xl font-semibold text-gray-800">Review AI-Generated Content</h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Review AI-Generated Content</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {pendingApprovals.length} pending review{pendingApprovals.length !== 1 ? 's' : ''}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -337,11 +409,11 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
         {/* Content */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left sidebar: Approval list */}
-          <div className="w-80 border-r border-gray-200 overflow-y-auto">
+          <div className="w-80 border-r border-gray-200 dark:border-gray-700 overflow-y-auto bg-gray-50 dark:bg-gray-800">
             <div className="p-4 space-y-2">
               {pendingApprovals.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <svg className="w-16 h-16 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <svg className="w-16 h-16 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <p className="text-sm font-medium">All caught up!</p>
@@ -354,24 +426,24 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                     onClick={() => setSelectedApprovalId(approval.id)}
                     className={`w-full text-left p-3 rounded-lg border transition-all ${
                       selectedApprovalId === approval.id
-                        ? 'border-blue-400 bg-blue-50 shadow-sm'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-500 shadow-sm'
+                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 bg-white dark:bg-gray-800'
                     }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <span className={`text-xs font-semibold px-2 py-1 rounded ${getTypeColor(approval.type)}`}>
                         {getTypeLabel(approval.type)}
                       </span>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
                         {new Date(approval.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700 font-medium line-clamp-2">
+                    <p className="text-sm text-gray-700 dark:text-gray-200 font-medium line-clamp-2">
                       {approval.type === 'diagram'
                         ? approval.generatedContent.title || 'Untitled Diagram'
                         : `Generated ${approval.type}`}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">
                       Task ID: {approval.taskId.slice(0, 8)}
                     </p>
                   </button>
@@ -381,7 +453,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
           </div>
 
           {/* Right panel: Content preview and actions */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
             {selectedApproval ? (
               selectedApproval.type === 'cascaded-refinement' ? (
                 // Cascaded Refinement - Use specialized panel
@@ -495,12 +567,12 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                 {/* Approval header */}
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-800">
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
                       {selectedApproval.type === 'diagram'
                         ? selectedApproval.generatedContent.title || 'Untitled Diagram'
                         : `${getTypeLabel(selectedApproval.type)} Review`}
                     </h3>
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                       Created {new Date(selectedApproval.createdAt).toLocaleString()}
                     </p>
                   </div>
@@ -508,14 +580,14 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                     {selectedApproval.originalContent && (
                       <button
                         onClick={() => setShowDiff(!showDiff)}
-                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        className="text-sm text-blue-600 hover:text-blue-400 font-medium"
                       >
                         {showDiff ? 'Hide Diff' : 'Show Diff'}
                       </button>
                     )}
                     <button
                       onClick={() => setDebugMode(!debugMode)}
-                      className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                      className="text-sm text-purple-600 hover:text-purple-400 font-medium"
                     >
                       {debugMode ? 'Hide Debug' : 'Show Debug Info'}
                     </button>
@@ -671,21 +743,21 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                 {!debugMode && (selectedApproval.type === 'diagram' || !showDiff || !selectedApproval.originalContent) ? (
                   selectedApproval.type === 'diagram' ? (
                     // Render diagram with pan/zoom
-                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                      <div className="bg-blue-50 border-b border-blue-200 px-4 py-2">
-                        <h4 className="text-sm font-semibold text-blue-900">
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-gray-50 dark:bg-gray-800">
+                      <div className="bg-blue-50 dark:bg-blue-900/30 border-b border-blue-200 dark:border-blue-800 px-4 py-2">
+                        <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100">
                           Generated Diagram Preview
                         </h4>
-                        <p className="text-xs text-blue-700 mt-1">
+                        <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
                           Use scroll wheel to zoom, click and drag to pan (or spacebar + drag)
                         </p>
                         {selectedApproval.generatedContent?.sourceSection && (
-                          <p className="text-xs text-blue-600 dark:text-blue-500 mt-1 font-medium">
+                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 font-medium">
                             📄 From: Section {selectedApproval.generatedContent.sourceSection.id} - {selectedApproval.generatedContent.sourceSection.title}
                           </p>
                         )}
                       </div>
-                      <div className="bg-white" style={{ height: '500px' }}>
+                      <div className="bg-gray-100 dark:bg-gray-950" style={{ height: '500px' }}>
                         {(() => {
                           const diagram = selectedApproval.generatedContent;
 
@@ -766,10 +838,10 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                           console.log('❌ Unknown diagram format, showing fallback');
                           return (
                             <div className="p-4">
-                              <div className="mb-2 text-sm text-red-600">
+                              <div className="mb-2 text-sm text-red-600 dark:text-red-400">
                                 ⚠️ Unknown diagram format. Showing raw data:
                               </div>
-                              <pre className="font-mono text-xs whitespace-pre-wrap">
+                              <pre className="font-mono text-xs whitespace-pre-wrap text-gray-800 dark:text-gray-200">
                                 {JSON.stringify(diagram, null, 2)}
                               </pre>
                             </div>
@@ -779,10 +851,10 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                     </div>
                   ) : (
                     // Text content preview
-                    <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">Generated Content:</h4>
-                      <div className="bg-white border border-gray-200 rounded p-4 max-h-96 overflow-y-auto font-mono text-xs">
-                        <pre className="whitespace-pre-wrap">
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
+                      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Generated Content:</h4>
+                      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-4 max-h-96 overflow-y-auto font-mono text-xs">
+                        <pre className="whitespace-pre-wrap text-gray-800 dark:text-gray-200">
                           {typeof selectedApproval.generatedContent === 'string'
                             ? selectedApproval.generatedContent
                             : JSON.stringify(selectedApproval.generatedContent, null, 2)}
@@ -794,7 +866,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
 
                 {/* Feedback textarea */}
                 <div>
-                  <label htmlFor="feedback" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="feedback" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Feedback (optional for approval, required for rejection)
                   </label>
                   <textarea
@@ -803,7 +875,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                     onChange={(e) => setFeedback(e.target.value)}
                     placeholder="Provide feedback or suggestions for improvement..."
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
                   />
                 </div>
 
@@ -829,7 +901,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                   </button>
                   <button
                     onClick={() => handleDismiss(selectedApproval)}
-                    className="px-4 py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg font-medium transition-colors"
+                    className="px-4 py-2.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-medium transition-colors"
                   >
                     Dismiss
                   </button>
@@ -837,9 +909,9 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
               </div>
               )
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
                 <div className="text-center">
-                  <svg className="w-24 h-24 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-24 h-24 mx-auto mb-4 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   <p className="text-sm font-medium">Select a review from the list</p>
@@ -852,18 +924,18 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
 
         {/* Footer with summary */}
         {pendingApprovals.length > 0 && (
-          <div className="border-t border-gray-200 px-6 py-3 bg-gray-50 flex items-center justify-between">
-            <div className="text-sm text-gray-600">
+          <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-3 bg-gray-50 dark:bg-gray-800 flex items-center justify-between">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
               <span className="font-medium">{pendingApprovals.length}</span> pending review{pendingApprovals.length !== 1 ? 's' : ''}
             </div>
             <div className="flex gap-2 text-xs">
-              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded">
+              <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded">
                 {pendingApprovals.filter(a => a.type === 'document').length} docs
               </span>
-              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
+              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded">
                 {pendingApprovals.filter(a => a.type === 'section').length} sections
               </span>
-              <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
+              <span className="px-2 py-1 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded">
                 {pendingApprovals.filter(a => a.type === 'diagram').length} diagrams
               </span>
             </div>
