@@ -138,11 +138,13 @@ app.post('/api/export-pandoc', upload.fields([
     await fs.copyFile(templateFile.path, templateDocx);
 
     // Build pandoc command
+    // Note: Using 'markdown' (not 'gfm') to support Pandoc fenced divs for custom styles
+    // e.g., ::: {custom-style="Figure Caption"} ... :::
     const pandocArgs = [
       `"${inputMd}"`,
       `--reference-doc="${templateDocx}"`,
       `--output="${outputDocx}"`,
-      '--from=gfm',  // GitHub-flavored markdown
+      '--from=markdown+fenced_divs+pipe_tables+strikeout+task_lists',
       '--standalone'
     ];
 

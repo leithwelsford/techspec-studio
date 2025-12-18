@@ -42,15 +42,15 @@ export function applyPandocCustomStyles(
   console.log('[Pandoc Export] Applying custom styles:', pandocStyles);
   let result = markdown;
 
-  // Transform bullet lists
-  if (pandocStyles.bulletList) {
-    result = wrapBulletLists(result, pandocStyles.bulletList);
-  }
-
-  // Transform numbered lists
-  if (pandocStyles.numberedList) {
-    result = wrapNumberedLists(result, pandocStyles.numberedList);
-  }
+  // NOTE: List wrapping with custom-style divs is DISABLED because:
+  // - Pandoc's fenced div custom-style applies to the container, not individual list items
+  // - Pandoc's --reference-doc should use the template's list styles natively
+  // - List styles are applied through Word's built-in list numbering, not paragraph styles
+  //
+  // If list styling from template isn't working, the template needs:
+  // - "List Bullet" style for bullet lists
+  // - "List Number" style for numbered lists
+  // - These must be the default list styles in the template
 
   // Transform figure captions
   if (pandocStyles.figureCaption) {
@@ -68,9 +68,16 @@ export function applyPandocCustomStyles(
 /**
  * Wrap bullet lists with Pandoc custom-style div
  * Finds contiguous bullet list blocks and wraps them
+ *
+ * IMPORTANT: Pandoc fenced divs require:
+ * - Opening ::: on its own line
+ * - Blank line after opening :::
+ * - Content
+ * - Blank line before closing :::
+ * - Closing ::: on its own line
  */
 function wrapBulletLists(markdown: string, styleName: string): string {
-  // Match contiguous bullet list blocks (lines starting with - or *)
+  // Match contiguous bullet list blocks (lines starting with - or * at beginning of line)
   // Must handle multi-line items and nested lists
   const lines = markdown.split('\n');
   const result: string[] = [];
@@ -79,11 +86,13 @@ function wrapBulletLists(markdown: string, styleName: string): string {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const isBulletLine = /^(\s*)[-*]\s/.test(line);
-    const isContinuation = /^\s{2,}/.test(line) && !line.trim().startsWith('#'); // Indented continuation
-    const isEmptyInList = line.trim() === '' && inList && i + 1 < lines.length && /^(\s*)[-*]\s/.test(lines[i + 1]);
+    // Only match actual list items (line starts with - or * followed by space)
+    // Don't match horizontal rules (---) or emphasis markers
+    const isBulletLine = /^(\s*)[-*]\s+\S/.test(line) && !/^---+\s*$/.test(line);
+    const isContinuation = inList && /^\s{2,}/.test(line) && !line.trim().startsWith('#');
+    const isEmptyInList = line.trim() === '' && inList && i + 1 < lines.length && /^(\s*)[-*]\s+\S/.test(lines[i + 1]);
 
-    if (isBulletLine || (inList && (isContinuation || isEmptyInList))) {
+    if (isBulletLine || isContinuation || isEmptyInList) {
       if (!inList) {
         inList = true;
         listBuffer = [];
@@ -91,7 +100,8 @@ function wrapBulletLists(markdown: string, styleName: string): string {
       listBuffer.push(line);
     } else {
       if (inList) {
-        // End of list - wrap and flush
+        // End of list - wrap and flush with proper blank lines for Pandoc
+        result.push('');
         result.push(`::: {custom-style="${styleName}"}`);
         result.push(...listBuffer);
         result.push(':::');
@@ -105,6 +115,7 @@ function wrapBulletLists(markdown: string, styleName: string): string {
 
   // Handle list at end of document
   if (inList && listBuffer.length > 0) {
+    result.push('');
     result.push(`::: {custom-style="${styleName}"}`);
     result.push(...listBuffer);
     result.push(':::');
@@ -125,11 +136,12 @@ function wrapNumberedLists(markdown: string, styleName: string): string {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const isNumberedLine = /^(\s*)\d+\.\s/.test(line);
-    const isContinuation = /^\s{2,}/.test(line) && !line.trim().startsWith('#');
-    const isEmptyInList = line.trim() === '' && inList && i + 1 < lines.length && /^(\s*)\d+\.\s/.test(lines[i + 1]);
+    // Only match actual numbered list items (line starts with digit(s), period, space, then content)
+    const isNumberedLine = /^(\s*)\d+\.\s+\S/.test(line);
+    const isContinuation = inList && /^\s{2,}/.test(line) && !line.trim().startsWith('#');
+    const isEmptyInList = line.trim() === '' && inList && i + 1 < lines.length && /^(\s*)\d+\.\s+\S/.test(lines[i + 1]);
 
-    if (isNumberedLine || (inList && (isContinuation || isEmptyInList))) {
+    if (isNumberedLine || isContinuation || isEmptyInList) {
       if (!inList) {
         inList = true;
         listBuffer = [];
@@ -137,7 +149,8 @@ function wrapNumberedLists(markdown: string, styleName: string): string {
       listBuffer.push(line);
     } else {
       if (inList) {
-        // End of list - wrap and flush
+        // End of list - wrap and flush with proper blank lines for Pandoc
+        result.push('');
         result.push(`::: {custom-style="${styleName}"}`);
         result.push(...listBuffer);
         result.push(':::');
@@ -151,6 +164,7 @@ function wrapNumberedLists(markdown: string, styleName: string): string {
 
   // Handle list at end of document
   if (inList && listBuffer.length > 0) {
+    result.push('');
     result.push(`::: {custom-style="${styleName}"}`);
     result.push(...listBuffer);
     result.push(':::');
@@ -161,34 +175,65 @@ function wrapNumberedLists(markdown: string, styleName: string): string {
 
 /**
  * Wrap figure captions with Pandoc custom-style
- * Matches patterns like: *Figure 1-1: Caption text*
+ * Matches patterns like:
+ *   - *Figure 1-1: Caption text* (italic)
+ *   - **Figure 1-1: Caption text** (bold)
+ *   - Figure 1-1: Caption text (plain, on its own line)
+ *
+ * IMPORTANT: Pandoc fenced divs require opening/closing on their own lines
+ * with blank lines separating from content.
  */
 function wrapFigureCaptions(markdown: string, styleName: string): string {
+  let result = markdown;
+
   // Match italic figure captions: *Figure X-X: text*
-  // Also match bold: **Figure X-X: text**
-  return markdown.replace(
-    /^(\*{1,2})(Figure\s+[\d\-\.]+:?\s+[^\*]+)\1\s*$/gim,
-    `::: {custom-style="${styleName}"}\n$1$2$1\n:::`
+  result = result.replace(
+    /^(\*)(Figure\s+[\d\-\.]+:?\s+[^\*\n]+)\*\s*$/gim,
+    `\n::: {custom-style="${styleName}"}\n*$2*\n:::\n`
   );
+
+  // Match bold figure captions: **Figure X-X: text**
+  result = result.replace(
+    /^(\*\*)(Figure\s+[\d\-\.]+:?\s+[^\*\n]+)\*\*\s*$/gim,
+    `\n::: {custom-style="${styleName}"}\n**$2**\n:::\n`
+  );
+
+  // Match plain text figure captions on their own line
+  // Must start at beginning of line and not be part of a sentence
+  result = result.replace(
+    /^(Figure\s+[\d\-\.]+:\s+[^\n]+)$/gim,
+    `\n::: {custom-style="${styleName}"}\n$1\n:::\n`
+  );
+
+  return result;
 }
 
 /**
  * Wrap table captions with Pandoc custom-style
- * Matches patterns like: *Table 1-1: Caption text*
- * Also looks for "Table:" prefix before markdown tables
+ * Matches patterns like:
+ *   - *Table 1-1: Caption text* (italic)
+ *   - **Table 1-1: Caption text** (bold)
+ *   - Table 1-1: Caption text (plain, on its own line)
  */
 function wrapTableCaptions(markdown: string, styleName: string): string {
+  let result = markdown;
+
   // Match italic table captions: *Table X-X: text*
-  let result = markdown.replace(
-    /^(\*{1,2})(Table\s+[\d\-\.]+:?\s+[^\*]+)\1\s*$/gim,
-    `::: {custom-style="${styleName}"}\n$1$2$1\n:::`
+  result = result.replace(
+    /^(\*)(Table\s+[\d\-\.]+:?\s+[^\*\n]+)\*\s*$/gim,
+    `\n::: {custom-style="${styleName}"}\n*$2*\n:::\n`
   );
 
-  // Also match plain table captions that precede a markdown table
-  // Pattern: "Table X-X: text" followed by a blank line and then "|"
+  // Match bold table captions: **Table X-X: text**
   result = result.replace(
-    /^(Table\s+[\d\-\.]+:?\s+.+)\n\n(\|)/gim,
-    `::: {custom-style="${styleName}"}\n$1\n:::\n\n$2`
+    /^(\*\*)(Table\s+[\d\-\.]+:?\s+[^\*\n]+)\*\*\s*$/gim,
+    `\n::: {custom-style="${styleName}"}\n**$2**\n:::\n`
+  );
+
+  // Match plain text table captions on their own line
+  result = result.replace(
+    /^(Table\s+[\d\-\.]+:\s+[^\n]+)$/gim,
+    `\n::: {custom-style="${styleName}"}\n$1\n:::\n`
   );
 
   return result;

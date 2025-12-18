@@ -333,31 +333,61 @@ export class TemplateAnalyzer {
   private analyzeCaptionStyles(stylesDoc: Document): CaptionStyleInfo {
     console.log('[Template Analyzer] Analyzing caption styles...');
 
-    // Look for "Caption" style (common in Word templates)
-    // Use robust element finding approach
-    let captionStyle: Element | null = null;
+    // Look for caption styles (common in Word templates)
+    // Priority: "Figure Caption" > "Caption" for figures
+    // Priority: "Table Caption" > "Caption" for tables
+    let genericCaptionStyle: { styleId: string; name: string } | null = null;
+    let figureCaptionStyle: { styleId: string; name: string } | null = null;
+    let tableCaptionStyle: { styleId: string; name: string } | null = null;
+
     const allElements = stylesDoc.getElementsByTagName('*');
     for (let i = 0; i < allElements.length; i++) {
       const el = allElements[i];
       if (el.localName === 'style' || el.tagName === 'w:style') {
         const styleId = el.getAttribute('w:styleId') || el.getAttribute('styleId') || '';
-        if (styleId.toLowerCase() === 'caption') {
-          captionStyle = el;
-          break;
+
+        // Get style name from child element
+        const nameEl = Array.from(el.children).find(c => c.localName === 'name');
+        const name = nameEl?.getAttribute('w:val') || nameEl?.getAttribute('val') || styleId;
+
+        const styleIdLower = styleId.toLowerCase();
+        const nameLower = name.toLowerCase();
+
+        // Check for generic "Caption" style
+        if (styleIdLower === 'caption' || nameLower === 'caption') {
+          genericCaptionStyle = { styleId, name };
+          console.log(`[Template Analyzer] Found generic Caption style: ${styleId} (${name})`);
+        }
+
+        // Check for "Figure Caption" style (e.g., styleId "FigureCaption" or name "Figure Caption")
+        if (/figure\s*caption/i.test(styleId) || /figure\s*caption/i.test(name)) {
+          figureCaptionStyle = { styleId, name };
+          console.log(`[Template Analyzer] Found Figure Caption style: ${styleId} (${name})`);
+        }
+
+        // Check for "Table Caption" style
+        if (/table\s*caption/i.test(styleId) || /table\s*caption/i.test(name)) {
+          tableCaptionStyle = { styleId, name };
+          console.log(`[Template Analyzer] Found Table Caption style: ${styleId} (${name})`);
         }
       }
     }
 
+    // Determine which style to use for figures (prefer specific over generic)
+    const figureStyle = figureCaptionStyle || genericCaptionStyle;
+    // Determine which style to use for tables (prefer specific over generic, or fall back to figure)
+    const tableStyle = tableCaptionStyle || genericCaptionStyle || figureCaptionStyle;
+
     return {
       figureCaption: {
-        exists: !!captionStyle,
-        styleId: captionStyle ? 'Caption' : undefined,
+        exists: !!figureStyle,
+        styleId: figureStyle?.name || figureStyle?.styleId || undefined,  // Use name for Pandoc (has spaces)
         format: 'Figure %s: %s', // Default format
         numbering: 'per-section', // Default
       },
       tableCaption: {
-        exists: !!captionStyle,
-        styleId: captionStyle ? 'Caption' : undefined,
+        exists: !!tableStyle,
+        styleId: tableStyle?.name || tableStyle?.styleId || undefined,  // Use name for Pandoc (has spaces)
         format: 'Table %s: %s',
         numbering: 'per-section',
       },
