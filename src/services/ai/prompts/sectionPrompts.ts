@@ -10,6 +10,7 @@ import type {
   DomainConfig,
   ExtractedExcerpt,
   MarkdownGenerationGuidance,
+  RequirementCounterState,
 } from '../../../types';
 import type { WebSearchResult } from '../webSearch';
 
@@ -98,6 +99,82 @@ Format: \`<!-- TODO: [DIAGRAM TYPE] Description of what the diagram should show 
 \`\`\`
 `;
 
+/**
+ * Requirement numbering guidance - instructs AI to add requirement IDs
+ */
+export const REQUIREMENT_NUMBERING_GUIDANCE = `
+## Requirement Numbering
+
+Every normative statement (using SHALL, SHOULD, or MAY) MUST have a unique requirement ID.
+
+**Format**: \`<SUBSYSTEM>-<FEATURE>-<ARTEFACT>-<NNNNN>\`
+
+**Components** (infer from BRS and section context):
+- **SUBSYSTEM**: Major system block (e.g., PCC, AAA, WLAN, BNG, PCRF, OCS, CORE, EDGE)
+- **FEATURE**: Functional slice (e.g., CAPTIVE, EAPSIM, ACCOUNTING, QOS, CHARGING, AUTH)
+- **ARTEFACT**: Requirement type:
+  - \`REQ\` - General requirement
+  - \`FR\` - Functional requirement
+  - \`NFR\` - Non-functional requirement
+  - \`INT\` - Interface requirement
+  - \`SEC\` - Security requirement
+  - \`CFG\` - Configuration requirement
+  - \`TST\` - Test requirement
+  - \`RISK\` - Risk item
+- **NNNNN**: 5-digit zero-padded counter (00001, 00002, etc.)
+
+**Rules**:
+1. Infer SUBSYSTEM and FEATURE from the BRS document and section context
+2. Keep SUBSYSTEM and FEATURE consistent within related sections
+3. Use appropriate ARTEFACT type based on requirement nature
+4. Start counter at 00001 for each unique SUBSYSTEM-FEATURE-ARTEFACT combination
+5. Format each requirement as: **ID**: The system SHALL/SHOULD/MAY...
+
+**Example**:
+\`\`\`markdown
+**PCC-CAPTIVE-REQ-00001**: The system SHALL authenticate users via RADIUS protocol.
+
+**PCC-CAPTIVE-SEC-00001**: The system SHALL encrypt all authentication credentials using TLS 1.3.
+
+**PCC-CAPTIVE-NFR-00001**: The system SHOULD complete authentication within 3 seconds.
+\`\`\`
+`;
+
+/**
+ * Instruction when requirement numbering is disabled for a section
+ */
+export const REQUIREMENT_NUMBERING_DISABLED = `
+## Requirement Numbering
+
+**IMPORTANT: Do NOT include requirement IDs in this section.**
+Write normative statements (SHALL/SHOULD/MAY) without ID prefixes.
+`;
+
+/**
+ * Build requirement numbering guidance with counter state
+ */
+export function buildRequirementNumberingSection(
+  enabled: boolean,
+  counters?: RequirementCounterState
+): string {
+  if (!enabled) {
+    return REQUIREMENT_NUMBERING_DISABLED;
+  }
+
+  let guidance = REQUIREMENT_NUMBERING_GUIDANCE;
+
+  // Add counter state if we have existing counters
+  if (counters && Object.keys(counters.counters).length > 0) {
+    guidance += `\n**Continue from these counters (use next number in sequence):**\n`;
+    for (const [prefix, count] of Object.entries(counters.counters)) {
+      guidance += `- ${prefix}: last used ${String(count).padStart(5, '0')}, next is ${String(count + 1).padStart(5, '0')}\n`;
+    }
+    guidance += `\n`;
+  }
+
+  return guidance;
+}
+
 // ========== Context Builders ==========
 
 export interface FlexibleSectionContext {
@@ -110,6 +187,8 @@ export interface FlexibleSectionContext {
   markdownGuidance?: MarkdownGenerationGuidance | null;
   sectionNumber?: string;  // e.g., "1", "2.1"
   includeDiagrams?: boolean;  // Whether to include diagram placeholder instructions (default: true)
+  requirementCounters?: RequirementCounterState;  // Counter state from previous sections
+  enableRequirementNumbering?: boolean;  // Whether to include requirement IDs
 }
 
 /**
@@ -461,6 +540,8 @@ export function buildFlexibleSectionPrompt(
     markdownGuidance,
     sectionNumber,
     includeDiagrams,
+    requirementCounters,
+    enableRequirementNumbering,
   } = context;
 
   // Build the heading - determine level from section number depth
@@ -514,7 +595,7 @@ ${section.contentGuidance}
 
   // Add diagram placeholder requirements (only if not explicitly disabled)
   // Default is true - diagrams are included unless user unchecks the option
-  if (includeDiagrams !== false) {
+  if (includeDiagrams !== false && section.includeDiagrams !== false) {
     prompt += DIAGRAM_PLACEHOLDER_REQUIREMENTS;
   } else {
     prompt += `
@@ -525,6 +606,11 @@ The user has explicitly disabled diagram generation for this section.
 Do not use \`{{fig:...}}\` syntax or include any TODO comments for diagrams.
 `;
   }
+
+  // Add requirement numbering guidance
+  // Check both context-level and section-level settings (default to enabled)
+  const enableReqNumbering = enableRequirementNumbering !== false && section.enableRequirementNumbering !== false;
+  prompt += buildRequirementNumberingSection(enableReqNumbering, requirementCounters);
 
   // Add context sections
   prompt += `

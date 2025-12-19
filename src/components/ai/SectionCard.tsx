@@ -334,6 +334,42 @@ export default function SectionCard({
               </div>
             </div>
           )}
+
+          {/* Include Diagrams Toggle */}
+          <div className="mt-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={section.includeDiagrams !== false}
+                onChange={(e) => onUpdate({ includeDiagrams: e.target.checked })}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+              />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                Include diagram placeholders
+              </span>
+              {section.includeDiagrams === false && (
+                <span className="text-xs text-orange-600 dark:text-orange-400">(disabled)</span>
+              )}
+            </label>
+          </div>
+
+          {/* Requirement Numbering Toggle */}
+          <div className="mt-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={section.enableRequirementNumbering !== false}
+                onChange={(e) => onUpdate({ enableRequirementNumbering: e.target.checked })}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+              />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                Number requirements (SHALL/SHOULD/MAY)
+              </span>
+              {section.enableRequirementNumbering === false && (
+                <span className="text-xs text-orange-600 dark:text-orange-400">(disabled)</span>
+              )}
+            </label>
+          </div>
         </div>
       )}
     </div>

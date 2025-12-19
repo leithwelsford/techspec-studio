@@ -274,6 +274,29 @@ export interface BRSRequirement {
   relatedRequirements?: string[]; // IDs of related requirements
 }
 
+// ========== Requirement Numbering ==========
+
+/**
+ * Controlled list of requirement artefact types
+ */
+export type RequirementArtefactType =
+  | 'REQ'   // General requirement
+  | 'FR'    // Functional requirement
+  | 'NFR'   // Non-functional requirement
+  | 'INT'   // Interface requirement
+  | 'CFG'   // Configuration requirement
+  | 'TST'   // Test requirement
+  | 'SEC'   // Security requirement
+  | 'RISK'; // Risk item
+
+/**
+ * Counter state for requirement numbering across sections
+ * Tracks highest ID used per SUBSYSTEM-FEATURE-ARTEFACT combination
+ */
+export interface RequirementCounterState {
+  counters: Record<string, number>;  // e.g., { "PCC-CAPTIVE-REQ": 5, "PCC-CAPTIVE-SEC": 2 }
+}
+
 // ========== Workspace ==========
 
 export type WorkspaceTab = 'document' | 'block-diagrams' | 'sequence-diagrams' | 'flow-diagrams' | 'references' | 'preview' | 'export';
@@ -575,6 +598,8 @@ export interface FlexibleSection {
   contentGuidance?: string;                // User's custom guidance for THIS section
   includeDiagrams?: boolean;               // Whether to include diagram placeholders (default: true)
   order: number;                           // Position in document (for reordering)
+  includeDiagrams?: boolean;               // Whether to include diagram placeholders (default: true)
+  enableRequirementNumbering?: boolean;    // Whether to generate requirement IDs (default: true)
 }
 
 /**
@@ -996,6 +1021,8 @@ export interface ProposedSection {
   order: number;                   // Position in document
   confidence: number;              // 0-1: AI's confidence in this recommendation
   sourceHints?: string[];          // BRS sections/references that informed this
+  includeDiagrams?: boolean;       // Whether to include diagram placeholders (default: true)
+  enableRequirementNumbering?: boolean;  // Whether to generate requirement IDs (default: true)
 }
 
 /**

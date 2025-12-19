@@ -16,6 +16,7 @@ import type {
   StructureProposalResult,
   StructureRefinementResult,
   StructureChange,
+  RequirementCounterState,
 } from '../../types';
 
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
@@ -78,6 +79,28 @@ function hasPlaceholderText(content: string): boolean {
   ];
 
   return placeholderPatterns.some(pattern => pattern.test(content));
+}
+
+/**
+ * Parse generated content to extract requirement IDs and update counters
+ * Matches pattern: **SUBSYSTEM-FEATURE-ARTEFACT-NNNNN**
+ */
+function updateRequirementCounters(
+  current: RequirementCounterState,
+  content: string
+): RequirementCounterState {
+  // Match pattern: **SUBSYSTEM-FEATURE-ARTEFACT-NNNNN** where ARTEFACT is one of the known types
+  const pattern = /\*\*([A-Z0-9]+-[A-Z0-9]+-(?:REQ|FR|NFR|INT|CFG|TST|SEC|RISK))-(\d{5})\*\*/g;
+  const updated = { ...current.counters };
+
+  let match;
+  while ((match = pattern.exec(content)) !== null) {
+    const prefix = match[1];  // e.g., "PCC-CAPTIVE-REQ"
+    const num = parseInt(match[2], 10);
+    updated[prefix] = Math.max(updated[prefix] || 0, num);
+  }
+
+  return { counters: updated };
 }
 
 /**
@@ -2777,6 +2800,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     let totalTokens = 0;
     let totalCost = 0;
     let previousContent = '';
+    let requirementCounters: RequirementCounterState = { counters: {} };
 
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i];
@@ -2795,6 +2819,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
           contentGuidance: section.contentGuidance,
           includeDiagrams: section.includeDiagrams,
           order: section.order,
+          enableRequirementNumbering: section.enableRequirementNumbering,
         },
         {
           brsContent: brsContent.slice(0, 8000), // Truncate BRS for context
@@ -2803,6 +2828,8 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
           userGuidance: combinedGuidance,
           sectionNumber: String(section.order),
           includeDiagrams: section.includeDiagrams, // Pass through diagram preference
+          enableRequirementNumbering: section.enableRequirementNumbering,
+          requirementCounters,
         }
       );
 
@@ -2889,6 +2916,9 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
         previousContent += '\n\n' + finalContent;
         totalTokens += result.tokens?.total || 0;
         totalCost += result.cost || 0;
+
+        // Update requirement counters from generated content
+        requirementCounters = updateRequirementCounters(requirementCounters, finalContent);
 
         console.log(`  ✓ Generated section ${i + 1}/${sections.length}: ${section.title}${wasTruncated ? ' (TRUNCATED)' : ''}`);
       } catch (error) {
