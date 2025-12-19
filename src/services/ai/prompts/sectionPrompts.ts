@@ -162,6 +162,19 @@ The authentication flow SHALL proceed as follows:
 2. **PCC-AUTH-REQ-00002**: The system SHALL validate the subscriber identity.
 3. **PCC-AUTH-REQ-00003**: The system SHALL apply the appropriate policy profile.
 \`\`\`
+
+Nested lists (each level with normative keywords gets an ID):
+\`\`\`markdown
+**AAA-RADIUS-REQ-00001**: The AAA system SHALL support RADIUS authentication with the following capabilities:
+
+- **AAA-RADIUS-REQ-00002**: The system SHALL support EAP-SIM authentication:
+  - **AAA-RADIUS-REQ-00003**: The system SHALL validate IMSI against the HLR/HSS.
+  - **AAA-RADIUS-REQ-00004**: The system SHALL support triplet and quintuplet vectors.
+  - **AAA-RADIUS-CFG-00001**: The operator MAY configure vector pre-fetching.
+- **AAA-RADIUS-REQ-00005**: The system SHALL support EAP-AKA authentication:
+  - **AAA-RADIUS-REQ-00006**: The system MUST validate AUTN before generating RES.
+  - **AAA-RADIUS-SEC-00001**: The system SHALL reject replayed authentication vectors.
+\`\`\`
 `;
 
 /**
