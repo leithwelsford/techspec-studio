@@ -105,7 +105,12 @@ Format: \`<!-- TODO: [DIAGRAM TYPE] Description of what the diagram should show 
 export const REQUIREMENT_NUMBERING_GUIDANCE = `
 ## Requirement Numbering
 
-Every normative statement (using SHALL, SHOULD, or MAY) MUST have a unique requirement ID.
+Every normative statement MUST have a unique requirement ID.
+
+**Normative keywords** (per RFC 2119):
+- **Absolute requirements**: SHALL, SHALL NOT, MUST, MUST NOT, REQUIRED
+- **Recommendations**: SHOULD, SHOULD NOT, RECOMMENDED
+- **Optional**: MAY, OPTIONAL
 
 **Format**: \`<SUBSYSTEM>-<FEATURE>-<ARTEFACT>-<NNNNN>\`
 
@@ -128,15 +133,17 @@ Every normative statement (using SHALL, SHOULD, or MAY) MUST have a unique requi
 2. Keep SUBSYSTEM and FEATURE consistent within related sections
 3. Use appropriate ARTEFACT type based on requirement nature
 4. Start counter at 00001 for each unique SUBSYSTEM-FEATURE-ARTEFACT combination
-5. Format each requirement as: **ID**: The system SHALL/SHOULD/MAY...
+5. Format each requirement as: **ID**: The system SHALL/MUST/SHOULD/MAY...
 
 **Example**:
 \`\`\`markdown
 **PCC-CAPTIVE-REQ-00001**: The system SHALL authenticate users via RADIUS protocol.
 
-**PCC-CAPTIVE-SEC-00001**: The system SHALL encrypt all authentication credentials using TLS 1.3.
+**PCC-CAPTIVE-SEC-00001**: The system MUST encrypt all authentication credentials using TLS 1.3.
 
 **PCC-CAPTIVE-NFR-00001**: The system SHOULD complete authentication within 3 seconds.
+
+**PCC-CAPTIVE-CFG-00001**: The timeout value MAY be configured by the operator.
 \`\`\`
 `;
 
@@ -147,7 +154,7 @@ export const REQUIREMENT_NUMBERING_DISABLED = `
 ## Requirement Numbering
 
 **IMPORTANT: Do NOT include requirement IDs in this section.**
-Write normative statements (SHALL/SHOULD/MAY) without ID prefixes.
+Write normative statements (SHALL, MUST, SHOULD, MAY, etc.) without ID prefixes.
 `;
 
 /**
