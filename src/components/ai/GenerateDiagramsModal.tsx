@@ -34,6 +34,7 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
   const [progress, setProgress] = useState({ current: 0, total: 1, diagram: '' });
   const [error, setError] = useState<string | null>(null);
   const [requireApproval, setRequireApproval] = useState(true); // Default: require approval
+  const [mandatoryOnly, setMandatoryOnly] = useState(true); // Default: only generate referenced diagrams
   const [userGuidance, setUserGuidance] = useState('');
   const [showSourceText, setShowSourceText] = useState(false);
   const [generationResults, setGenerationResults] = useState<{
@@ -41,6 +42,12 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
     sequenceDiagrams: number;
     errors: string[];
     warnings: string[];
+    suggestedSections?: Array<{
+      sectionId: string;
+      sectionTitle: string;
+      diagramType: string;
+      reasoning: string;
+    }>;
   } | null>(null);
   const [modelWarning, setModelWarning] = useState<string | null>(null);
 
@@ -107,7 +114,8 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
         (current, total, diagramTitle) => {
           setProgress({ current, total, diagram: diagramTitle });
         },
-        userGuidance.trim() || undefined // Pass user guidance if provided
+        userGuidance.trim() || undefined, // Pass user guidance if provided
+        { mandatoryOnly } // Only generate diagrams with {{fig:...}} placeholders if mandatoryOnly is true
       );
 
       if (requireApproval) {
@@ -156,7 +164,8 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
         blockDiagrams: result.blockDiagrams.length,
         sequenceDiagrams: result.sequenceDiagrams.length,
         errors: result.errors,
-        warnings: result.warnings
+        warnings: result.warnings,
+        suggestedSections: result.suggestedSections
       });
 
       // If successful and no errors, auto-close after 2 seconds
@@ -250,6 +259,30 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
             </div>
           )}
 
+          {/* Generation Mode Option */}
+          {!generationResults && (
+            <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <input
+                id="mandatory-only"
+                type="checkbox"
+                checked={mandatoryOnly}
+                onChange={(e) => setMandatoryOnly(e.target.checked)}
+                disabled={isGenerating}
+                className="mt-0.5"
+              />
+              <div>
+                <label htmlFor="mandatory-only" className="text-sm font-medium text-blue-900 cursor-pointer">
+                  Only generate referenced diagrams
+                </label>
+                <p className="text-xs text-blue-700 mt-1">
+                  {mandatoryOnly
+                    ? 'Only diagrams with {{fig:...}} placeholders in the specification will be generated. Suggested diagrams will be listed for your review.'
+                    : 'All diagrams (referenced + AI-suggested) will be generated automatically.'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Approval Option */}
           {!generationResults && (
             <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
@@ -276,11 +309,26 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
 
           {/* Generation Results */}
           {generationResults && (
-            <div className="bg-green-50 border border-green-200 rounded-md p-4">
-              <h3 className="text-sm font-medium text-green-900 mb-2">Generation Complete!</h3>
-              <div className="text-sm text-green-800 space-y-1">
+            <div className={`${generationResults.errors.length > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'} border rounded-md p-4`}>
+              <h3 className={`text-sm font-medium ${generationResults.errors.length > 0 ? 'text-yellow-900' : 'text-green-900'} mb-2`}>
+                Generation Complete!
+              </h3>
+              <div className={`text-sm ${generationResults.errors.length > 0 ? 'text-yellow-800' : 'text-green-800'} space-y-1`}>
                 <p>✓ <strong>{generationResults.blockDiagrams}</strong> block diagram(s) created</p>
                 <p>✓ <strong>{generationResults.sequenceDiagrams}</strong> sequence diagram(s) created</p>
+                {generationResults.errors.length > 0 && (
+                  <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                    <p className="font-medium text-red-900">Errors ({generationResults.errors.length}):</p>
+                    <ul className="list-disc list-inside max-h-32 overflow-y-auto">
+                      {generationResults.errors.slice(0, 10).map((err, idx) => (
+                        <li key={idx} className="text-xs text-red-800">{err}</li>
+                      ))}
+                      {generationResults.errors.length > 10 && (
+                        <li className="text-xs text-red-700 font-medium">... and {generationResults.errors.length - 10} more errors (check browser console)</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
                 {generationResults.warnings.length > 0 && (
                   <div className="mt-2">
                     <p className="font-medium">Warnings:</p>
@@ -292,9 +340,37 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
                   </div>
                 )}
               </div>
-              <p className="mt-2 text-xs text-green-700">
-                Closing automatically in 2 seconds...
+              {generationResults.errors.length === 0 && (
+                <p className="mt-2 text-xs text-green-700">
+                  Closing automatically in 2 seconds...
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Suggested Sections (when mandatoryOnly is true) */}
+          {generationResults && generationResults.suggestedSections && generationResults.suggestedSections.length > 0 && (
+            <div className="bg-purple-50 border border-purple-200 rounded-md p-4">
+              <h3 className="text-sm font-medium text-purple-900 mb-2">
+                📋 Suggested Diagrams ({generationResults.suggestedSections.length})
+              </h3>
+              <p className="text-xs text-purple-700 mb-3">
+                These sections may benefit from diagrams. To generate, add a <code className="bg-purple-100 px-1 rounded">{'{{fig:diagram-id}}'}</code> placeholder to the section.
               </p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {generationResults.suggestedSections.map((section, idx) => (
+                  <div key={idx} className="text-xs bg-white border border-purple-100 rounded p-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-purple-900">{section.sectionId}</span>
+                      <span className="text-purple-700">{section.sectionTitle}</span>
+                      <span className="ml-auto px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs">
+                        {section.diagramType}
+                      </span>
+                    </div>
+                    <p className="text-gray-600 mt-1">{section.reasoning}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

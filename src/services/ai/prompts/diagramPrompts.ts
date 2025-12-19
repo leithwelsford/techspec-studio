@@ -1,9 +1,11 @@
 /**
  * Diagram Generation Prompts
  * Prompts for generating various types of technical diagrams
+ *
+ * Uses cached Mermaid documentation for up-to-date syntax references.
  */
 
-import type { BlockDiagram, MermaidDiagram } from '../../../types';
+import { getCompactSyntaxReference, getMermaidDocs } from '../mermaidDocsCache';
 
 /**
  * Helper function to append user guidance to prompts
@@ -174,6 +176,10 @@ export function buildSequenceDiagramPrompt(
   figureNumber?: string,
   userGuidance?: string
 ): string {
+  // Get current Mermaid syntax docs (from cache or embedded)
+  const syntaxDocs = getCompactSyntaxReference('sequence');
+  const docsVersion = getMermaidDocs().version;
+
   const basePrompt = `Generate a Mermaid sequence diagram based on the following description:
 
 Description: ${description}
@@ -183,40 +189,26 @@ ${figureNumber ? `Figure Number: ${figureNumber}` : ''}
 
 You must output valid Mermaid syntax for a sequence diagram.
 
-Mermaid Sequence Diagram Syntax Guide:
-- Participants: participant Name as Alias
-- Messages:
-  - Solid arrow: A->>B: Message
-  - Dotted arrow: A-->>B: Response
-  - Open arrow: A-)B: Async message
-- Activation: activate A / deactivate A
-- Notes: Note right of A: Text or Note over A,B: Text
-- Loops: loop Text ... end
-- Alternatives: alt Condition ... else ... end
-- Optional: opt Condition ... end
-- Parallel: par ... and ... end
-- Grouping: rect rgb(200,220,240) ... end
+=== MERMAID SEQUENCE DIAGRAM SYNTAX (v${docsVersion}) ===
+${syntaxDocs}
+=== END SYNTAX REFERENCE ===
 
-Example:
+Example (using shorthand +/- for activation - PREFERRED):
 \`\`\`mermaid
 sequenceDiagram
-    participant UE as UE/CPE
-    participant PGW as P-GW
+    participant UE as UE_CPE
+    participant PGW as P_GW
     participant PCRF
     participant TDF
 
     Note over UE,TDF: IP-CAN Session Establishment
 
-    UE->>PGW: Attach Request
-    activate PGW
-    PGW->>PCRF: CCR-Initial (Gx)
-    activate PCRF
-    PCRF-->>PGW: CCA-Initial (PCC Rules)
-    deactivate PCRF
-    PGW->>UE: Attach Accept
-    deactivate PGW
+    UE->>+PGW: Attach Request
+    PGW->>+PCRF: CCR-Initial (Gx)
+    PCRF-->>-PGW: CCA-Initial (PCC Rules)
+    PGW-->>-UE: Attach Accept
 
-    Note right of PGW: Session established with\\ndefault QoS profile
+    Note right of PGW: Session established
 
     alt Application Traffic Detection
         UE->>PGW: Application Traffic
@@ -225,6 +217,14 @@ sequenceDiagram
         PCRF->>PGW: Updated PCC Rules (Gx)
     end
 \`\`\`
+
+**⚠️ OUTPUT FORMAT - READ CAREFULLY:**
+- You MUST output Mermaid sequence diagram syntax (text-based diagram language)
+- Start your output with \`\`\`mermaid and end with \`\`\`
+- The first line inside the code block MUST be: sequenceDiagram
+- DO NOT output JSON. This is NOT a block diagram request.
+- DO NOT output a node/edge structure. Use Mermaid participant/arrow syntax.
+- If you're unsure, look at the example above - it shows the exact format expected.
 
 Guidelines:
 1. Identify all participants from the description
@@ -243,15 +243,44 @@ Guidelines:
 12. If you need to add multiple pieces of information, use commas or separate them with dashes.
 
 **CRITICAL VALIDATION RULES (prevent syntax errors):**
-13. **Participant names**: Use only alphanumeric characters, underscores, and hyphens. NO special characters like (, ), /, etc.
-    - CORRECT: P_GW, TDF_PCEF, Mobile_UE, CPE, PCRF
-    - WRONG: P-GW (PCEF), TDF/PCEF, UE/CPE
-14. **Activation**: Each participant can only be activated ONCE at a time. Always deactivate before reactivating.
-    - CORRECT: activate A ... deactivate A ... activate A again later
-    - WRONG: activate A ... activate A (ERROR: already active!)
-15. **Unique activations**: If a participant sends multiple messages, use ONE activation block around all messages.
-16. **Participant aliases**: If you need to show "P-GW (PCEF)", declare it as: participant PGW as P-GW/PCEF
+13. **Participant names**: Use only alphanumeric characters and underscores. NO special characters like (, ), /, -, etc.
+    - CORRECT: P_GW, TDF_PCEF, Mobile_UE, CPE, PCRF, AAA_Server
+    - WRONG: P-GW (PCEF), TDF/PCEF, UE/CPE, AAA-Server
+
+14. **AVOID activate/deactivate** - These cause the most common Mermaid errors!
+    - For simple diagrams: DO NOT use activate/deactivate at all. They are optional.
+    - The diagram will render correctly without them.
+    - Only use them if explicitly needed for showing processing time.
+
+15. **If you MUST use activation** (only when absolutely necessary):
+    - EVERY activate MUST have a matching deactivate for the SAME participant
+    - A participant can only be activated ONCE at a time
+    - NEVER call deactivate on a participant that wasn't activated
+    - NEVER call activate on a participant that's already active
+    - WRONG: "activate AAA" ... (no deactivate) ... "deactivate AAA" ← ERROR: inactive!
+    - WRONG: "activate A" ... "activate A" ← ERROR: already active!
+    - CORRECT: "activate A" ... "deactivate A" ... "activate A" ... "deactivate A"
+
+16. **Simpler alternative - shorthand notation** (PREFERRED over activate/deactivate):
+    - Use + and - after arrows: "A->>+B: Request" activates B, "B-->>-A: Response" deactivates B
+    - This is cleaner and less error-prone than separate activate/deactivate statements
+
+17. **Participant aliases**: If you need to show "P-GW (PCEF)", declare it as: participant PGW as P-GW/PCEF
     - Then use PGW in all messages, NOT "P-GW (PCEF)"
+
+18. **For complex diagrams with many participants**: Keep it simple!
+    - Skip activation boxes entirely - they add visual clutter and cause errors
+    - Focus on the message flow, which is the important part
+    - Use notes and rect blocks for visual grouping instead
+
+19. **KEEP CONTENT CONCISE** - Mermaid has text size limits!
+    - Message labels: Maximum 50-60 characters. Use abbreviations.
+    - Notes: Keep brief (1-2 short sentences max)
+    - Limit to 10-12 participants per diagram
+    - Limit to 20-25 messages per diagram
+    - If content is complex, suggest splitting into multiple diagrams
+    - WRONG: "Mobile_UE->>Access_Network: DHCP_RA_with_CAPPORT_URI_RFC8910_when_CAPTIVE_status_detected"
+    - CORRECT: "Mobile_UE->>Access_Network: DHCP RA (CAPPORT URI)"
 
 Now generate the Mermaid sequence diagram code for the description provided. Output the mermaid code block wrapped in \`\`\`mermaid ... \`\`\`.`;
 
@@ -259,7 +288,110 @@ Now generate the Mermaid sequence diagram code for the description provided. Out
 }
 
 /**
+ * Generate any Mermaid diagram - AI decides the appropriate type based on content
+ * This unified prompt includes syntax for all Mermaid diagram types and lets the AI
+ * choose the most appropriate one based on the description and TODO comments.
+ */
+export function buildUnifiedMermaidPrompt(
+  description: string,
+  title: string,
+  figureNumber?: string,
+  userGuidance?: string
+): string {
+  const docs = getMermaidDocs();
+  const docsVersion = docs.version;
+
+  const basePrompt = `Generate a Mermaid diagram based on the following description.
+Choose the most appropriate diagram type based on the content:
+
+**Flows & Behavior:**
+- **Sequence Diagram**: Message flows, call sequences, protocol interactions, signaling
+- **Flowchart**: Algorithms, decision trees, process flows, conditional logic
+- **State Diagram**: State machines, transitions, lifecycle states
+- **User Journey**: User experience flows, satisfaction scores, touchpoints
+- **ZenUML**: Alternative sequence diagrams with method-call syntax
+
+**Structure & Relationships:**
+- **Class Diagram**: OOP structures, class relationships, inheritance hierarchies
+- **ER Diagram**: Entity relationships, data models, database schemas
+- **C4 Diagram**: Software architecture (Context, Container, Component levels)
+- **Architecture Diagram**: System architecture with services, databases, queues
+- **Requirement Diagram**: Requirements traceability, SysML requirements
+
+**Hierarchies & Concepts:**
+- **Mindmap**: Concept hierarchies, feature breakdowns, brainstorming structures
+- **Treemap**: Hierarchical proportional areas
+
+**Planning & Time:**
+- **Gantt Chart**: Project timelines, phases, schedules, dependencies
+- **Timeline**: Sequential events, milestones, historical evolution
+- **Kanban**: Task boards, sprint boards, workflow stages
+
+**Data Visualization:**
+- **Pie Chart**: Proportional data, percentage distribution
+- **Quadrant Chart**: 2D comparisons, priority matrices (like BCG matrix)
+- **XY Chart**: Line charts, bar charts, scatter plots
+- **Sankey Diagram**: Flow distributions, energy/resource flows
+- **Radar Chart**: Spider charts, competency comparisons
+
+**Development & Version Control:**
+- **Git Graph**: Commit history, branches, merges
+
+**Network & Protocol:**
+- **Packet Diagram**: Network packet structures, protocol headers
+
+Description: ${description}
+Title: ${title}
+${figureNumber ? `Figure Number: ${figureNumber}` : ''}
+
+Read the description and any TODO comments carefully to determine the best diagram type.
+
+=== MERMAID SEQUENCE DIAGRAM SYNTAX (v${docsVersion}) ===
+${getCompactSyntaxReference('sequence')}
+
+=== MERMAID FLOWCHART SYNTAX (v${docsVersion}) ===
+${getCompactSyntaxReference('flow')}
+
+=== MERMAID STATE DIAGRAM SYNTAX (v${docsVersion}) ===
+${getCompactSyntaxReference('state')}
+=== END SYNTAX REFERENCES ===
+
+**OUTPUT REQUIREMENTS:**
+1. Output valid Mermaid syntax wrapped in \`\`\`mermaid ... \`\`\`
+2. First line MUST be the diagram type declaration:
+   - \`sequenceDiagram\` for sequence diagrams
+   - \`flowchart TD\` (or LR) for flowcharts
+   - \`stateDiagram-v2\` for state diagrams
+   - \`classDiagram\` for class diagrams
+   - \`erDiagram\` for ER diagrams
+   - \`gantt\` for Gantt charts
+   - \`pie\` for pie charts
+   - \`mindmap\` for mindmaps
+   - \`timeline\` for timelines
+   - \`quadrantChart\` for quadrant charts
+   - \`C4Context\` / \`C4Container\` / \`C4Component\` for C4 diagrams
+   - \`xychart-beta\` for XY charts
+   - \`sankey-beta\` for Sankey diagrams
+   - \`journey\` for User Journey diagrams
+   - \`gitGraph\` for Git graphs
+   - \`requirementDiagram\` for requirement diagrams
+   - \`zenuml\` for ZenUML sequence diagrams
+   - \`kanban\` for Kanban boards
+   - \`packet-beta\` for packet diagrams
+   - \`architecture-beta\` for architecture diagrams
+   - \`radar-beta\` for radar charts
+   - \`treemap-beta\` for treemaps
+3. Keep labels concise - no newlines in labels
+4. Use valid identifiers (alphanumeric and underscores only)
+
+Now generate the most appropriate Mermaid diagram for the description provided.`;
+
+  return appendUserGuidance(basePrompt, userGuidance);
+}
+
+/**
  * Generate flow diagram / state machine (Mermaid syntax)
+ * @deprecated Use buildUnifiedMermaidPrompt instead - it lets AI decide the type
  */
 export function buildFlowDiagramPrompt(
   description: string,
@@ -271,6 +403,10 @@ export function buildFlowDiagramPrompt(
     return buildStateDiagramPrompt(description, title, figureNumber);
   }
 
+  // Get current Mermaid syntax docs (from cache or embedded)
+  const syntaxDocs = getCompactSyntaxReference('flow');
+  const docsVersion = getMermaidDocs().version;
+
   return `Generate a Mermaid flowchart based on the following description:
 
 Description: ${description}
@@ -279,37 +415,21 @@ ${figureNumber ? `Figure Number: ${figureNumber}` : ''}
 
 You must output valid Mermaid flowchart syntax.
 
-Mermaid Flowchart Syntax Guide:
-- Direction: flowchart TD (top-down) or LR (left-right)
-- Nodes:
-  - Rectangle: id[Text]
-  - Rounded: id(Text)
-  - Stadium: id([Text])
-  - Cylinder: id[(Database)]
-  - Circle: id((Text))
-  - Asymmetric: id>Text]
-  - Rhombus: id{Decision?}
-  - Hexagon: id{{Text}}
-  - Trapezoid: id[/Text/]
-- Arrows:
-  - Simple: A --> B
-  - With text: A -->|label| B
-  - Dotted: A -.->|label| B
-  - Thick: A ==>|label| B
-- Subgraphs: subgraph Title ... end
-- Styling: style id fill:#f9f,stroke:#333
+=== MERMAID FLOWCHART SYNTAX (v${docsVersion}) ===
+${syntaxDocs}
+=== END SYNTAX REFERENCE ===
 
 Example:
 \`\`\`mermaid
 flowchart TD
     Start([Start]) --> Init[Initialize Connection]
-    Init --> Auth{Authentication\\nSuccessful?}
+    Init --> Auth{Auth OK?}
     Auth -->|Yes| Setup[Setup Session]
-    Auth -->|No| Retry{Retry\\nCount < 3?}
+    Auth -->|No| Retry{Retry < 3?}
     Retry -->|Yes| Init
-    Retry -->|No| Fail([Authentication Failed])
+    Retry -->|No| Fail([Auth Failed])
     Setup --> Monitor[Monitor Connection]
-    Monitor --> Check{Connection\\nHealthy?}
+    Monitor --> Check{Healthy?}
     Check -->|Yes| Monitor
     Check -->|No| Reconnect[Attempt Reconnect]
     Reconnect --> Check
@@ -318,6 +438,14 @@ flowchart TD
     style Fail fill:#FFB6C6
     style Setup fill:#87CEEB
 \`\`\`
+
+**CRITICAL SYNTAX RULES (prevent errors):**
+11. **NO newlines in node labels** - Keep all labels on a single line
+    - WRONG: \`id{Multi\\nLine}\` or \`id{Multi<br>Line}\`
+    - CORRECT: \`id{Short Label}\` or use abbreviations
+12. **Keep labels concise** - Maximum 30-40 characters per label
+13. **Quote special characters** - Use \`id["Label with (special) chars"]\` for complex text
+14. **Valid node IDs** - Use only alphanumeric and underscores: \`node_id\`, \`NodeId\`, \`node1\`
 
 Guidelines:
 1. Choose appropriate direction (TD for processes, LR for workflows)
@@ -345,6 +473,10 @@ function buildStateDiagramPrompt(
   title: string,
   figureNumber?: string
 ): string {
+  // Get current Mermaid syntax docs (from cache or embedded)
+  const syntaxDocs = getCompactSyntaxReference('state');
+  const docsVersion = getMermaidDocs().version;
+
   return `Generate a Mermaid state diagram based on the following description:
 
 Description: ${description}
@@ -353,16 +485,9 @@ ${figureNumber ? `Figure Number: ${figureNumber}` : ''}
 
 You must output valid Mermaid state diagram syntax.
 
-Mermaid State Diagram Syntax Guide:
-- Basic state: state "State Name" as StateName
-- Transitions: StateA --> StateB : Event/Condition
-- Start: [*] --> FirstState
-- End: LastState --> [*]
-- Composite states: state CompositeState { ... }
-- Choice: state choice <<choice>>
-- Fork/Join: state fork <<fork>> or <<join>>
-- Concurrent states: state Concurrent { --}
-- Notes: note right of State : Text
+=== MERMAID STATE DIAGRAM SYNTAX (v${docsVersion}) ===
+${syntaxDocs}
+=== END SYNTAX REFERENCE ===
 
 Example:
 \`\`\`mermaid

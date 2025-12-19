@@ -24,16 +24,77 @@ export const DIAGRAM_PLACEHOLDER_REQUIREMENTS = `
 When visual aids would help explain concepts, use figure placeholders:
 
 ✅ USE: \`{{fig:descriptive-id}}\` syntax
-- Block diagrams: \`{{fig:system-architecture}}\`, \`{{fig:network-topology}}\`
-- Sequence diagrams: \`{{fig:authentication-flow}}\`, \`{{fig:message-exchange}}\`
-- State diagrams: \`{{fig:session-state-machine}}\`, \`{{fig:lifecycle-states}}\`
 
 ❌ NEVER use ASCII art or text-based diagrams
 
-Include a TODO comment near each placeholder describing what the diagram should show:
-\`\`\`
+**REQUIRED**: Include a TODO comment with EXPLICIT DIAGRAM TYPE after each placeholder:
+
+Format: \`<!-- TODO: [DIAGRAM TYPE] Description of what the diagram should show -->\`
+
+### Available Diagram Types (use exact bracketed text):
+
+**Architecture & Structure:**
+- \`[BLOCK DIAGRAM]\` - Architecture, components, interfaces, network topology (custom JSON format)
+- \`[CLASS DIAGRAM]\` - OOP class structures, relationships, inheritance
+- \`[C4 DIAGRAM]\` - Software architecture (Context, Container, Component levels)
+- \`[ARCHITECTURE DIAGRAM]\` - System architecture with services, databases, queues
+
+**Flows & Sequences:**
+- \`[SEQUENCE DIAGRAM]\` - Call flows, message exchanges, protocol interactions, signaling
+- \`[FLOW DIAGRAM]\` - Algorithms, decision trees, conditional logic, process flows
+- \`[STATE DIAGRAM]\` - State machines, state transitions, modes, lifecycle states
+- \`[USER JOURNEY]\` - User experience flows, satisfaction scores, touchpoints
+- \`[ZENUML]\` - Alternative sequence diagrams with method-call syntax
+
+**Data & Relationships:**
+- \`[ER DIAGRAM]\` - Entity relationships, data models, database schemas
+- \`[REQUIREMENT DIAGRAM]\` - Requirements traceability, SysML requirements
+
+**Planning & Timelines:**
+- \`[GANTT CHART]\` - Project timelines, implementation phases, schedules
+- \`[TIMELINE]\` - Sequential events, milestones, evolution
+- \`[KANBAN]\` - Task boards, sprint boards, workflow stages
+
+**Analysis & Visualization:**
+- \`[PIE CHART]\` - Proportional data, distribution, percentages
+- \`[QUADRANT CHART]\` - Priority matrices, risk assessment, 2D comparisons
+- \`[XY CHART]\` - Line charts, bar charts, scatter plots
+- \`[SANKEY DIAGRAM]\` - Flow distributions, energy/resource flows
+- \`[RADAR CHART]\` - Spider charts, competency comparisons
+- \`[TREEMAP]\` - Hierarchical proportional areas
+
+**Hierarchies & Concepts:**
+- \`[MINDMAP]\` - Concept hierarchies, feature breakdowns, brainstorming
+
+**Development & Version Control:**
+- \`[GIT GRAPH]\` - Commit history, branches, merges
+
+**Network & Protocol:**
+- \`[PACKET DIAGRAM]\` - Network packet structures, protocol headers
+
+### Examples:
+
+\`\`\`markdown
 {{fig:system-architecture}}
-<!-- TODO: Show main components (A, B, C) and their interfaces (X, Y, Z) -->
+<!-- TODO: [BLOCK DIAGRAM] Show main components (AMF, SMF, UPF) and N-interfaces -->
+
+{{fig:user-session-entity}}
+<!-- TODO: [ER DIAGRAM] Show User, Session, and Subscription entities with relationships -->
+
+{{fig:implementation-timeline}}
+<!-- TODO: [GANTT CHART] Show Phase 1 (months 1-3), Phase 2 (months 4-6), Phase 3 (months 7-9) -->
+
+{{fig:feature-hierarchy}}
+<!-- TODO: [MINDMAP] Show main features branching into sub-features and capabilities -->
+
+{{fig:risk-matrix}}
+<!-- TODO: [QUADRANT CHART] Plot risks by likelihood (x) vs impact (y) -->
+
+{{fig:customer-experience}}
+<!-- TODO: [USER JOURNEY] Show onboarding flow with satisfaction scores at each step -->
+
+{{fig:traffic-distribution}}
+<!-- TODO: [SANKEY DIAGRAM] Show traffic flow from ingress to different service endpoints -->
 \`\`\`
 `;
 
@@ -48,6 +109,7 @@ export interface FlexibleSectionContext {
   webSearchResults?: WebSearchResult[];
   markdownGuidance?: MarkdownGenerationGuidance | null;
   sectionNumber?: string;  // e.g., "1", "2.1"
+  includeDiagrams?: boolean;  // Whether to include diagram placeholder instructions (default: true)
 }
 
 /**
@@ -222,6 +284,12 @@ function buildFormattingInstructions(guidance?: MarkdownGenerationGuidance | nul
 **Numbering**: Decimal style (1, 1.1, 1.1.1) - include numbers in your headings
 
 **Figures**: Use \`{{fig:diagram-id}}\` syntax. Caption placement: below the figure.
+- **IMPORTANT**: ALWAYS add a caption line after each figure reference:
+\`\`\`
+{{fig:diagram-id}}
+
+*Figure X-Y: Descriptive caption explaining the diagram*
+\`\`\`
 
 **Tables**: Use standard markdown tables. Caption placement: above the table.
 
@@ -260,6 +328,13 @@ function buildFormattingInstructions(guidance?: MarkdownGenerationGuidance | nul
 - Pattern: ${guidance.figureFormat.numberingPattern}
 - Caption placement: ${guidance.figureFormat.captionPlacement}
 - Syntax: Use \`${guidance.figureFormat.syntax}\` for figure references
+- **IMPORTANT**: ALWAYS add a caption line after each figure reference:
+
+\`\`\`markdown
+{{fig:diagram-id}}
+
+*Figure X-Y: Descriptive caption explaining the diagram*
+\`\`\`
 
 `;
   }
@@ -385,6 +460,7 @@ export function buildFlexibleSectionPrompt(
     webSearchResults,
     markdownGuidance,
     sectionNumber,
+    includeDiagrams,
   } = context;
 
   // Build the heading - determine level from section number depth
@@ -436,8 +512,19 @@ ${section.contentGuidance}
 `;
   }
 
-  // Add diagram placeholder requirements
-  prompt += DIAGRAM_PLACEHOLDER_REQUIREMENTS;
+  // Add diagram placeholder requirements (only if not explicitly disabled)
+  // Default is true - diagrams are included unless user unchecks the option
+  if (includeDiagrams !== false) {
+    prompt += DIAGRAM_PLACEHOLDER_REQUIREMENTS;
+  } else {
+    prompt += `
+## Diagram Placeholders
+
+**IMPORTANT: Do NOT include any diagram placeholders in this section.**
+The user has explicitly disabled diagram generation for this section.
+Do not use \`{{fig:...}}\` syntax or include any TODO comments for diagrams.
+`;
+  }
 
   // Add context sections
   prompt += `

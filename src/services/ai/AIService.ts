@@ -13,7 +13,6 @@ import type {
   AIMessageMultimodal,
   ReferenceDocument,
   ProposedStructure,
-  DomainInference,
   StructureProposalResult,
   StructureRefinementResult,
   StructureChange,
@@ -29,6 +28,7 @@ import {
   buildBlockDiagramPrompt,
   buildSequenceDiagramPrompt,
   buildFlowDiagramPrompt,
+  buildUnifiedMermaidPrompt,
   buildDiagramSuggestionPrompt
 } from './prompts/diagramPrompts';
 import {
@@ -41,7 +41,7 @@ import {
   generateDefaultStructure,
 } from './prompts/structurePrompts';
 import { parseBlockDiagram } from './parsers/blockDiagramParser';
-import { parseMermaidDiagram } from './parsers/mermaidParser';
+import { parseMermaidDiagram, detectMermaidType } from './parsers/mermaidParser';
 
 export interface GenerationOptions {
   temperature?: number;
@@ -660,6 +660,70 @@ export class AIService {
   }
 
   /**
+   * Generate a Mermaid diagram using unified prompt - AI decides the appropriate type
+   * This is the preferred method as it trusts the AI to understand the TODO/description
+   * and select the correct diagram type (sequence, flowchart, or state).
+   */
+  async generateMermaidDiagram(
+    description: string,
+    title: string,
+    figureNumber?: string,
+    userGuidance?: string,
+    options?: GenerationOptions
+  ): Promise<{ diagram?: MermaidDiagram; errors: string[]; warnings: string[]; detectedType?: string }> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    const prompt = buildUnifiedMermaidPrompt(description, title, figureNumber, userGuidance);
+
+    const messages = [
+      { role: 'user', content: prompt }
+    ];
+
+    const result = await this.provider.generate(messages, {
+      model: this.config.model,
+      temperature: options?.temperature ?? 0.3,
+      maxTokens: options?.maxTokens ?? 4000
+    });
+
+    // Debug: Log the raw AI response to help diagnose parsing issues
+    console.log(`🔍 AI Mermaid response (first 500 chars): "${result.content.substring(0, 500)}..."`);
+
+    // Auto-detect the diagram type from the AI's output
+    const detectedType = detectMermaidType(result.content);
+    console.log(`🔍 AI generated Mermaid diagram, detected type: ${detectedType || 'unknown'}`);
+
+    if (!detectedType) {
+      // Provide more context in the error message
+      const preview = result.content.substring(0, 200).replace(/\n/g, '\\n');
+      return {
+        errors: [`Could not detect Mermaid diagram type from AI output. Expected sequenceDiagram, flowchart, or stateDiagram-v2. Response preview: "${preview}..."`],
+        warnings: [],
+        detectedType: undefined
+      };
+    }
+
+    // Parse with the detected type
+    const parseResult = parseMermaidDiagram(result.content, detectedType, title, figureNumber);
+
+    if (!parseResult.success) {
+      return {
+        errors: parseResult.errors,
+        warnings: parseResult.warnings,
+        detectedType
+      };
+    }
+
+    return {
+      diagram: parseResult.data,
+      errors: [],
+      warnings: parseResult.warnings,
+      detectedType
+    };
+  }
+
+  /**
    * Suggest diagrams for a document section
    */
   async suggestDiagrams(
@@ -792,12 +856,21 @@ export class AIService {
   async generateDiagramsFromSpec(
     specificationMarkdown: string,
     onProgress?: (current: number, total: number, diagramTitle: string) => void,
-    userGuidance?: string
+    userGuidance?: string,
+    options?: {
+      mandatoryOnly?: boolean; // If true, only generate diagrams with {{fig:...}} placeholders
+    }
   ): Promise<{
     blockDiagrams: BlockDiagram[];
     sequenceDiagrams: MermaidDiagram[];
     errors: string[];
     warnings: string[];
+    suggestedSections?: Array<{
+      sectionId: string;
+      sectionTitle: string;
+      diagramType: string;
+      reasoning: string;
+    }>;
   }> {
     if (!this.provider || !this.config) {
       throw new Error('AI service not initialized');
@@ -807,120 +880,165 @@ export class AIService {
     const sequenceDiagrams: MermaidDiagram[] = [];
     const errors: string[] = [];
     const warnings: string[] = [];
+    const mandatoryOnly = options?.mandatoryOnly ?? false;
 
     console.log('🔍 Starting intelligent section analysis...');
+    console.log(`   Mode: ${mandatoryOnly ? 'MANDATORY ONLY ({{fig:...}} placeholders)' : 'ALL (mandatory + suggested)'}`);
 
     // Use intelligent section analyzer to find diagram-worthy sections
     const {
       analyzeSectionsForDiagrams,
       getBlockDiagramSections,
-      getSequenceDiagramSections,
-      getFlowDiagramSections,
-      getStateDiagramSections
+      getSuggestedSections,
+      getFigureRefsOfType,
+      getMermaidDiagramSections,
+      getMermaidFigureRefs
     } = await import('./sectionAnalyzer');
 
     // Analyze all sections to determine which need diagrams
     onProgress?.(0, 1, 'Analyzing specification sections...');
     const analyses = await analyzeSectionsForDiagrams(specificationMarkdown, this);
 
-    // Filter sections by diagram type
-    const blockSections = getBlockDiagramSections(analyses);
-    const sequenceSections = getSequenceDiagramSections(analyses);
-    const flowSections = getFlowDiagramSections(analyses);
-    const stateSections = getStateDiagramSections(analyses);
+    // Filter sections: block (JSON) vs Mermaid (text syntax)
+    const blockSections = getBlockDiagramSections(analyses, mandatoryOnly);
 
-    // For now, treat flow and state diagrams as sequence diagrams (all Mermaid-based)
-    // TODO: Implement dedicated generateFlowDiagram() and generateStateDiagram() methods
-    const allSequenceSections = [...sequenceSections, ...flowSections, ...stateSections];
+    // Get all Mermaid sections (sequence, flow, state) - AI will determine exact type
+    const mermaidSections = getMermaidDiagramSections(analyses, mandatoryOnly);
 
-    const totalDiagrams = blockSections.length + allSequenceSections.length;
+    // Get suggested sections (not mandatory) for user review
+    const suggestedSections = mandatoryOnly ? getSuggestedSections(analyses).map(s => ({
+      sectionId: s.sectionId,
+      sectionTitle: s.sectionTitle,
+      diagramType: s.diagramType,
+      reasoning: s.reasoning
+    })) : undefined;
+
+    // Count block diagrams (JSON format)
+    const blockDiagramCount = blockSections.reduce((count, s) => {
+      const blockRefs = getFigureRefsOfType(s, 'block');
+      if (blockRefs.length > 0) {
+        return count + blockRefs.length;
+      } else if (!s.figureReferences || s.figureReferences.length === 0) {
+        return count + 1; // Suggested section
+      }
+      return count;
+    }, 0);
+
+    // Count Mermaid diagrams using the unified approach (avoids triple-counting)
+    // mermaidSections already defined above
+    const mermaidDiagramCount = mermaidSections.reduce((count, s) => {
+      const mermaidRefs = getMermaidFigureRefs(s);
+      if (mermaidRefs.length > 0) {
+        return count + mermaidRefs.length;
+      } else if (!s.figureReferences || s.figureReferences.length === 0) {
+        return count + 1; // Suggested section
+      }
+      return count;
+    }, 0);
+
+    const totalDiagrams = blockDiagramCount + mermaidDiagramCount;
     let currentDiagram = 0;
 
-    console.log('📊 Diagram generation plan:');
-    console.log(`  Block diagrams: ${blockSections.length} sections`);
-    console.log(`  Sequence diagrams: ${sequenceSections.length} sections`);
-    console.log(`  Flow diagrams: ${flowSections.length} sections (will generate as sequence diagrams)`);
-    console.log(`  State diagrams: ${stateSections.length} sections (will generate as sequence diagrams)`);
+    console.log('📊 Diagram generation plan (v2 - fixed counting):');
+    console.log(`  Block diagrams: ${blockDiagramCount} (from ${blockSections.length} sections)`);
+    console.log(`  Mermaid diagrams: ${mermaidDiagramCount} (from ${mermaidSections.length} sections)`);
     console.log(`  Total diagrams to generate: ${totalDiagrams}`);
-
-    if (flowSections.length > 0 || stateSections.length > 0) {
-      warnings.push(`Note: Flow and state diagrams will be generated as sequence diagrams (dedicated generation logic coming soon)`);
+    console.log(`  Section types breakdown:`, analyses.map(a => `${a.sectionId}: ${a.diagramType}`).join(', '));
+    if (suggestedSections && suggestedSections.length > 0) {
+      console.log(`  📋 Suggested sections (not generated, for user review): ${suggestedSections.length}`);
     }
 
     // Generate block diagrams from architecture sections
+    // IMPORTANT: Generate ONE diagram PER figure reference of matching type
     if (blockSections.length > 0) {
       console.log('\n📐 Generating block diagrams...');
 
       for (const section of blockSections) {
-        currentDiagram++;
-        onProgress?.(currentDiagram, totalDiagrams, `${section.sectionId} ${section.sectionTitle}`);
+        // Get ONLY the figure references that are typed as 'block'
+        const blockFigureRefs = getFigureRefsOfType(section, 'block');
+        // For mandatory sections: one per figure reference of matching type
+        // For suggested sections: one per section
+        const figureRefs = blockFigureRefs.length > 0
+          ? blockFigureRefs
+          : (section.figureReferences?.length ? [] : [null]); // null = suggested diagram, use section-based ID
 
-        const mandatoryLabel = section.isMandatory ? '[MANDATORY]' : '[SUGGESTED]';
-        console.log(`\n📐 [${currentDiagram}/${totalDiagrams}] ${mandatoryLabel} ${section.sectionId}: ${section.sectionTitle}`);
-        console.log(`   Reason: ${section.reasoning}`);
-        if (section.todoComments && section.todoComments.length > 0) {
-          console.log(`   📝 Using TODO instructions (${section.todoComments.length})`);
-        }
+        // Skip if no block-type figures in this section
+        if (figureRefs.length === 0) continue;
 
-        try {
-          // Use appropriate token limits for block diagram generation
-          const { isReasoningModel } = await import('../../utils/aiModels');
-          const isReasoning = isReasoningModel(this.config.model || '');
-          const maxTokens = isReasoning ? 64000 : 4000;
+        for (let figIdx = 0; figIdx < figureRefs.length; figIdx++) {
+          const figureRef = figureRefs[figIdx];
+          currentDiagram++;
 
-          // Combine user guidance with TODO comments
-          let combinedGuidance = userGuidance || '';
+          const diagramId = figureRef || `${section.sectionId}-${figIdx + 1}`;
+          const diagramLabel = figureRef ? `{{fig:${figureRef}}}` : `suggested-${figIdx + 1}`;
+
+          onProgress?.(currentDiagram, totalDiagrams, `${section.sectionId} ${diagramLabel}`);
+
+          const mandatoryLabel = section.isMandatory ? '[MANDATORY]' : '[SUGGESTED]';
+          console.log(`\n📐 [${currentDiagram}/${totalDiagrams}] ${mandatoryLabel} ${section.sectionId}: ${section.sectionTitle}`);
+          console.log(`   Figure: ${diagramLabel}`);
+          console.log(`   Reason: ${section.reasoning}`);
           if (section.todoComments && section.todoComments.length > 0) {
-            const todoGuidance = section.todoComments.join('\n\n');
-            combinedGuidance = combinedGuidance
-              ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`
-              : `**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`;
+            console.log(`   📝 Using TODO instructions (${section.todoComments.length})`);
           }
 
-          const blockOptions: any = { maxTokens, userGuidance: combinedGuidance };
-          if (isReasoning) {
-            blockOptions.reasoning = { effort: 'high' };
-          }
+          try {
+            // Use appropriate token limits for block diagram generation
+            const { isReasoningModel } = await import('../../utils/aiModels');
+            const isReasoning = isReasoningModel(this.config.model || '');
+            const maxTokens = isReasoning ? 64000 : 4000;
 
-          // Use figure reference as diagram ID if available (mandatory diagrams)
-          // Otherwise use section-based ID (suggested diagrams)
-          const diagramId = section.figureReferences && section.figureReferences.length > 0
-            ? section.figureReferences[0] // Use first figure reference as ID
-            : `${section.sectionId}-1`; // Fallback to section-based ID
-
-          // DIAGNOSTIC: Check section.content before passing to generateBlockDiagram
-          console.log(`🔍 DIAGNOSTIC - Section content before diagram generation:`);
-          console.log(`   Section ID: ${section.sectionId}`);
-          console.log(`   Section Title: ${section.sectionTitle}`);
-          console.log(`   Content length: ${section.content.length} chars`);
-          console.log(`   Content preview (first 300 chars): ${section.content.substring(0, 300)}...`);
-          console.log(`   Content preview (last 100 chars): ...${section.content.substring(section.content.length - 100)}`);
-
-          const blockResult = await this.generateBlockDiagram(
-            section.content,
-            section.sectionTitle,
-            diagramId,
-            blockOptions
-          );
-
-          if (blockResult.diagram) {
-            // Add source section reference
-            blockResult.diagram.sourceSection = {
-              id: section.sectionId,
-              title: section.sectionTitle
-            };
-            blockDiagrams.push(blockResult.diagram);
-            if (section.isMandatory) {
-              console.log(`✅ Block diagram generated (MANDATORY): ${section.sectionTitle} → ID: ${diagramId}`);
-            } else {
-              console.log(`✅ Block diagram generated (SUGGESTED): ${section.sectionTitle} → ID: ${diagramId}`);
+            // Combine user guidance with TODO comments
+            let combinedGuidance = userGuidance || '';
+            if (section.todoComments && section.todoComments.length > 0) {
+              const todoGuidance = section.todoComments.join('\n\n');
+              combinedGuidance = combinedGuidance
+                ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`
+                : `**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`;
             }
+
+            // Add context about which specific figure we're generating
+            if (figureRef && figureRefs.length > 1) {
+              combinedGuidance = combinedGuidance
+                ? `${combinedGuidance}\n\n**Specific Figure:** Generate diagram for {{fig:${figureRef}}} - this section has ${figureRefs.length} figure placeholders.`
+                : `**Specific Figure:** Generate diagram for {{fig:${figureRef}}} - this section has ${figureRefs.length} figure placeholders.`;
+            }
+
+            const blockOptions: any = { maxTokens, userGuidance: combinedGuidance };
+            if (isReasoning) {
+              blockOptions.reasoning = { effort: 'high' };
+            }
+
+            // DIAGNOSTIC: Check section.content before passing to generateBlockDiagram
+            console.log(`🔍 DIAGNOSTIC - Section content before diagram generation:`);
+            console.log(`   Section ID: ${section.sectionId}`);
+            console.log(`   Section Title: ${section.sectionTitle}`);
+            console.log(`   Diagram ID: ${diagramId}`);
+            console.log(`   Content length: ${section.content.length} chars`);
+            console.log(`   Content preview (first 300 chars): ${section.content.substring(0, 300)}...`);
+
+            const blockResult = await this.generateBlockDiagram(
+              section.content,
+              section.sectionTitle,
+              diagramId,
+              blockOptions
+            );
+
+            if (blockResult.diagram) {
+              // Add source section reference
+              blockResult.diagram.sourceSection = {
+                id: section.sectionId,
+                title: section.sectionTitle
+              };
+              blockDiagrams.push(blockResult.diagram);
+              console.log(`✅ Block diagram generated (${mandatoryLabel}): ${section.sectionTitle} → ID: ${diagramId}`);
+            }
+            errors.push(...blockResult.errors);
+            warnings.push(...blockResult.warnings);
+          } catch (err) {
+            console.error(`❌ Error generating block diagram for ${section.sectionTitle} (${diagramId}):`, err);
+            errors.push(`Failed to generate block diagram for ${section.sectionTitle} (${diagramId}): ${err}`);
           }
-          errors.push(...blockResult.errors);
-          warnings.push(...blockResult.warnings);
-        } catch (err) {
-          console.error(`❌ Error generating block diagram for ${section.sectionTitle}:`, err);
-          errors.push(`Failed to generate block diagram for ${section.sectionTitle}: ${err}`);
         }
       }
     } else {
@@ -928,80 +1046,95 @@ export class AIService {
       console.warn('⚠️ No architecture sections detected in specification');
     }
 
-    // Generate sequence diagrams from procedure sections (includes flow and state diagrams for now)
-    if (allSequenceSections.length > 0) {
-      console.log('\n📊 Generating sequence/flow/state diagrams...');
+    // Generate Mermaid diagrams (sequence, flow, state) using unified prompt
+    // AI decides the appropriate diagram type based on TODO comments and section content
+    // This eliminates the need for complex pattern matching to determine type upfront
+    // Note: mermaidSections and getMermaidFigureRefs already imported above for counting
 
-      for (const section of allSequenceSections) {
-        currentDiagram++;
-        onProgress?.(currentDiagram, totalDiagrams, `${section.sectionId} ${section.sectionTitle}`);
+    if (mermaidSections.length > 0) {
+      console.log(`\n📊 Generating ${mermaidDiagramCount} Mermaid diagrams (AI determines type)...`);
 
-        const mandatoryLabel = section.isMandatory ? '[MANDATORY]' : '[SUGGESTED]';
-        console.log(`\n📊 [${currentDiagram}/${totalDiagrams}] ${mandatoryLabel} ${section.sectionId}: ${section.sectionTitle}`);
-        console.log(`   Reason: ${section.reasoning}`);
-        if (section.todoComments && section.todoComments.length > 0) {
-          console.log(`   📝 Using TODO instructions (${section.todoComments.length})`);
-        }
+      for (const section of mermaidSections) {
+        // Get all Mermaid figure references (non-block diagrams)
+        const mermaidFigureRefs = getMermaidFigureRefs(section);
+        const figureRefs = mermaidFigureRefs.length > 0
+          ? mermaidFigureRefs
+          : (section.figureReferences?.length ? [] : [null]); // null = suggested diagram
 
-        try {
-          // Use appropriate token limits for sequence diagram generation
-          const { isReasoningModel } = await import('../../utils/aiModels');
-          const isReasoning = isReasoningModel(this.config.model || '');
-          const maxTokens = isReasoning ? 64000 : 4000;
+        // Skip if no mermaid-type figures in this section
+        if (figureRefs.length === 0) continue;
 
-          // Combine user guidance with TODO comments
-          let combinedGuidance = userGuidance || '';
+        for (let figIdx = 0; figIdx < figureRefs.length; figIdx++) {
+          const figureRef = figureRefs[figIdx];
+          currentDiagram++;
+
+          const diagramId = figureRef || `${section.sectionId}-${figIdx + 1}`;
+          const diagramLabel = figureRef ? `{{fig:${figureRef}}}` : `suggested-${figIdx + 1}`;
+
+          onProgress?.(currentDiagram, totalDiagrams, `${section.sectionId} ${diagramLabel}`);
+
+          const mandatoryLabel = section.isMandatory ? '[MANDATORY]' : '[SUGGESTED]';
+          console.log(`\n📊 [${currentDiagram}/${totalDiagrams}] ${mandatoryLabel} ${section.sectionId}: ${section.sectionTitle}`);
+          console.log(`   Figure: ${diagramLabel}`);
+          console.log(`   Heuristic type: ${section.diagramType} (AI will verify)`);
           if (section.todoComments && section.todoComments.length > 0) {
-            const todoGuidance = section.todoComments.join('\n\n');
-            combinedGuidance = combinedGuidance
-              ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`
-              : `**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`;
+            console.log(`   📝 Using TODO instructions (${section.todoComments.length})`);
           }
 
-          const seqOptions: any = { maxTokens, userGuidance: combinedGuidance };
-          if (isReasoning) {
-            seqOptions.reasoning = { effort: 'high' };
-          }
+          try {
+            // Use appropriate token limits for diagram generation
+            const { isReasoningModel } = await import('../../utils/aiModels');
+            const isReasoning = isReasoningModel(this.config.model || '');
+            const maxTokens = isReasoning ? 64000 : 4000;
 
-          // Use figure reference as diagram ID if available (mandatory diagrams)
-          // Otherwise use section-based ID (suggested diagrams)
-          const diagramId = section.figureReferences && section.figureReferences.length > 0
-            ? section.figureReferences[0] // Use first figure reference as ID
-            : `${section.sectionId}-1`; // Fallback to section-based ID
-
-          const seqResult = await this.generateSequenceDiagram(
-            section.content,
-            section.sectionTitle,
-            [], // Let AI extract participants from procedure content
-            diagramId,
-            seqOptions
-          );
-
-          if (seqResult.diagram) {
-            // Add source section reference
-            seqResult.diagram.sourceSection = {
-              id: section.sectionId,
-              title: section.sectionTitle
-            };
-            sequenceDiagrams.push(seqResult.diagram);
-            if (section.isMandatory) {
-              console.log(`✅ Sequence diagram generated (MANDATORY): ${section.sectionTitle} → ID: ${diagramId}`);
-            } else {
-              console.log(`✅ Sequence diagram generated (SUGGESTED): ${section.sectionTitle} → ID: ${diagramId}`);
+            // Combine user guidance with TODO comments
+            let combinedGuidance = userGuidance || '';
+            if (section.todoComments && section.todoComments.length > 0) {
+              const todoGuidance = section.todoComments.join('\n\n');
+              combinedGuidance = combinedGuidance
+                ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`
+                : `**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`;
             }
-          } else {
-            console.error(`❌ No diagram generated for: ${section.sectionTitle}`, seqResult.errors);
+
+            // Add context about which specific figure we're generating
+            if (figureRef && figureRefs.length > 1) {
+              combinedGuidance = combinedGuidance
+                ? `${combinedGuidance}\n\n**Specific Figure:** Generate diagram for {{fig:${figureRef}}} - this section has ${figureRefs.length} figure placeholders.`
+                : `**Specific Figure:** Generate diagram for {{fig:${figureRef}}} - this section has ${figureRefs.length} figure placeholders.`;
+            }
+
+            const mermaidOptions: GenerationOptions = { maxTokens };
+
+            // Use unified Mermaid prompt - AI decides the type based on content
+            const mermaidResult = await this.generateMermaidDiagram(
+              section.content,
+              section.sectionTitle,
+              diagramId,
+              combinedGuidance,
+              mermaidOptions
+            );
+
+            if (mermaidResult.diagram) {
+              // Add source section reference
+              mermaidResult.diagram.sourceSection = {
+                id: section.sectionId,
+                title: section.sectionTitle
+              };
+              sequenceDiagrams.push(mermaidResult.diagram);
+              console.log(`✅ ${mermaidResult.detectedType || 'Mermaid'} diagram generated (${mandatoryLabel}): ${section.sectionTitle} → ID: ${diagramId}`);
+            } else {
+              console.error(`❌ No diagram generated for: ${section.sectionTitle} (${diagramId})`, mermaidResult.errors);
+            }
+            errors.push(...mermaidResult.errors);
+            warnings.push(...mermaidResult.warnings);
+          } catch (err) {
+            console.error(`❌ Error generating Mermaid diagram for ${section.sectionTitle} (${diagramId}):`, err);
+            errors.push(`Failed to generate Mermaid diagram for ${section.sectionTitle} (${diagramId}): ${err}`);
           }
-          errors.push(...seqResult.errors);
-          warnings.push(...seqResult.warnings);
-        } catch (err) {
-          console.error(`❌ Error generating sequence diagram for ${section.sectionTitle}:`, err);
-          errors.push(`Failed to generate sequence diagram for ${section.sectionTitle}: ${err}`);
         }
       }
     } else {
-      warnings.push('No procedure, flow, or state sections detected. Sequence diagram generation skipped.');
-      console.warn('⚠️ No procedure, flow, or state sections detected in specification');
+      console.log('ℹ️ No Mermaid diagram sections detected');
     }
 
     console.log('\n✅ Diagram generation complete!');
@@ -1009,12 +1142,16 @@ export class AIService {
     console.log(`  Sequence diagrams: ${sequenceDiagrams.length}`);
     console.log(`  Errors: ${errors.length}`);
     console.log(`  Warnings: ${warnings.length}`);
+    if (suggestedSections && suggestedSections.length > 0) {
+      console.log(`  Suggested (not generated): ${suggestedSections.length} sections`);
+    }
 
     return {
       blockDiagrams,
       sequenceDiagrams,
       errors,
-      warnings
+      warnings,
+      suggestedSections
     };
   }
 
@@ -1352,8 +1489,6 @@ export class AIService {
       build3GPPScopePrompt,
       buildServiceOverviewPrompt,
       build3GPPFunctionalRequirementsPrompt,
-      build3GPPArchitecturePrompt,
-      build3GPPProceduresPrompt,
       buildNonFunctionalRequirementsPrompt,
       buildOSSBSSPrompt,
       buildSLASummaryPrompt,
@@ -2611,7 +2746,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     const {
       structure,
       brsContent,
-      referenceDocuments,
+      referenceDocuments: _referenceDocuments,
       generationGuidance,
       onProgress,
       autoRetryTruncated = true,
@@ -2657,6 +2792,8 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
           description: section.description,
           isRequired: true,
           suggestedSubsections: section.suggestedSubsections,
+          contentGuidance: section.contentGuidance,
+          includeDiagrams: section.includeDiagrams,
           order: section.order,
         },
         {
@@ -2665,6 +2802,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
           domainConfig: structure.domainConfig,
           userGuidance: combinedGuidance,
           sectionNumber: String(section.order),
+          includeDiagrams: section.includeDiagrams, // Pass through diagram preference
         }
       );
 

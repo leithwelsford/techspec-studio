@@ -154,6 +154,63 @@ export function resolveCitationReference(
 }
 
 /**
+ * Ensure every {{fig:...}} placeholder has a caption line after it
+ * If missing, adds a caption line using the diagram's title
+ *
+ * Caption format: *Figure X-Y: Diagram Title*
+ */
+export function ensureFigureCaptions(
+  markdown: string,
+  figures: FigureReference[]
+): string {
+  const lines = markdown.split('\n');
+  const result: string[] = [];
+
+  // Pattern to detect existing caption lines
+  const captionPattern = /^\s*\*?Figure\s+[\d\-\.]+:?\s+/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    result.push(line);
+
+    // Check if this line contains a {{fig:...}} placeholder
+    const figMatch = line.match(/\{\{fig:([a-zA-Z0-9-_]+)\}\}/);
+    if (figMatch) {
+      const figId = figMatch[1];
+      const figure = figures.find(f => f.id === figId);
+
+      if (figure) {
+        // Look ahead to see if there's already a caption within the next 2 non-empty lines
+        let hasCaption = false;
+        let lookAhead = 1;
+
+        while (lookAhead <= 3 && i + lookAhead < lines.length) {
+          const nextLine = lines[i + lookAhead].trim();
+          if (nextLine === '') {
+            lookAhead++;
+            continue;
+          }
+          // Check if it's a caption line
+          if (captionPattern.test(nextLine)) {
+            hasCaption = true;
+          }
+          break; // Stop at first non-empty line
+        }
+
+        // If no caption found, add one
+        if (!hasCaption) {
+          result.push(''); // Empty line before caption
+          result.push(`*Figure ${figure.number}: ${figure.title}*`);
+          console.log(`[ensureFigureCaptions] Added missing caption for {{fig:${figId}}}: "Figure ${figure.number}: ${figure.title}"`);
+        }
+      }
+    }
+  }
+
+  return result.join('\n');
+}
+
+/**
  * Replace all link syntax with resolved text
  */
 export function resolveAllLinks(
@@ -161,14 +218,15 @@ export function resolveAllLinks(
   figures: FigureReference[],
   citations: CitationReference[]
 ): string {
-  let resolved = markdown;
+  // First, ensure all figures have captions
+  let resolved = ensureFigureCaptions(markdown, figures);
 
   // Resolve figure references
   resolved = resolved.replace(
     new RegExp(LINK_PATTERNS.figure.source, 'g'),
     (match, id) => {
-      const resolved = resolveFigureReference(id, figures);
-      return resolved || match; // Keep original if not found
+      const resolvedRef = resolveFigureReference(id, figures);
+      return resolvedRef || match; // Keep original if not found
     }
   );
 
@@ -176,8 +234,8 @@ export function resolveAllLinks(
   resolved = resolved.replace(
     new RegExp(LINK_PATTERNS.reference.source, 'g'),
     (match, id) => {
-      const resolved = resolveCitationReference(id, citations);
-      return resolved || match; // Keep original if not found
+      const resolvedRef = resolveCitationReference(id, citations);
+      return resolvedRef || match; // Keep original if not found
     }
   );
 

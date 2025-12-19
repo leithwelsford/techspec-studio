@@ -4,6 +4,7 @@
  */
 
 import type { AIContext } from '../../../types';
+import { DIAGRAM_PLACEHOLDER_REQUIREMENTS } from './systemPrompts';
 
 export interface DocumentGenerationRequest {
   title: string;
@@ -76,12 +77,12 @@ For each section:
    - Technical requirements using normative language
    - Specific parameters, values, and constraints
    - Protocol flows and procedures where applicable
-4. Suggest where diagrams would be helpful using placeholders like:
-   {{fig:suggested-architecture-overview}} <!-- TODO: Create architecture diagram showing X, Y, Z -->
-5. Reference standards and specifications using:
+4. Reference standards and specifications using:
    {{ref:reference-id}} when citing external documents
-6. Use tables for complex data structures
-7. Include examples or use cases where appropriate
+5. Use tables for complex data structures
+6. Include examples or use cases where appropriate
+
+${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
 
 Output Format:
 - Clean markdown starting with # for top-level sections
@@ -90,7 +91,6 @@ Output Format:
 - Technical accuracy is paramount
 - NO title page elements (handled separately by export system)
 - Professional tone suitable for ${audience}
-- Include TODO comments for diagrams that should be created
 
 Generate the complete document now.`;
 }

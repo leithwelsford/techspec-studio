@@ -98,9 +98,52 @@ export interface BlockDiagram {
   sourceSection?: { id: string; title: string }; // Technical Specification section this diagram was generated from
 }
 
+// All supported Mermaid diagram types (23 types as of Mermaid v11)
+export type MermaidDiagramType =
+  // Core diagrams
+  | 'sequence'      // sequenceDiagram
+  | 'flow'          // flowchart / graph
+  | 'state'         // stateDiagram-v2
+  | 'class'         // classDiagram
+  // Data & Relationships
+  | 'er'            // erDiagram
+  // Planning & Time
+  | 'gantt'         // gantt
+  | 'timeline'      // timeline
+  // Analysis & Visualization
+  | 'pie'           // pie
+  | 'quadrant'      // quadrantChart
+  | 'xy'            // xychart-beta
+  | 'sankey'        // sankey-beta
+  // Hierarchies & Concepts
+  | 'mindmap'       // mindmap
+  // Architecture
+  | 'c4'            // C4Context / C4Container / C4Component / C4Dynamic
+  | 'architecture'  // architecture-beta
+  | 'block-beta'    // block-beta (Mermaid's block diagram, different from our custom block)
+  // User Experience
+  | 'journey'       // journey
+  // Development
+  | 'gitgraph'      // gitGraph
+  | 'requirement'   // requirementDiagram
+  | 'zenuml'        // zenuml
+  // Project Management
+  | 'kanban'        // kanban
+  // Network
+  | 'packet'        // packet-beta
+  // New in Mermaid v11+
+  | 'radar'         // radar-beta
+  | 'treemap';      // treemap-beta
+
+// All diagram types including custom block
+export type DiagramType = 'block' | MermaidDiagramType;
+
+// For section analysis (includes meta-types)
+export type SectionDiagramType = DiagramType | 'multiple' | 'none';
+
 export interface MermaidDiagram {
   id: string;
-  type: 'sequence' | 'flow' | 'state' | 'class';
+  type: MermaidDiagramType;
   title: string;
   description?: string;
   figureNumber?: string;
@@ -530,6 +573,7 @@ export interface FlexibleSection {
   isRequired: boolean;                     // Suggestion only, user can override
   suggestedSubsections?: string[];         // Optional hints: ["Purpose", "Applicability", "Assumptions"]
   contentGuidance?: string;                // User's custom guidance for THIS section
+  includeDiagrams?: boolean;               // Whether to include diagram placeholders (default: true)
   order: number;                           // Position in document (for reordering)
 }
 
@@ -947,6 +991,8 @@ export interface ProposedSection {
   description: string;             // What this section should cover
   rationale: string;               // Why AI proposed this section
   suggestedSubsections?: string[]; // Optional subsection hints
+  contentGuidance?: string;        // User's SPECIFIC requirements (e.g., "Keep brief")
+  includeDiagrams?: boolean;       // Whether to include diagram placeholders (default: true)
   order: number;                   // Position in document
   confidence: number;              // 0-1: AI's confidence in this recommendation
   sourceHints?: string[];          // BRS sections/references that informed this

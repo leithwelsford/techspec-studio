@@ -195,10 +195,154 @@ const BlockDiagramRenderer: React.FC<{ diagram: any }> = ({ diagram }) => {
   );
 };
 
+// Helper: Encode string to base64, handling Unicode characters
+function encodeBase64(str: string): string {
+  try {
+    // Use TextEncoder for proper Unicode support
+    const bytes = new TextEncoder().encode(str);
+    const binString = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join('');
+    return btoa(binString);
+  } catch {
+    // Fallback: try simple btoa (will fail for non-Latin1)
+    return btoa(str);
+  }
+}
+
+// Helper: Parse Mermaid error to extract useful info
+interface MermaidErrorInfo {
+  message: string;
+  participant?: string;
+  lineNumber?: number;
+  errorType: 'activation' | 'syntax' | 'participant' | 'size' | 'unknown';
+  suggestion?: string;
+}
+
+function parseMermaidError(error: string, _code: string): MermaidErrorInfo {
+  // Try to extract line number from various error formats
+  const extractLineNumber = (errorMsg: string): number | undefined => {
+    // Various patterns Mermaid uses for line numbers
+    const patterns = [
+      /line (\d+)/i,                    // "line 15"
+      /at line (\d+)/i,                 // "at line 15"
+      /on line (\d+)/i,                 // "on line 15"
+      /\[(\d+):\d+\]/,                  // "[15:23]" format
+      /line:?\s*(\d+)/i,                // "line: 15" or "line 15"
+      /row (\d+)/i,                     // "row 15"
+      /:(\d+):\d+/,                     // ":15:23" format
+    ];
+    for (const pattern of patterns) {
+      const match = errorMsg.match(pattern);
+      if (match) {
+        return parseInt(match[1], 10);
+      }
+    }
+    return undefined;
+  };
+
+  const lineNumber = extractLineNumber(error);
+
+  // Check for size/text limit errors
+  if (error.toLowerCase().includes('maximum text size') ||
+      error.toLowerCase().includes('text size exceeded') ||
+      error.toLowerCase().includes('too large') ||
+      error.toLowerCase().includes('max text size')) {
+    return {
+      message: error,
+      lineNumber,
+      errorType: 'size',
+      suggestion: `The diagram content is too large for Mermaid to render. To fix this:\n• Shorten message labels (use abbreviations)\n• Reduce the number of participants\n• Split into multiple smaller diagrams\n• Remove or shorten notes\n• Use shorter participant aliases`
+    };
+  }
+
+  // Check for activation errors
+  const activationMatch = error.match(/Trying to (in)?activate an (in)?active participant \(([^)]+)\)/i);
+  if (activationMatch) {
+    const participant = activationMatch[3];
+    const isDeactivating = error.toLowerCase().includes('inactivate') || error.toLowerCase().includes('inactive participant');
+    return {
+      message: error,
+      participant,
+      lineNumber,
+      errorType: 'activation',
+      suggestion: isDeactivating
+        ? `The participant "${participant}" was never activated before being deactivated. Either:\n• Remove the "deactivate ${participant}" line\n• Add "activate ${participant}" before messages involving ${participant}\n• Use shorthand notation: A->>+${participant}: Request and ${participant}-->>-A: Response`
+        : `The participant "${participant}" is already active. You cannot activate it again until it's deactivated. Ensure each "activate" has a matching "deactivate".`
+    };
+  }
+
+  // Check for participant name errors
+  const participantMatch = error.match(/participant (.+?) is not defined/i) ||
+                          error.match(/Unknown actor: (.+)/i);
+  if (participantMatch) {
+    return {
+      message: error,
+      participant: participantMatch[1],
+      lineNumber,
+      errorType: 'participant',
+      suggestion: `The participant "${participantMatch[1]}" is used in a message but not declared. Add it to the participant list at the top of the diagram.`
+    };
+  }
+
+  // Check for syntax errors with line numbers
+  if (lineNumber) {
+    return {
+      message: error,
+      lineNumber,
+      errorType: 'syntax',
+      suggestion: 'Check the syntax on the indicated line. Common issues: missing colons, invalid characters, unclosed blocks.'
+    };
+  }
+
+  return {
+    message: error,
+    errorType: 'unknown',
+    suggestion: 'Check the Mermaid syntax. You can validate at https://mermaid.live'
+  };
+}
+
+// Helper: Highlight problematic lines in code
+function highlightCode(code: string, errorInfo: MermaidErrorInfo): React.ReactNode {
+  const lines = code.split('\n');
+
+  return lines.map((line, idx) => {
+    const lineNum = idx + 1;
+    let isProblematic = false;
+
+    // Check if this line contains the problematic participant
+    if (errorInfo.participant) {
+      const participantPattern = new RegExp(`\\b${errorInfo.participant}\\b`, 'i');
+      // Check for activate/deactivate lines specifically
+      if (line.match(/^\s*(activate|deactivate)\s+/i) && participantPattern.test(line)) {
+        isProblematic = true;
+      }
+    }
+
+    // Check if this is the problematic line number
+    if (errorInfo.lineNumber && lineNum === errorInfo.lineNumber) {
+      isProblematic = true;
+    }
+
+    return (
+      <div
+        key={idx}
+        className={`${isProblematic ? 'bg-red-200 dark:bg-red-900/60 border-l-4 border-red-500 pl-2 -ml-2' : ''}`}
+      >
+        <span className="text-gray-500 dark:text-gray-400 select-none mr-3 inline-block w-8 text-right tabular-nums">
+          {lineNum}
+        </span>
+        <span className={isProblematic ? 'text-red-900 dark:text-red-200 font-semibold' : 'text-gray-800 dark:text-gray-200'}>
+          {line || ' '}
+        </span>
+      </div>
+    );
+  });
+}
+
 // Helper component: Mermaid Diagram Renderer
 const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram }> = ({ diagram }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [showFullCode, setShowFullCode] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current || !diagram.mermaidCode) return;
@@ -208,11 +352,25 @@ const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram }> = ({ diagram
         mermaid.initialize({
           startOnLoad: false,
           theme: 'default',
-          securityLevel: 'loose'
+          securityLevel: 'loose',
+          suppressErrorRendering: true  // Don't render errors as SVG
         });
 
         const uniqueId = `mermaid-review-${Math.random().toString(36).substr(2, 9)}`;
         const { svg } = await mermaid.render(uniqueId, diagram.mermaidCode);
+
+        // Check if the SVG contains an error message (Mermaid sometimes renders errors as SVG)
+        if (svg.includes('Syntax error') ||
+            svg.includes('Error:') ||
+            svg.includes('Maximum text size') ||
+            svg.includes('error-icon') ||
+            svg.includes('error-text')) {
+          // Extract error text from SVG if possible
+          const errorMatch = svg.match(/<text[^>]*class="error-text"[^>]*>([^<]+)<\/text>/);
+          const errorText = errorMatch ? errorMatch[1] : 'Diagram contains errors';
+          setRenderError(errorText);
+          return;
+        }
 
         if (containerRef.current) {
           containerRef.current.innerHTML = svg;
@@ -228,10 +386,110 @@ const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram }> = ({ diagram
   }, [diagram.mermaidCode]);
 
   if (renderError) {
+    const errorInfo = parseMermaidError(renderError, diagram.mermaidCode);
+    const codeLines = diagram.mermaidCode.split('\n');
+    const previewLines = showFullCode ? codeLines : codeLines.slice(0, 30);
+
     return (
-      <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded">
-        <p className="text-sm text-red-800 dark:text-red-200">⚠️ Diagram rendering error: {renderError}</p>
-        <pre className="mt-2 text-xs font-mono text-red-700 dark:text-red-300 whitespace-pre-wrap">{diagram.mermaidCode}</pre>
+      <div className="p-4 bg-gray-50 dark:bg-gray-900 h-full overflow-auto">
+        {/* Error Header */}
+        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 bg-red-100 dark:bg-red-800 rounded-full flex items-center justify-center">
+              <svg className="w-5 h-5 text-red-600 dark:text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-sm font-semibold text-red-800 dark:text-red-200">
+                  Diagram rendering error
+                  {errorInfo.errorType === 'activation' && ' (Activation Issue)'}
+                  {errorInfo.errorType === 'participant' && ' (Participant Issue)'}
+                  {errorInfo.errorType === 'syntax' && ' (Syntax Error)'}
+                  {errorInfo.errorType === 'size' && ' (Content Too Large)'}
+                </h4>
+                {errorInfo.lineNumber && (
+                  <span className="px-2 py-0.5 text-xs font-bold bg-red-200 dark:bg-red-700 text-red-800 dark:text-red-100 rounded">
+                    Line {errorInfo.lineNumber}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-red-700 dark:text-red-300 mt-1 font-mono break-all">
+                {errorInfo.message}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Suggestion Box */}
+        {errorInfo.suggestion && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </div>
+              <div>
+                <h5 className="text-sm font-semibold text-amber-800 dark:text-amber-200">💡 How to fix</h5>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1 whitespace-pre-line">
+                  {errorInfo.suggestion}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Code with highlighted errors */}
+        <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+          <div className="bg-gray-100 dark:bg-gray-800 px-4 py-2 border-b border-gray-200 dark:border-gray-600 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                Mermaid Code ({codeLines.length} lines)
+              </span>
+              {errorInfo.lineNumber && (
+                <span className="px-2 py-0.5 text-xs font-bold bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-200 rounded">
+                  Error at line {errorInfo.lineNumber}
+                </span>
+              )}
+              {errorInfo.participant && (
+                <span className="text-xs text-red-600 dark:text-red-400">
+                  • Problematic: <code className="bg-red-100 dark:bg-red-800 px-1 rounded text-red-800 dark:text-red-200">{errorInfo.participant}</code>
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => navigator.clipboard.writeText(diagram.mermaidCode)}
+                className="text-xs px-2 py-1 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                title="Copy code"
+              >
+                📋 Copy
+              </button>
+              <a
+                href={`https://mermaid.live/edit#base64:${encodeBase64(diagram.mermaidCode)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs px-2 py-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"
+                title="Open in Mermaid Live Editor"
+              >
+                🔗 Mermaid.live
+              </a>
+            </div>
+          </div>
+          <div className="bg-white dark:bg-gray-900 p-4 font-mono text-xs overflow-auto max-h-96">
+            {highlightCode(previewLines.join('\n'), errorInfo)}
+            {!showFullCode && codeLines.length > 30 && (
+              <button
+                onClick={() => setShowFullCode(true)}
+                className="mt-2 text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Show all {codeLines.length} lines...
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -244,6 +502,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
   const approveContent = useProjectStore((state) => state.approveContent);
   const rejectContent = useProjectStore((state) => state.rejectContent);
   const removeApproval = useProjectStore((state) => state.removeApproval);
+  const clearAllApprovals = useProjectStore((state) => state.clearAllApprovals);
   const updateSpecification = useProjectStore((state) => state.updateSpecification);
   const addBlockDiagram = useProjectStore((state) => state.addBlockDiagram);
   const addMermaidDiagram = useProjectStore((state) => state.addMermaidDiagram);
@@ -396,14 +655,29 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
               {pendingApprovals.length} pending review{pendingApprovals.length !== 1 ? 's' : ''}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-3">
+            {pendingApprovals.length > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm(`Clear all ${pendingApprovals.length} pending review(s)? This cannot be undone.`)) {
+                    clearAllApprovals();
+                    setSelectedApprovalId(null);
+                  }
+                }}
+                className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+              >
+                Clear All
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Content */}

@@ -37,6 +37,9 @@ export default function SectionCard({
   const [editSubsections, setEditSubsections] = useState(
     section.suggestedSubsections?.join(', ') || ''
   );
+  const [editContentGuidance, setEditContentGuidance] = useState(
+    section.contentGuidance || ''
+  );
 
   // DnD Kit sortable
   const {
@@ -58,6 +61,7 @@ export default function SectionCard({
     setEditTitle(section.title);
     setEditDescription(section.description);
     setEditSubsections(section.suggestedSubsections?.join(', ') || '');
+    setEditContentGuidance(section.contentGuidance || '');
   }, [section]);
 
   /**
@@ -70,6 +74,7 @@ export default function SectionCard({
       suggestedSubsections: editSubsections
         ? editSubsections.split(',').map((s) => s.trim()).filter(Boolean)
         : undefined,
+      contentGuidance: editContentGuidance.trim() || undefined,
     });
   };
 
@@ -80,6 +85,7 @@ export default function SectionCard({
     setEditTitle(section.title);
     setEditDescription(section.description);
     setEditSubsections(section.suggestedSubsections?.join(', ') || '');
+    setEditContentGuidance(section.contentGuidance || '');
     onCancelEdit();
   };
 
@@ -258,6 +264,46 @@ export default function SectionCard({
             ) : (
               <p className="text-sm text-gray-400 dark:text-gray-500 italic">None specified</p>
             )}
+          </div>
+
+          {/* Content Guidance - Specific Requirements */}
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+              Specific Requirements
+            </label>
+            {isEditing ? (
+              <input
+                type="text"
+                value={editContentGuidance}
+                onChange={(e) => setEditContentGuidance(e.target.value)}
+                placeholder="Keep brief, focus on X..."
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              />
+            ) : section.contentGuidance ? (
+              <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">
+                {section.contentGuidance}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400 dark:text-gray-500 italic">None specified</p>
+            )}
+          </div>
+
+          {/* Include Diagrams Toggle */}
+          <div className="mt-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={section.includeDiagrams !== false}
+                onChange={(e) => onUpdate({ includeDiagrams: e.target.checked })}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+              />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                Include diagram placeholders
+              </span>
+              {section.includeDiagrams === false && (
+                <span className="text-xs text-orange-600 dark:text-orange-400">(disabled)</span>
+              )}
+            </label>
           </div>
 
           {/* Rationale (read-only) */}

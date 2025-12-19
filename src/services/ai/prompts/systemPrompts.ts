@@ -402,43 +402,73 @@ Be concise but comprehensive. Focus on information directly applicable to writin
 
 /**
  * Critical diagram requirements for all section generation
- * Ensures AI uses {{fig:...}} placeholders instead of text-based diagrams
+ * Ensures AI uses {{fig:...}} placeholders with explicit [DIAGRAM TYPE] hints
  */
 export const DIAGRAM_PLACEHOLDER_REQUIREMENTS = `
-CRITICAL DIAGRAM REQUIREMENTS:
+## Diagram Placeholders
 
-1. NEVER include diagrams as text blocks, ASCII art, or inline descriptions
-2. ALWAYS use figure placeholder syntax for ALL diagrams: {{fig:diagram-id}}
-3. For EVERY sequence diagram, call flow, block diagram, or workflow:
-   - Reference it: "As shown in {{fig:diagram-id}}, the workflow..."
-   - Add TODO comment immediately after with diagram details
+When visual aids would help explain concepts, use figure placeholders:
 
-Example (CORRECT):
-  The mobile session establishment is shown in {{fig:mobile-session-establishment}}.
+✅ USE: \`{{fig:descriptive-id}}\` syntax
 
-  <!-- TODO: Sequence diagram showing:
-  - Participants: UE, P-GW (PCEF), PCRF, TDF
-  - Flow: 1. UE attach, 2. CCR-I from P-GW, 3. CCA-I from PCRF, 4. Bearer setup
-  - Note: P-GW has no Gy/Gz in this architecture
-  -->
+❌ NEVER use ASCII art or text-based diagrams
 
-FORBIDDEN - DO NOT DO THIS:
-  ❌ \`\`\`text
-     UE -> P-GW -> PCRF
-     \`\`\`
-  ❌ ASCII art diagrams
-  ❌ Inline workflow descriptions without placeholders
-  ❌ Sequence diagrams in code blocks
+**REQUIRED**: Include a TODO comment with EXPLICIT DIAGRAM TYPE after each placeholder:
 
-4. Diagram ID naming conventions:
-   - Workflows/procedures: *-workflow, *-procedure, *-flow
-   - Call flows: *-call-flow, *-sequence
-   - Architecture: *-architecture, *-topology, *-structure
-   - State machines: *-state-machine, *-lifecycle
+Format: \`<!-- TODO: [DIAGRAM TYPE] Description of what the diagram should show -->\`
 
-5. TODO comment structure:
-   - Diagram type (sequence/block/flow)
-   - Participants/components
-   - Key steps/interactions
-   - Special notes/conditions
+### Available Diagram Types (use exact bracketed text):
+
+**Architecture & Structure:**
+- \`[BLOCK DIAGRAM]\` - Architecture, components, interfaces, network topology (custom JSON format)
+- \`[CLASS DIAGRAM]\` - OOP class structures, relationships, inheritance
+- \`[C4 DIAGRAM]\` - Software architecture (Context, Container, Component levels)
+- \`[ARCHITECTURE DIAGRAM]\` - System architecture with services, databases, queues
+
+**Flows & Sequences:**
+- \`[SEQUENCE DIAGRAM]\` - Call flows, message exchanges, protocol interactions, signaling
+- \`[FLOW DIAGRAM]\` - Algorithms, decision trees, conditional logic, process flows
+- \`[STATE DIAGRAM]\` - State machines, state transitions, modes, lifecycle states
+- \`[USER JOURNEY]\` - User experience flows, satisfaction scores, touchpoints
+
+**Data & Relationships:**
+- \`[ER DIAGRAM]\` - Entity relationships, data models, database schemas
+- \`[REQUIREMENT DIAGRAM]\` - Requirements traceability, SysML requirements
+
+**Planning & Timelines:**
+- \`[GANTT CHART]\` - Project timelines, implementation phases, schedules
+- \`[TIMELINE]\` - Sequential events, milestones, evolution
+- \`[KANBAN]\` - Task boards, sprint boards, workflow stages
+
+**Analysis & Visualization:**
+- \`[PIE CHART]\` - Proportional data, distribution, percentages
+- \`[QUADRANT CHART]\` - Priority matrices, risk assessment, 2D comparisons
+- \`[XY CHART]\` - Line charts, bar charts, scatter plots
+- \`[SANKEY DIAGRAM]\` - Flow distributions, energy/resource flows
+- \`[RADAR CHART]\` - Spider charts, competency comparisons
+
+**Hierarchies & Concepts:**
+- \`[MINDMAP]\` - Concept hierarchies, feature breakdowns, brainstorming
+
+**Development & Version Control:**
+- \`[GIT GRAPH]\` - Commit history, branches, merges
+
+**Network & Protocol:**
+- \`[PACKET DIAGRAM]\` - Network packet structures, protocol headers
+
+### Examples:
+
+\`\`\`markdown
+{{fig:system-architecture}}
+<!-- TODO: [BLOCK DIAGRAM] Show main components (AMF, SMF, UPF) and N-interfaces -->
+
+{{fig:session-establishment}}
+<!-- TODO: [SEQUENCE DIAGRAM] Show UE attach flow with P-GW, PCRF interactions -->
+
+{{fig:user-session-entity}}
+<!-- TODO: [ER DIAGRAM] Show User, Session, and Subscription entities with relationships -->
+
+{{fig:implementation-timeline}}
+<!-- TODO: [GANTT CHART] Show Phase 1 (months 1-3), Phase 2 (months 4-6) -->
+\`\`\`
 `.trim();

@@ -149,6 +149,7 @@ export interface ProjectState {
   approveContent: (id: string, feedback?: string) => void;
   rejectContent: (id: string, feedback: string) => void;
   removeApproval: (id: string) => void;
+  clearAllApprovals: () => void;
 
   // Actions - Usage Stats
   updateUsageStats: (tokens: number, cost: number) => void;
@@ -990,6 +991,12 @@ export const useProjectStore = create<ProjectState>()(
           pendingApprovals: state.pendingApprovals.filter(
             (approval) => approval.id !== id
           ),
+        }));
+      },
+
+      clearAllApprovals: () => {
+        set(() => ({
+          pendingApprovals: [],
         }));
       },
 
