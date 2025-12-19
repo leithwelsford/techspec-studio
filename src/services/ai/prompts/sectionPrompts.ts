@@ -105,7 +105,7 @@ Format: \`<!-- TODO: [DIAGRAM TYPE] Description of what the diagram should show 
 export const REQUIREMENT_NUMBERING_GUIDANCE = `
 ## Requirement Numbering
 
-Every normative statement MUST have a unique requirement ID.
+**CRITICAL**: Every normative statement MUST have a unique requirement ID - no exceptions.
 
 **Normative keywords** (per RFC 2119):
 - **Absolute requirements**: SHALL, SHALL NOT, MUST, MUST NOT, REQUIRED
@@ -134,16 +134,33 @@ Every normative statement MUST have a unique requirement ID.
 3. Use appropriate ARTEFACT type based on requirement nature
 4. Start counter at 00001 for each unique SUBSYSTEM-FEATURE-ARTEFACT combination
 5. Format each requirement as: **ID**: The system SHALL/MUST/SHOULD/MAY...
+6. **Lists with normative statements**: Each list item containing a normative keyword MUST have its own ID
 
-**Example**:
+**Examples**:
+
+Simple requirements:
 \`\`\`markdown
 **PCC-CAPTIVE-REQ-00001**: The system SHALL authenticate users via RADIUS protocol.
 
 **PCC-CAPTIVE-SEC-00001**: The system MUST encrypt all authentication credentials using TLS 1.3.
+\`\`\`
 
-**PCC-CAPTIVE-NFR-00001**: The system SHOULD complete authentication within 3 seconds.
+Requirements with lists (each normative item gets an ID):
+\`\`\`markdown
+The operator SHALL configure the following parameters:
 
-**PCC-CAPTIVE-CFG-00001**: The timeout value MAY be configured by the operator.
+- **AAA-CONFIG-CFG-00001**: The operator SHALL configure primary/secondary AAA endpoints.
+- **AAA-CONFIG-CFG-00002**: The operator SHALL configure request timeout and retry counts.
+- **AAA-CONFIG-CFG-00003**: The operator MAY configure accounting interim interval (if used).
+\`\`\`
+
+Numbered list example:
+\`\`\`markdown
+The authentication flow SHALL proceed as follows:
+
+1. **PCC-AUTH-REQ-00001**: The system SHALL receive the initial connection request.
+2. **PCC-AUTH-REQ-00002**: The system SHALL validate the subscriber identity.
+3. **PCC-AUTH-REQ-00003**: The system SHALL apply the appropriate policy profile.
 \`\`\`
 `;
 
