@@ -349,13 +349,7 @@ const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram }> = ({ diagram
 
     const renderDiagram = async () => {
       try {
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: 'default',
-          securityLevel: 'loose',
-          suppressErrorRendering: true  // Don't render errors as SVG
-        });
-
+        // Mermaid is initialized globally in main.tsx - no need to re-initialize here
         const uniqueId = `mermaid-review-${Math.random().toString(36).substr(2, 9)}`;
         const { svg } = await mermaid.render(uniqueId, diagram.mermaidCode);
 

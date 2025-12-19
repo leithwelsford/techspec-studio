@@ -32,16 +32,7 @@ export default function DiagramViewer() {
   const [newDiagramTitle, setNewDiagramTitle] = useState('');
   const [newDiagramDescription, setNewDiagramDescription] = useState('');
 
-  // Initialize Mermaid
-  useEffect(() => {
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'default',
-      securityLevel: 'loose',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
-    });
-  }, []);
-
+  // Mermaid is initialized globally in main.tsx
   // Re-render Mermaid diagrams when selection changes
   useEffect(() => {
     mermaid.run();
