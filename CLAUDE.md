@@ -174,7 +174,17 @@ Generate → Create PendingApproval → User reviews in ReviewPanel → Approve 
 Documents use `{{fig:diagram-id}}` and `{{ref:3gpp-ts-23-203}}` syntax:
 - [src/utils/linkResolver.ts](src/utils/linkResolver.ts) - Core resolution logic and pattern matching
 - [src/utils/remarkLinkResolver.ts](src/utils/remarkLinkResolver.ts) - Remark plugin for markdown preview
+- [src/utils/figureNumbering.ts](src/utils/figureNumbering.ts) - Figure number calculation (e.g., section 5, position 1 → "5-1")
 - [src/components/InlineDiagramPreview.tsx](src/components/InlineDiagramPreview.tsx) - Renders diagrams inline in markdown
+
+**Diagram Matching Strategies** (in order of precedence):
+1. Direct ID/UUID match
+2. Figure number match (`5-1` or `fig-5-1`)
+3. Figure number prefix in slug (`{{fig:5-1-description}}`)
+4. Explicit `slug` field on diagram (matches `{{fig:slug}}`)
+5. Caption-based fallback (parses `*Figure X-Y:` after the reference)
+
+Diagrams have an optional `slug` field that explicitly links them to `{{fig:...}}` references.
 
 ### Approval Workflow
 All AI-generated content goes through approval:

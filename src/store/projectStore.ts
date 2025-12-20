@@ -409,6 +409,8 @@ export const useProjectStore = create<ProjectState>()(
             activeTab: 'block-diagrams',
           };
         });
+        // Auto-number figures after adding new diagram
+        get().autoNumberFigures();
         return id;
       },
 
@@ -464,6 +466,8 @@ export const useProjectStore = create<ProjectState>()(
             activeTab: type === 'sequence' ? 'sequence-diagrams' : 'flow-diagrams',
           };
         });
+        // Auto-number figures after adding new diagram
+        get().autoNumberFigures();
         return id;
       },
 

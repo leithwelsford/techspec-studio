@@ -83,15 +83,41 @@ export function calculateFigureNumbers(
   const figureNumbers = new Map<string, string>();
   const positions = extractDiagramPositions(markdown);
 
-  // Create a combined list of all diagrams
+  // Create a combined list of all diagrams with their slugs
   const allDiagrams = [
-    ...blockDiagrams.map(d => ({ id: d.id, type: 'block' as const })),
-    ...mermaidDiagrams.map(d => ({ id: d.id, type: d.type })),
+    ...blockDiagrams.map(d => ({ id: d.id, slug: d.slug, type: 'block' as const })),
+    ...mermaidDiagrams.map(d => ({ id: d.id, slug: d.slug, type: d.type })),
   ];
 
   // Assign numbers based on positions
+  // Match by: 1) diagram ID, 2) diagram slug, 3) figure number prefix in slug
   allDiagrams.forEach(diagram => {
-    const pos = positions.get(diagram.id);
+    // Try matching by ID first (for backwards compatibility)
+    let pos = positions.get(diagram.id);
+
+    // Then try matching by slug field
+    if (!pos && diagram.slug) {
+      pos = positions.get(diagram.slug);
+    }
+
+    // Also check if any position key matches the diagram's slug with figure number prefix
+    // e.g., positions has "5-1-external-interface-map" and diagram.slug is "external-interface-map"
+    if (!pos && diagram.slug) {
+      for (const [key, value] of positions.entries()) {
+        // Check if key ends with the slug (after figure number prefix like "5-1-")
+        const slugMatch = key.match(/^\d+(?:-\d+)?-(.+)$/);
+        if (slugMatch && slugMatch[1] === diagram.slug) {
+          pos = value;
+          break;
+        }
+        // Also check if slug matches the key directly
+        if (key === diagram.slug) {
+          pos = value;
+          break;
+        }
+      }
+    }
+
     if (pos) {
       const section = pos.sectionNumber || '0';
       const figNum = `${section}-${pos.position}`;
