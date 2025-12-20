@@ -4,15 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Reference
 
+**Tech Stack**: React 18 + Vite 5 + TypeScript 5 + Zustand 5 + Tailwind CSS 3.4
+
 ```bash
 npm install          # Install dependencies
 npm run dev          # Start dev server (http://localhost:3000)
 npm run build        # Type-check and build for production
 npm run preview      # Preview production build locally
-npm run lint         # Check for TypeScript/ESLint errors
+npm run lint         # Check for TypeScript/ESLint errors (run before commits)
 ```
 
-**Note**: No test suite exists. Verify changes manually by running the app.
+**Notes**:
+- No test suite exists. Verify changes manually by running the app.
+- Lint uses `--max-warnings 0` - any ESLint warning fails the check.
+- React Strict Mode is enabled (components render twice in dev for detecting side effects).
 
 **Pandoc Backend** (optional, for DOCX export with Word templates, requires Node ≥18):
 ```bash
@@ -75,6 +80,8 @@ cd server && npm run dev                    # With --watch hot reload
 **Core Workflow**: BRS (Business Requirements Spec) → AI generates tech spec + diagrams → User reviews/refines → Export to DOCX
 
 **Key Files**:
+- [src/main.tsx](src/main.tsx) - App entry point (Mermaid init, React mount)
+- [src/AppContainer.tsx](src/AppContainer.tsx) - Root component with error boundary
 - [src/store/projectStore.ts](src/store/projectStore.ts) - Zustand store (single source of truth)
 - [src/types/index.ts](src/types/index.ts) - All TypeScript types
 - [src/services/ai/AIService.ts](src/services/ai/AIService.ts) - AI orchestration (OpenRouter)
@@ -106,7 +113,10 @@ All state in `projectStore.ts` with IndexedDB persistence (middleware in `src/ut
 - **AI State**: Config (encrypted API key), chat history, pending approvals
 - **Version History**: Automatic snapshots on significant changes
 
-**Storage Pattern**: Small state auto-persisted in Zustand, large binary data (PDFs, DOCX templates) stored via `documentStorage.ts` (IndexedDB) with references in store.
+**Storage Pattern**:
+- **localStorage** (`tech-spec-project` key): Zustand store state (project, AI config, chat history)
+- **IndexedDB** (`techspec-documents` database): Large binary data (PDFs, DOCX templates) via `documentStorage.ts`
+- Store holds references (IDs) to IndexedDB documents
 
 ### AI Service Layer
 
@@ -161,7 +171,10 @@ Generate → Create PendingApproval → User reviews in ReviewPanel → Approve 
 ## Key Patterns
 
 ### Link Resolution
-Documents use `{{fig:diagram-id}}` and `{{ref:3gpp-ts-23-203}}` syntax. Implementation: [src/utils/linkResolver.ts](src/utils/linkResolver.ts)
+Documents use `{{fig:diagram-id}}` and `{{ref:3gpp-ts-23-203}}` syntax:
+- [src/utils/linkResolver.ts](src/utils/linkResolver.ts) - Core resolution logic and pattern matching
+- [src/utils/remarkLinkResolver.ts](src/utils/remarkLinkResolver.ts) - Remark plugin for markdown preview
+- [src/components/InlineDiagramPreview.tsx](src/components/InlineDiagramPreview.tsx) - Renders diagrams inline in markdown
 
 ### Approval Workflow
 All AI-generated content goes through approval:
@@ -199,18 +212,6 @@ Upload Word templates for style-aware export:
 - `DocxTemplateAnalysis` stores extracted styles, numbering, structure
 - Template stored in IndexedDB, analysis cached in store
 - Pandoc export uses extracted styles for `custom-style` attributes
-
-## Keyboard Shortcuts
-
-| Context | Shortcut | Action |
-|---------|----------|--------|
-| Editor | Split view button | Toggle markdown/preview split |
-| Chat | Enter | Send message |
-| Chat | Shift + Enter | New line |
-| Diagram canvas | Space + Drag | Pan |
-| Diagram canvas | Scroll wheel | Zoom |
-| Diagram canvas | Double-click | Edit node/edge label |
-| Diagram canvas | Drag corners | Resize node |
 
 ## Troubleshooting
 
