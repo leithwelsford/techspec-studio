@@ -37,12 +37,14 @@ function extractTextFromNode(node: { type: string; value?: string; children?: Ar
 }
 
 /**
- * Look ahead in sibling nodes for a figure caption pattern
+ * Look ahead in the tree for a figure caption pattern
+ * Searches both sibling nodes and subsequent paragraphs
  * Returns the figure number if found (e.g., "5-1")
  */
 function findCaptionFigureNumber(
+  tree: Root,
   parent: Parent,
-  startIndex: number,
+  nodeIndex: number,
   remainingTextInNode: string
 ): string | null {
   const captionPattern = /Figure\s+(\d+(?:-\d+)?)\s*:/i;
@@ -53,9 +55,9 @@ function findCaptionFigureNumber(
     return match[1];
   }
 
-  // Look at subsequent sibling nodes (up to 10 nodes ahead to handle comments, whitespace)
-  const maxLookahead = Math.min(startIndex + 10, parent.children.length);
-  for (let i = startIndex + 1; i < maxLookahead; i++) {
+  // Look at subsequent sibling nodes within the same paragraph
+  const maxSiblingLookahead = Math.min(nodeIndex + 10, parent.children.length);
+  for (let i = nodeIndex + 1; i < maxSiblingLookahead; i++) {
     const sibling = parent.children[i];
     const siblingText = extractTextFromNode(sibling as { type: string; value?: string; children?: Array<{ type: string; value?: string; children?: unknown[] }> });
 
@@ -63,6 +65,24 @@ function findCaptionFigureNumber(
       const siblingMatch = siblingText.match(captionPattern);
       if (siblingMatch) {
         return siblingMatch[1];
+      }
+    }
+  }
+
+  // Find parent's index in the tree and look at subsequent paragraphs
+  const parentIndex = tree.children.indexOf(parent as typeof tree.children[number]);
+  if (parentIndex !== -1) {
+    // Look at next few top-level nodes (paragraphs, etc.)
+    const maxParagraphLookahead = Math.min(parentIndex + 5, tree.children.length);
+    for (let i = parentIndex + 1; i < maxParagraphLookahead; i++) {
+      const nextNode = tree.children[i];
+      const nodeText = extractTextFromNode(nextNode as { type: string; value?: string; children?: Array<{ type: string; value?: string; children?: unknown[] }> });
+
+      if (nodeText) {
+        const nodeMatch = nodeText.match(captionPattern);
+        if (nodeMatch) {
+          return nodeMatch[1];
+        }
       }
     }
   }
@@ -185,10 +205,10 @@ export function remarkLinkResolver(options: LinkResolverOptions) {
           }
 
           // Strategy 6: Caption-based fallback
-          // Look for *Figure X-Y:* pattern in following text/nodes
+          // Look for *Figure X-Y:* pattern in following text/nodes and subsequent paragraphs
           if (!figure && parent && index !== undefined) {
             const remainingText = value.slice(match.index + match[0].length);
-            const captionFigNum = findCaptionFigureNumber(parent, index, remainingText);
+            const captionFigNum = findCaptionFigureNumber(tree, parent, index, remainingText);
             if (captionFigNum) {
               figure = figures.find(f => f.number === captionFigNum);
             }
