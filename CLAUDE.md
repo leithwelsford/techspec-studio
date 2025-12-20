@@ -58,6 +58,16 @@ cd server && npm run dev                    # With --watch hot reload
 
 6. **TypeScript strict mode** - No implicit any, unused vars/params disallowed. Prefix unused params with underscore: `(_event: Event) => {}`
 
+7. **Never re-initialize Mermaid** - Mermaid is initialized once in `main.tsx`. Components should use `mermaid.render()` directly, never call `mermaid.initialize()`:
+   ```typescript
+   // ✅ CORRECT - use render directly
+   import mermaid from 'mermaid';
+   await mermaid.render(id, code);
+
+   // ❌ WRONG - re-initializing causes render conflicts
+   mermaid.initialize({ ... });
+   ```
+
 ## Project Overview
 
 **TechSpec Studio** - AI-powered technical specification authoring system for telecommunications (3GPP standards).
@@ -143,6 +153,10 @@ Generate → Create PendingApproval → User reviews in ReviewPanel → Approve 
 **Parsers** (`src/services/ai/parsers/`): Convert AI text responses into structured diagram data:
 - `blockDiagramParser.ts` - Extracts nodes/edges from AI response
 - `mermaidParser.ts` - Extracts and validates Mermaid code blocks
+
+**Mermaid Self-Healing** (`src/services/mermaidSelfHealer.ts`): AI-powered automatic fix for Mermaid syntax errors. When a diagram fails to render, the self-healer sends the error and code to AI for correction.
+
+**Mermaid Docs Cache** (`src/services/ai/mermaidDocsCache.ts`): Pre-fetches and caches Mermaid documentation at app startup (non-blocking). Provides syntax examples to AI for accurate diagram generation and error correction.
 
 ## Key Patterns
 

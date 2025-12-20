@@ -10,6 +10,17 @@ import type { Root, Text, Link, Parent, PhrasingContent } from 'mdast';
 import type { FigureReference, CitationReference } from './linkResolver';
 import { LINK_PATTERNS } from './linkResolver';
 
+/**
+ * Convert a string to a URL-friendly slug
+ * "Logical Architecture CP UP" → "logical-architecture-cp-up"
+ */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 export interface LinkResolverOptions {
   figures: FigureReference[];
   citations: CitationReference[];
@@ -75,48 +86,70 @@ export function remarkLinkResolver(options: LinkResolverOptions) {
         const id = isFigure ? match[2] : match[4];
 
         if (isFigure) {
-          // Resolve figure reference
-          const figure = figures.find(f => f.id === id);
-          if (figure) {
-            // Create clickable link
-            newNodes.push({
-              type: 'link',
-              url: `#diagram-${id}`,
-              title: `Navigate to ${figure.title}`,
-              children: [
-                {
-                  type: 'text',
-                  value: `Figure ${figure.number}`,
-                },
-              ],
-              data: {
-                hProperties: {
-                  className: 'figure-reference',
-                  'data-diagram-id': id,
-                  'data-diagram-type': figure.type,
-                },
-              },
-            } as Link);
-          } else {
-            // Invalid reference - show as broken link with warning
-            newNodes.push({
-              type: 'link',
-              url: '#',
-              title: `Invalid figure reference: ${id}`,
-              children: [
-                {
-                  type: 'text',
-                  value: `{{fig:${id}}}`,
-                },
-              ],
-              data: {
-                hProperties: {
-                  className: 'figure-reference-invalid',
-                  'data-diagram-id': id,
-                },
-              },
-            } as Link);
+          // Resolve figure reference using multiple matching strategies
+          let figure = figures.find(f => f.id === id);
+          const searchSlug = id.toLowerCase();
+
+          // Strategy 1: Match by figure number (e.g., "5-1" or "fig-5-1")
+          if (!figure) {
+            const numMatch = searchSlug.match(/^(?:fig-?)?(\d+(?:-\d+)?)$/);
+            if (numMatch) {
+              figure = figures.find(f => f.number === numMatch[1]);
+            }
           }
+
+          // Strategy 2: Exact slug match
+          if (!figure) {
+            figure = figures.find(f => slugify(f.title) === searchSlug);
+          }
+
+          // Strategy 3: Prefix match (title slug starts with search slug)
+          if (!figure) {
+            figure = figures.find(f => slugify(f.title).startsWith(searchSlug));
+          }
+
+          // Strategy 4: Contains match (search slug is substring of title slug)
+          if (!figure) {
+            figure = figures.find(f => slugify(f.title).includes(searchSlug));
+          }
+
+          // Strategy 5: Keyword match (all words in search slug appear in title)
+          if (!figure) {
+            const searchWords = searchSlug.split('-').filter(w => w.length > 1);
+            if (searchWords.length >= 2) {
+              figure = figures.find(f => {
+                const titleLower = f.title.toLowerCase();
+                return searchWords.every(word => titleLower.includes(word));
+              });
+            }
+          }
+
+          // Always create a figure reference link - let InlineDiagramPreview handle matching
+          // Use actual figure ID if matched, otherwise pass through the original slug
+          const resolvedId = figure ? figure.id : id;
+          const resolvedNumber = figure ? figure.number : 'X-X';
+          const resolvedTitle = figure ? figure.title : id;
+          const isValid = !!figure;
+
+          newNodes.push({
+            type: 'link',
+            url: `#figure-${resolvedId}`,  // Changed prefix to 'figure' to indicate it needs rendering
+            title: isValid ? `Figure ${resolvedNumber}: ${resolvedTitle}` : `Unresolved: ${id}`,
+            children: [
+              {
+                type: 'text',
+                value: isValid ? `Figure ${resolvedNumber}` : `{{fig:${id}}}`,
+              },
+            ],
+            data: {
+              hProperties: {
+                className: isValid ? 'figure-reference' : 'figure-reference-unresolved',
+                'data-figure-slug': id,  // Original slug from markdown
+                'data-diagram-id': resolvedId,
+                'data-resolved': isValid ? 'true' : 'false',
+              },
+            },
+          } as Link);
         } else {
           // Resolve citation reference
           const citation = citations.find(c => c.id === id);

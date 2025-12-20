@@ -68,3 +68,33 @@ body {
   color: #dc2626;
   border-bottom-color: #dc2626;
 }
+
+/* Inline Diagram Styles */
+.inline-diagram-figure {
+  width: 100%;
+  margin: 1.5rem 0;
+  page-break-inside: avoid;
+}
+
+.inline-diagram-figure > div {
+  display: flex;
+  justify-content: center;
+  background: #f9fafb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.dark .inline-diagram-figure > div {
+  background: #1f2937;
+}
+
+.inline-diagram-mermaid {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+.inline-diagram-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}

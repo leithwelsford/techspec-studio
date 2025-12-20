@@ -6,6 +6,7 @@ import { aiService } from '../../services/ai';
 import type { AIContext, WorkspaceTab } from '../../types';
 import { remarkLinkResolver } from '../../utils/remarkLinkResolver';
 import { LinkAutocomplete } from '../LinkAutocomplete';
+import InlineDiagramPreview from '../InlineDiagramPreview';
 
 export default function MarkdownEditor() {
   const project = useProjectStore((state) => state.project);
@@ -34,6 +35,21 @@ export default function MarkdownEditor() {
       setShowAutocomplete(true);
     }
   }, [textareaRef.current]);
+
+  // Restore scroll position when returning to this tab
+  useEffect(() => {
+    const savedPosition = sessionStorage.getItem('techspec-scroll-position');
+    if (savedPosition && previewRef.current) {
+      // Small delay to ensure content is rendered
+      const timer = setTimeout(() => {
+        if (previewRef.current) {
+          previewRef.current.scrollTop = parseInt(savedPosition, 10);
+          sessionStorage.removeItem('techspec-scroll-position');
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   // Find the heading at cursor position and create a unique ID for it
   const findCurrentHeading = useCallback((cursorPos: number, text: string): { id: string; text: string } | null => {
@@ -665,41 +681,39 @@ Use {{fig:diagram-id}} to reference diagrams."
                     [remarkLinkResolver, {
                       figures: getAllFigureReferences(),
                       citations: getAllCitationReferences(),
-                      onNavigate: (type: 'figure' | 'reference', _id: string) => {
-                        // Navigate to diagram or reference
-                        if (type === 'figure') {
-                          setActiveTab('diagrams' as WorkspaceTab);
-                        } else {
-                          setActiveTab('references' as WorkspaceTab);
-                        }
-                      }
                     }]
                   ]}
                   components={{
-                    a: ({ node, className, children, href, ...props }) => {
-                      // Check if this is a figure or citation reference link
-                      const isFigureRef = className?.includes('figure-reference');
-                      const isCitationRef = className?.includes('citation-reference');
+                    a: ({ children, href, node, ...props }) => {
+                      // Detect figure/reference links by href pattern
+                      const isFigureRef = typeof href === 'string' && href.startsWith('#figure-');
+                      const isReferenceRef = typeof href === 'string' && href.startsWith('#reference-');
 
-                      if (isFigureRef || isCitationRef) {
+                      if (isFigureRef) {
+                        // Extract figure ID/slug from href (e.g., "#figure-abc123" -> "abc123")
+                        const figureIdOrSlug = href.replace('#figure-', '');
+
+                        // Render the actual diagram inline
+                        return (
+                          <InlineDiagramPreview
+                            diagramId={figureIdOrSlug}
+                            maxWidth={700}
+                            showCaption={true}
+                          />
+                        );
+                      }
+
+                      if (isReferenceRef) {
+                        // Keep citation references as clickable links
                         return (
                           <a
                             href={href}
-                            className={className}
+                            className="citation-reference"
                             onClick={(e) => {
                               e.preventDefault();
-                              // Use correct WorkspaceTab values
-                              const targetTab = isFigureRef ? 'block-diagrams' : 'references';
-                              console.log('Link clicked:', {
-                                className,
-                                href,
-                                targetTab,
-                                navigating: true
-                              });
-
-                              setActiveTab(targetTab as WorkspaceTab);
-                              console.log('setActiveTab called with:', targetTab);
+                              setActiveTab('references' as WorkspaceTab);
                             }}
+                            style={{ cursor: 'pointer' }}
                             {...props}
                           >
                             {children}
@@ -708,7 +722,7 @@ Use {{fig:diagram-id}} to reference diagrams."
                       }
 
                       // Regular links
-                      return <a href={href} className={className} {...props}>{children}</a>;
+                      return <a href={href} {...props}>{children}</a>;
                     }
                   }}
                 >
