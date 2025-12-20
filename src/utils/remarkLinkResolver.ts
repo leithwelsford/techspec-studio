@@ -21,6 +21,55 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+/**
+ * Extract text content from a node (handles text, emphasis, strong, etc.)
+ */
+function extractTextFromNode(node: { type: string; value?: string; children?: Array<{ type: string; value?: string; children?: unknown[] }> }): string {
+  if (node.type === 'text' && node.value) {
+    return node.value;
+  }
+  if (node.children && Array.isArray(node.children)) {
+    return node.children
+      .map(child => extractTextFromNode(child as { type: string; value?: string; children?: Array<{ type: string; value?: string; children?: unknown[] }> }))
+      .join('');
+  }
+  return '';
+}
+
+/**
+ * Look ahead in sibling nodes for a figure caption pattern
+ * Returns the figure number if found (e.g., "5-1")
+ */
+function findCaptionFigureNumber(
+  parent: Parent,
+  startIndex: number,
+  remainingTextInNode: string
+): string | null {
+  const captionPattern = /Figure\s+(\d+(?:-\d+)?)\s*:/i;
+
+  // First check remaining text in current node
+  const match = remainingTextInNode.match(captionPattern);
+  if (match) {
+    return match[1];
+  }
+
+  // Look at subsequent sibling nodes (up to 10 nodes ahead to handle comments, whitespace)
+  const maxLookahead = Math.min(startIndex + 10, parent.children.length);
+  for (let i = startIndex + 1; i < maxLookahead; i++) {
+    const sibling = parent.children[i];
+    const siblingText = extractTextFromNode(sibling as { type: string; value?: string; children?: Array<{ type: string; value?: string; children?: unknown[] }> });
+
+    if (siblingText) {
+      const siblingMatch = siblingText.match(captionPattern);
+      if (siblingMatch) {
+        return siblingMatch[1];
+      }
+    }
+  }
+
+  return null;
+}
+
 export interface LinkResolverOptions {
   figures: FigureReference[];
   citations: CitationReference[];
@@ -132,6 +181,16 @@ export function remarkLinkResolver(options: LinkResolverOptions) {
             );
             if (containsMatches.length === 1) {
               figure = containsMatches[0];
+            }
+          }
+
+          // Strategy 6: Caption-based fallback
+          // Look for *Figure X-Y:* pattern in following text/nodes
+          if (!figure && parent && index !== undefined) {
+            const remainingText = value.slice(match.index + match[0].length);
+            const captionFigNum = findCaptionFigureNumber(parent, index, remainingText);
+            if (captionFigNum) {
+              figure = figures.find(f => f.number === captionFigNum);
             }
           }
 

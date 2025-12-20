@@ -34,7 +34,7 @@ Diagrams are generated separately with:
 
 ---
 
-## Option B: Caption-Based Fallback (Short-Term Fix)
+## Option B: Caption-Based Fallback (Short-Term Fix) ✅ IMPLEMENTED
 
 **Goal**: Parse the figure caption that follows `{{fig:...}}` to extract the figure number when the slug doesn't match.
 
@@ -272,15 +272,15 @@ const found = allDiagrams.find(d => d.id.startsWith(searchSlug));
 
 ## Implementation Priority
 
-| Phase | Option | Effort | Impact |
-|-------|--------|--------|--------|
-| 1 | **B** - Caption fallback | Low | Fixes existing specs without regeneration |
-| 2 | **A** - Better reference format | Medium | Prevents future issues |
-| 3 | **C** - Store slug in diagram | Medium | Creates explicit bidirectional link |
+| Phase | Option | Effort | Impact | Status |
+|-------|--------|--------|--------|--------|
+| 1 | **B** - Caption fallback | Low | Fixes existing specs without regeneration | ✅ Done |
+| 2 | **A** - Better reference format | Medium | Prevents future issues | Pending |
+| 3 | **C** - Store slug in diagram | Medium | Creates explicit bidirectional link | Pending |
 
 ### Recommended Order
 
-1. **Implement B first** - Quick win, no spec regeneration needed
+1. ~~**Implement B first** - Quick win, no spec regeneration needed~~ ✅ Done
 2. **Implement A** - Update prompts so new specs work better
 3. **Implement C** - Full solution with explicit diagram-to-reference linking
 
@@ -317,8 +317,9 @@ Located in `src/components/InlineDiagramPreview.tsx` function `findDiagramByIdOr
 5. Keyword matching (all words appear in title) - only if ONE match
 6. Title contains search slug - only if ONE match
 
-Located in `src/utils/remarkLinkResolver.ts`:
-- Same strategies 1-5
+Located in `src/utils/remarkLinkResolver.ts` (same strategies 1-6 plus):
+
+7. **Caption-based fallback** - Look ahead in AST for `*Figure X-Y:` pattern and use figure number to match ✅ NEW
 
 ---
 
