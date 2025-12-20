@@ -10,6 +10,7 @@ export interface FigureReference {
   number: string;
   title: string;
   type: 'block' | 'sequence' | 'flow';
+  slug?: string; // matches {{fig:slug}} reference, e.g., "5-1-system-architecture"
 }
 
 export interface CitationReference {

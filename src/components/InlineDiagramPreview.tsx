@@ -326,6 +326,24 @@ function findDiagramByIdOrSlug(
     }
   }
 
+  // Strategy 2b: Extract figure number from prefix (e.g., "5-1-logical-architecture")
+  // Supports format {{fig:X-Y-description}} where X-Y is the figure number
+  const prefixMatch = searchSlug.match(/^(\d+-\d+)-/);
+  if (prefixMatch) {
+    const found = allDiagrams.find(d => d.figureNumber === prefixMatch[1]);
+    if (found) {
+      diagram = getDiagramById(found.id);
+      if (diagram) return diagram;
+    }
+  }
+
+  // Strategy 2c: Match by stored slug field (explicit mapping from diagram generation)
+  const slugMatch = allDiagrams.find(d => (d as { slug?: string }).slug === idOrSlug || (d as { slug?: string }).slug === searchSlug);
+  if (slugMatch) {
+    diagram = getDiagramById(slugMatch.id);
+    if (diagram) return diagram;
+  }
+
   // Strategy 3: Exact slug match on title (strict - full match required)
   let found = allDiagrams.find(d => slugify(d.title) === searchSlug);
   if (found) {

@@ -85,6 +85,7 @@ export interface BlockDiagram {
   title: string;
   description?: string;
   figureNumber?: string; // e.g., "4-1"
+  slug?: string; // matches {{fig:slug}} reference in markdown, e.g., "5-1-system-architecture"
 
   // Visual layout
   nodes: Record<string, NodeMeta>;
@@ -147,6 +148,7 @@ export interface MermaidDiagram {
   title: string;
   description?: string;
   figureNumber?: string;
+  slug?: string; // matches {{fig:slug}} reference in markdown, e.g., "5-2-session-flow"
   mermaidCode: string;
   sourceSection?: { id: string; title: string }; // Technical Specification section this diagram was generated from
 }

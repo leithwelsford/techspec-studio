@@ -409,9 +409,15 @@ export const DIAGRAM_PLACEHOLDER_REQUIREMENTS = `
 
 When visual aids would help explain concepts, use figure placeholders:
 
-✅ USE: \`{{fig:descriptive-id}}\` syntax
+✅ USE: \`{{fig:X-Y-description}}\` format where:
+   - X-Y = figure number matching the caption (e.g., 5-1 for Figure 5-1)
+   - description = short kebab-case description
 
 ❌ NEVER use ASCII art or text-based diagrams
+
+**IMPORTANT**: The figure number in the ID MUST match the caption below:
+- ID: \`{{fig:5-1-system-architecture}}\` → Caption: \`*Figure 5-1: System Architecture*\`
+- ID: \`{{fig:3-2-call-flow}}\` → Caption: \`*Figure 3-2: Call Flow*\`
 
 **REQUIRED**: Include a TODO comment with EXPLICIT DIAGRAM TYPE after each placeholder:
 
@@ -459,16 +465,20 @@ Format: \`<!-- TODO: [DIAGRAM TYPE] Description of what the diagram should show 
 ### Examples:
 
 \`\`\`markdown
-{{fig:system-architecture}}
+{{fig:5-1-system-architecture}}
 <!-- TODO: [BLOCK DIAGRAM] Show main components (AMF, SMF, UPF) and N-interfaces -->
+*Figure 5-1: System Architecture Overview*
 
-{{fig:session-establishment}}
+{{fig:5-2-session-establishment}}
 <!-- TODO: [SEQUENCE DIAGRAM] Show UE attach flow with P-GW, PCRF interactions -->
+*Figure 5-2: Session Establishment Flow*
 
-{{fig:user-session-entity}}
+{{fig:6-1-user-session-entity}}
 <!-- TODO: [ER DIAGRAM] Show User, Session, and Subscription entities with relationships -->
+*Figure 6-1: User Session Entity Relationships*
 
-{{fig:implementation-timeline}}
+{{fig:7-1-implementation-timeline}}
 <!-- TODO: [GANTT CHART] Show Phase 1 (months 1-3), Phase 2 (months 4-6) -->
+*Figure 7-1: Implementation Timeline*
 \`\`\`
 `.trim();

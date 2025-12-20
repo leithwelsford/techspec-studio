@@ -168,6 +168,20 @@ export function remarkLinkResolver(options: LinkResolverOptions) {
             }
           }
 
+          // Strategy 1b: Extract figure number from prefix (e.g., "5-1-logical-architecture")
+          // Supports format {{fig:X-Y-description}} where X-Y is the figure number
+          if (!figure) {
+            const prefixMatch = searchSlug.match(/^(\d+-\d+)-/);
+            if (prefixMatch) {
+              figure = figures.find(f => f.number === prefixMatch[1]);
+            }
+          }
+
+          // Strategy 1c: Match by stored slug field (explicit mapping from diagram generation)
+          if (!figure) {
+            figure = figures.find(f => f.slug === id || f.slug === searchSlug);
+          }
+
           // Strategy 2: Exact slug match on title (strict - full match required)
           if (!figure) {
             figure = figures.find(f => slugify(f.title) === searchSlug);
