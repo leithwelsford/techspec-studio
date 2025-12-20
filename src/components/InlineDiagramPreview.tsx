@@ -299,14 +299,17 @@ function slugify(text: string): string {
 }
 
 /**
- * Find a diagram by ID or slug using multiple matching strategies
+ * Find a diagram by ID or slug using matching strategies
+ *
+ * Strategy: Use exact matching first, then keyword matching ONLY if it
+ * results in exactly ONE match (to avoid showing wrong diagrams).
  */
 function findDiagramByIdOrSlug(
   idOrSlug: string,
   getDiagramById: (id: string) => any,
   getAllDiagrams: () => Array<{ id: string; type: string; title: string; figureNumber?: string }>
 ): any {
-  // Strategy 1: Direct ID match
+  // Strategy 1: Direct ID match (most reliable)
   let diagram = getDiagramById(idOrSlug);
   if (diagram) return diagram;
 
@@ -323,51 +326,44 @@ function findDiagramByIdOrSlug(
     }
   }
 
-  // Strategy 3: Exact slug match on title
+  // Strategy 3: Exact slug match on title (strict - full match required)
   let found = allDiagrams.find(d => slugify(d.title) === searchSlug);
   if (found) {
     diagram = getDiagramById(found.id);
     if (diagram) return diagram;
   }
 
-  // Strategy 4: Prefix match (title slug starts with search slug)
-  found = allDiagrams.find(d => slugify(d.title).startsWith(searchSlug));
+  // Strategy 4: Exact ID match ignoring case
+  found = allDiagrams.find(d => d.id.toLowerCase() === searchSlug);
   if (found) {
     diagram = getDiagramById(found.id);
     if (diagram) return diagram;
   }
 
-  // Strategy 5: Contains match (search slug is substring of title slug)
-  found = allDiagrams.find(d => slugify(d.title).includes(searchSlug));
-  if (found) {
-    diagram = getDiagramById(found.id);
-    if (diagram) return diagram;
-  }
-
-  // Strategy 6: Keyword match (all words in search slug appear in title)
+  // Strategy 5: Keyword matching - ALL keywords must appear in title
+  // Only use if exactly ONE diagram matches (prevents wrong matches)
   const searchWords = searchSlug.split('-').filter(w => w.length > 1);
   if (searchWords.length >= 2) {
-    found = allDiagrams.find(d => {
+    const matches = allDiagrams.filter(d => {
       const titleLower = d.title.toLowerCase();
       return searchWords.every(word => titleLower.includes(word));
     });
-    if (found) {
-      diagram = getDiagramById(found.id);
+
+    // Only return if EXACTLY one match - avoids ambiguity
+    if (matches.length === 1) {
+      diagram = getDiagramById(matches[0].id);
       if (diagram) return diagram;
     }
   }
 
-  // Strategy 7: Partial keyword match (at least 2 words match)
-  if (searchWords.length >= 2) {
-    found = allDiagrams.find(d => {
-      const titleLower = d.title.toLowerCase();
-      const matchCount = searchWords.filter(word => titleLower.includes(word)).length;
-      return matchCount >= 2;
-    });
-    if (found) {
-      diagram = getDiagramById(found.id);
-      if (diagram) return diagram;
-    }
+  // Strategy 6: Title contains search slug as substring
+  // Only use if exactly ONE diagram matches
+  const containsMatches = allDiagrams.filter(d =>
+    slugify(d.title).includes(searchSlug)
+  );
+  if (containsMatches.length === 1) {
+    diagram = getDiagramById(containsMatches[0].id);
+    if (diagram) return diagram;
   }
 
   return null;

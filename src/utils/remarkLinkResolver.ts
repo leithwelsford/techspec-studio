@@ -86,7 +86,8 @@ export function remarkLinkResolver(options: LinkResolverOptions) {
         const id = isFigure ? match[2] : match[4];
 
         if (isFigure) {
-          // Resolve figure reference using multiple matching strategies
+          // Resolve figure reference - exact matching first, then keyword matching
+          // only if it results in exactly ONE match (to avoid wrong diagrams)
           let figure = figures.find(f => f.id === id);
           const searchSlug = id.toLowerCase();
 
@@ -98,34 +99,42 @@ export function remarkLinkResolver(options: LinkResolverOptions) {
             }
           }
 
-          // Strategy 2: Exact slug match
+          // Strategy 2: Exact slug match on title (strict - full match required)
           if (!figure) {
             figure = figures.find(f => slugify(f.title) === searchSlug);
           }
 
-          // Strategy 3: Prefix match (title slug starts with search slug)
+          // Strategy 3: Exact ID match ignoring case
           if (!figure) {
-            figure = figures.find(f => slugify(f.title).startsWith(searchSlug));
+            figure = figures.find(f => f.id.toLowerCase() === searchSlug);
           }
 
-          // Strategy 4: Contains match (search slug is substring of title slug)
-          if (!figure) {
-            figure = figures.find(f => slugify(f.title).includes(searchSlug));
-          }
-
-          // Strategy 5: Keyword match (all words in search slug appear in title)
+          // Strategy 4: Keyword matching - ALL keywords must appear in title
+          // Only use if exactly ONE figure matches (prevents wrong matches)
           if (!figure) {
             const searchWords = searchSlug.split('-').filter(w => w.length > 1);
             if (searchWords.length >= 2) {
-              figure = figures.find(f => {
+              const matches = figures.filter(f => {
                 const titleLower = f.title.toLowerCase();
                 return searchWords.every(word => titleLower.includes(word));
               });
+              if (matches.length === 1) {
+                figure = matches[0];
+              }
             }
           }
 
-          // Always create a figure reference link - let InlineDiagramPreview handle matching
-          // Use actual figure ID if matched, otherwise pass through the original slug
+          // Strategy 5: Title slug contains search slug
+          // Only use if exactly ONE figure matches
+          if (!figure) {
+            const containsMatches = figures.filter(f =>
+              slugify(f.title).includes(searchSlug)
+            );
+            if (containsMatches.length === 1) {
+              figure = containsMatches[0];
+            }
+          }
+
           const resolvedId = figure ? figure.id : id;
           const resolvedNumber = figure ? figure.number : 'X-X';
           const resolvedTitle = figure ? figure.title : id;
