@@ -192,7 +192,11 @@ The `buildContext()` function in ChatPanel should return:
 
 ### Port 3000 already in use
 
-**Normal behavior:** Vite automatically tries port 3001, 3002, etc.
+**Behavior:** Dev server uses `strictPort: true`, so it will fail if port 3000 is already in use (it will NOT auto-select another port).
+
+**Solution:**
+1. Find and kill the process using port 3000: `lsof -i :3000` then `kill <PID>`
+2. Or stop the other application using that port
 
 ### HMR not working
 

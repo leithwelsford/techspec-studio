@@ -267,7 +267,7 @@ function Node({
   );
 }
 
-// Edge Component
+// Edge Component - uses CSS classes for dark mode support
 function Edge({
   a,
   b,
@@ -280,9 +280,10 @@ function Edge({
   style?: EdgeStyle;
   orthogonal: boolean;
 }) {
-  const stroke = style === 'dashed' ? '#6b7280' : '#0f172a';
   const dash = style === 'dashed' ? '6,6' : undefined;
   const strokeWidth = style === 'bold' ? 4 : style === 'solid' ? 1.6 : 1.2;
+  // Use CSS classes for dark mode - stroke-slate-700 in light, stroke-slate-400 in dark
+  const strokeClass = style === 'dashed' ? 'stroke-gray-500 dark:stroke-slate-400' : 'stroke-slate-700 dark:stroke-slate-400';
 
   if (!orthogonal) {
     return (
@@ -293,12 +294,12 @@ function Edge({
             y1={a.y + 2}
             x2={b.x}
             y2={b.y + 2}
-            stroke={stroke}
+            className={strokeClass}
             strokeWidth={strokeWidth + 2}
             strokeOpacity={0.25}
           />
         )}
-        <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} />
+        <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={strokeClass} strokeWidth={strokeWidth} strokeDasharray={dash} />
       </g>
     );
   }
@@ -310,7 +311,7 @@ function Edge({
       <polyline
         points={`${a.x},${a.y} ${midx},${a.y} ${midx},${b.y} ${b.x},${b.y}`}
         fill="none"
-        stroke={stroke}
+        className={strokeClass}
         strokeWidth={strokeWidth}
         strokeDasharray={dash}
       />
@@ -665,9 +666,9 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 flex-wrap">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex-wrap bg-white dark:bg-slate-900">
         <div className="flex items-center gap-2">
           <button
             onClick={onZoomOut}
@@ -766,7 +767,7 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
       <div className="flex-1 flex overflow-hidden">
         {/* Node Catalogue Sidebar */}
         {showCatalogue && (
-          <div className="w-64 border-r border-gray-200 bg-white overflow-y-auto flex-shrink-0">
+          <div className="w-64 border-r border-gray-200 dark:border-slate-700 overflow-y-auto flex-shrink-0 bg-white dark:bg-slate-900">
             <div className="p-3 border-b border-gray-200 bg-gray-50">
               <h3 className="font-semibold text-sm text-gray-900 mb-2">Node Catalogue</h3>
               <div className="flex flex-wrap gap-1">
@@ -816,7 +817,7 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
 
         {/* Canvas */}
         <div
-          className="flex-1 overflow-auto bg-gray-50"
+          className="flex-1 overflow-auto bg-gray-50 dark:bg-slate-800"
           onWheel={onWheel}
         onMouseMove={(e) => {
           movePan(e as any);
@@ -842,8 +843,8 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
           onMouseDown={beginPan}
           onClick={onCanvasClick}
         >
-          {/* Pan surface */}
-          <rect id="pan-surface" x={0} y={0} width={CANVAS_W} height={CANVAS_H} fill="transparent" style={{ cursor: addNodeMode ? 'crosshair' : 'default' }} />
+          {/* Pan surface - uses slate-800 (#1e293b) for dark mode compatibility */}
+          <rect id="pan-surface" x={0} y={0} width={CANVAS_W} height={CANVAS_H} className="fill-gray-50 dark:fill-slate-800" style={{ cursor: addNodeMode ? 'crosshair' : 'default' }} />
 
           {/* Grid */}
           {Array.from({ length: Math.ceil(CANVAS_W / GRID) }, (_, i) => (
@@ -853,7 +854,7 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
               y1={0}
               x2={i * GRID}
               y2={CANVAS_H}
-              stroke="#e5e7eb"
+              className="stroke-gray-300 dark:stroke-slate-600"
               strokeWidth={i % 5 === 0 ? 0.8 : 0.4}
             />
           ))}
@@ -864,7 +865,7 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
               y1={j * GRID}
               x2={CANVAS_W}
               y2={j * GRID}
-              stroke="#e5e7eb"
+              className="stroke-gray-300 dark:stroke-slate-600"
               strokeWidth={j % 5 === 0 ? 0.8 : 0.4}
             />
           ))}
@@ -898,7 +899,6 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
             const p = mid(e.a, e.b);
             const off = labelOffsets[String(i)] || { dx: 0, dy: 0 };
             const lbl = e.label || '';
-            const stroke = e.style === 'dashed' ? '#6b7280' : '#0f172a';
             const isSelected = selectedEdge === i;
             return (
               <g key={`edge-label-${i}`}>
@@ -930,12 +930,23 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
                     opacity={0.5}
                   />
                 )}
+                {/* Label background for dark mode readability */}
+                {lbl && (
+                  <rect
+                    x={p.x + off.dx - (lbl.length * 3.5)}
+                    y={p.y - 18 + off.dy}
+                    width={lbl.length * 7}
+                    height={14}
+                    className="fill-white/90 dark:fill-slate-700/90"
+                    rx={2}
+                  />
+                )}
                 <text
                   x={p.x + off.dx}
                   y={p.y - 8 + off.dy}
                   textAnchor="middle"
                   fontSize={11}
-                  fill={stroke}
+                  className="fill-slate-700 dark:fill-slate-200"
                   onDoubleClick={(ev) => {
                     (ev as any).stopPropagation();
                     const v = prompt('Connector label', lbl);
@@ -977,7 +988,7 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-xs text-gray-600">
+      <div className="px-4 py-2 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-xs text-gray-600 dark:text-gray-400">
         <p>
           <strong>Controls:</strong> Spacebar/Middle-click to pan • Scroll to zoom • Drag nodes • Double-click to edit
           labels • Drag resize handles • Delete/Backspace to delete selection • Escape to cancel

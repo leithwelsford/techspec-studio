@@ -53,15 +53,15 @@ function BlockNode({ id, meta, pos, size }: {
   return (
     <g transform={`translate(${pos.x}, ${pos.y})`}>
       {meta.shape === 'cloud' ? (
-        <path d={cloudPath(s.w, s.h)} fill="#e0f2fe" stroke="#0284c7" strokeWidth={1.5} />
+        <path d={cloudPath(s.w, s.h)} fill="#ffffff" stroke="#60a5fa" strokeWidth={1.5} />
       ) : (
         <rect
           x={0}
           y={0}
           width={s.w}
           height={s.h}
-          fill="#e0f2fe"
-          stroke="#0284c7"
+          fill="#ffffff"
+          stroke="#60a5fa"
           strokeWidth={1.5}
           rx={4}
         />
@@ -72,7 +72,8 @@ function BlockNode({ id, meta, pos, size }: {
         textAnchor="middle"
         dominantBaseline="middle"
         fontSize={12}
-        fill="#0f172a"
+        fill="#1e293b"
+        fontWeight={500}
         fontFamily="system-ui, sans-serif"
       >
         {meta.label}
@@ -90,7 +91,7 @@ function BlockEdge({ a, b, label, style }: {
 }) {
   const strokeDasharray = style === 'dashed' ? '5,5' : undefined;
   const strokeWidth = style === 'bold' ? 2.5 : 1.5;
-  const stroke = '#64748b';
+  const stroke = '#94a3b8'; // Light gray for dark mode visibility
   const midPoint = mid(a, b);
 
   return (
@@ -106,16 +107,27 @@ function BlockEdge({ a, b, label, style }: {
         markerEnd="url(#arrowhead)"
       />
       {label && (
-        <text
-          x={midPoint.x}
-          y={midPoint.y - 8}
-          textAnchor="middle"
-          fontSize={10}
-          fill={stroke}
-          fontFamily="system-ui, sans-serif"
-        >
-          {label}
-        </text>
+        <>
+          {/* Background for label readability */}
+          <rect
+            x={midPoint.x - (label.length * 3.5)}
+            y={midPoint.y - 18}
+            width={label.length * 7}
+            height={14}
+            fill="rgba(30, 41, 59, 0.85)"
+            rx={2}
+          />
+          <text
+            x={midPoint.x}
+            y={midPoint.y - 8}
+            textAnchor="middle"
+            fontSize={10}
+            fill="#e2e8f0"
+            fontFamily="system-ui, sans-serif"
+          >
+            {label}
+          </text>
+        </>
       )}
     </g>
   );
@@ -197,7 +209,7 @@ function BlockDiagramPreview({ diagram, maxWidth = 800 }: { diagram: BlockDiagra
           refY="3.5"
           orient="auto"
         >
-          <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
         </marker>
       </defs>
 
@@ -426,11 +438,11 @@ export default function InlineDiagramPreview({
         onClick={() => setIsExpanded(false)}
       >
         <div
-          className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-[95vw] max-h-[95vh] overflow-auto"
+          className="relative bg-white dark:bg-slate-800 rounded-lg shadow-2xl max-w-[95vw] max-h-[95vh] overflow-auto"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Modal header */}
-          <div className="sticky top-0 flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 z-10">
+          <div className="sticky top-0 flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-600 z-10">
             <div>
               <h3 className="font-medium text-gray-900 dark:text-gray-100">
                 Figure {displayNumber}: {displayTitle}
@@ -452,7 +464,7 @@ export default function InlineDiagramPreview({
               </button>
               <button
                 onClick={() => setIsExpanded(false)}
-                className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700 rounded transition-colors"
                 title="Close"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -477,12 +489,12 @@ export default function InlineDiagramPreview({
   // Inline view with floating controls
   return (
     <figure className="my-6 inline-diagram-figure" id={`diagram-${diagramId}`}>
-      <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden group">
+      <div className="relative bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg overflow-hidden group">
         {/* Floating controls - appear on hover */}
         <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
           <button
             onClick={() => setIsExpanded(true)}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-300 dark:border-gray-600 rounded shadow-sm transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-300 dark:border-slate-500 rounded shadow-sm transition-colors"
             title="Expand diagram"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -492,7 +504,7 @@ export default function InlineDiagramPreview({
           </button>
           <button
             onClick={handleEditDiagram}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-300 dark:border-gray-600 rounded shadow-sm transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-300 dark:border-slate-500 rounded shadow-sm transition-colors"
             title="Edit this diagram"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -515,7 +527,7 @@ export default function InlineDiagramPreview({
         </div>
       </div>
       {showCaption && (
-        <figcaption className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+        <figcaption className="mt-2 text-center text-sm text-gray-600 dark:text-gray-300">
           <span className="font-medium">Figure {displayNumber}:</span> {displayTitle}
         </figcaption>
       )}
