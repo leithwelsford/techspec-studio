@@ -21,6 +21,8 @@ export interface SectionAnalysis {
   todoComments?: string[]; // TODO comments associated with figure placeholders
   /** Per-figure diagram types - maps figure reference ID to its specific diagram type */
   figureTypes?: Record<string, DiagramType>;
+  /** Per-figure TODO comments - maps figure reference ID to its specific TODO */
+  todosByFigure?: Record<string, string>;
 }
 
 /**
@@ -588,6 +590,7 @@ async function analyzeSectionContent(
       figureReferences,
       figureTypes, // NEW: Per-figure diagram types
       todoComments: todoComments.length > 0 ? todoComments : undefined,
+      todosByFigure: Object.keys(todosByFigure).length > 0 ? todosByFigure : undefined,
       isMandatory: true,
       confidence: 'high',
       reasoning: `MANDATORY: Contains ${figureReferences.length} figure placeholder(s): ${figureReferences.join(', ')}. Types: ${typesFound.join(', ')}`

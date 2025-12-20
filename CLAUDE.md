@@ -129,6 +129,8 @@ All state in `projectStore.ts` with IndexedDB persistence (middleware in `src/ut
 - `generateSection()` - Individual sections
 - `generateDiagrams()` - Block & Mermaid diagrams
 
+**Section Analyzer** (`sectionAnalyzer.ts`): AI-powered analysis of specification sections to detect which need diagrams. Scans for `{{fig:...}}` placeholders and infers diagram types from content.
+
 **Context Management** (`contextManager.ts`):
 - Priority: BRS document (highest) → Previous sections → References → Web search
 - Full documents included when they fit; relevance-based excerpting when budget exceeded
@@ -185,6 +187,14 @@ Documents use `{{fig:diagram-id}}` and `{{ref:3gpp-ts-23-203}}` syntax:
 5. Caption-based fallback (parses `*Figure X-Y:` after the reference)
 
 Diagrams have an optional `slug` field that explicitly links them to `{{fig:...}}` references.
+
+**Auto Figure Numbering**: When a new diagram is created and linked via `{{fig:...}}`, `assignFigureNumbers()` in [src/utils/figureNumbering.ts](src/utils/figureNumbering.ts) auto-assigns the next available figure number for that section (e.g., section 5 with 2 existing diagrams → new diagram gets `5-3`).
+
+**Shared Diagrams Across Sub-Sections**: When sub-sections share a conceptual diagram (e.g., architecture overview used by 5.1, 5.2, 5.3):
+- Place the diagram in the **first** sub-section that uses it
+- Use **prose references** in subsequent sub-sections: "As shown in Figure 5-1..."
+- Add scope indicator in TODO: `<!-- TODO: [BLOCK DIAGRAM] ... This diagram covers 5.1, 5.2, 5.3 -->`
+- Prevents duplicate diagrams and maintains document coherence
 
 ### Approval Workflow
 All AI-generated content goes through approval:

@@ -109,27 +109,48 @@ interface Size {
 }
 
 Guidelines:
-1. **Node IDs**: Use camelCase (e.g., "userEquipment", "policyServer", "internet")
-2. **Node Shapes**:
+
+**⚠️ CRITICAL: KEEP LABELS SHORT AND SCANNABLE**
+Diagrams are for visual overview - detailed explanations belong in the specification text.
+
+1. **Node Labels** - Maximum 15-20 characters:
+   - CORRECT: "TDF/PCEF-CP", "AAA", "HLR/HSS", "UE", "P-GW"
+   - WRONG: "Combined TDF/PCEF - Control Plane", "AAA (RADIUS Server)"
+   - Use acronyms and abbreviations freely - the spec text defines them
+   - If a role needs explanation, put it in the spec, not the label
+
+2. **Edge/Interface Labels** - Maximum 20-25 characters:
+   - CORRECT: "Gx", "RADIUS (RFC 2865)", "S5/S8", "Gy (online)"
+   - WRONG: "RADIUS Accounting (RFC 2866) -- terminates at TDF/PCEF CP"
+   - Use interface names, protocol abbreviations, or brief descriptors
+   - Details about what flows over an interface belong in the spec text
+
+3. **Node IDs**: Use camelCase (e.g., "userEquipment", "policyServer", "internet")
+4. **Node Shapes**:
    - Use "rect" for network functions, servers, equipment
    - Use "cloud" for networks, Internet, external domains
-3. **Positioning**:
+5. **Positioning**:
    - Left-to-right flow for typical data paths
    - X coordinates: start around 100, space nodes 200-300 units apart
    - Y coordinates: start around 100, space layers 150-200 units apart
    - Position related nodes close together
    - Create clear visual groupings
-4. **Sizes**:
+6. **Sizes**:
    - Standard rect nodes: { w: 120, h: 60 }
    - Larger components: { w: 150, h: 70 }
    - Cloud shapes: { w: 140, h: 80 }
-5. **Edges**:
+7. **Edges**:
    - Use "bold" for primary data paths
    - Use "solid" for control interfaces
    - Use "dashed" for optional or backup paths
-   - Add labels for interface names (e.g., "Gx", "S1", "SGi")
-6. **Separator**: Use sepY if diagram has distinct sections (e.g., mobile network above, fixed network below)
-7. **Label Offsets**: Usually not needed initially, can be added later for fine-tuning
+   - Labels should be SHORT: "Gx", "S1-U", "SGi" - NOT full descriptions
+8. **Separator**: Use sepY if diagram has distinct sections (e.g., mobile network above, fixed network below)
+9. **Label Offsets**: Usually not needed initially, can be added later for fine-tuning
+10. **Visual Emphasis** (for related diagrams):
+   - If TODO says "FOCUS ON NODES": Use larger sizes (w: 150, h: 70), group related nodes visually
+   - If TODO says "FOCUS ON INTERFACES": Make ALL edges bold, ensure all interface names shown
+   - Related diagrams should look VISUALLY DISTINCT even if they show similar topology
+   - Even when focusing, KEEP LABELS CONCISE - focus is about visual emphasis, not verbosity
 
 Example structure:
 {
@@ -227,20 +248,31 @@ sequenceDiagram
 - If you're unsure, look at the example above - it shows the exact format expected.
 
 Guidelines:
-1. Identify all participants from the description
-2. Use meaningful aliases for clarity
-3. Show the sequence of messages chronologically
-4. Use appropriate arrow types:
+
+**⚠️ CRITICAL: KEEP LABELS SHORT - Details belong in the specification text, not the diagram!**
+
+1. **Message labels** - Maximum 30-40 characters:
+   - CORRECT: "CCR-Initial (Gx)", "Attach Request", "Auth Success"
+   - WRONG: "Credit-Control-Request-Initial sent to PCRF for session authorization"
+   - Use message names, protocol abbreviations, brief descriptors
+
+2. **Participant names** - Keep short:
+   - CORRECT: "UE", "P_GW", "PCRF", "AAA"
+   - WRONG: "User_Equipment_Mobile_Device", "Policy_and_Charging_Rules_Function"
+
+3. **Notes** - 1-2 short sentences max, not paragraphs
+
+4. Identify all participants from the description
+5. Use meaningful aliases for clarity
+6. Show the sequence of messages chronologically
+7. Use appropriate arrow types:
    - Solid arrows for requests
    - Dotted arrows for responses
-5. Add activation boxes for processing
-6. Include notes to explain key steps
-7. Use alt/opt/loop for conditional flows
-8. Group related messages with rect blocks
-9. Keep descriptions concise but clear
-10. Use proper 3GPP interface names (Gx, Rx, S5, etc.) where applicable
-11. **IMPORTANT**: Message labels must be single-line. Do NOT use \\n or line breaks in labels.
-12. If you need to add multiple pieces of information, use commas or separate them with dashes.
+8. Add activation boxes for processing (sparingly)
+9. Use alt/opt/loop for conditional flows
+10. Group related messages with rect blocks
+11. Use proper interface names (Gx, Rx, S5, etc.) where applicable
+12. **IMPORTANT**: Message labels must be single-line. Do NOT use \\n or line breaks in labels.
 
 **CRITICAL VALIDATION RULES (prevent syntax errors):**
 13. **Participant names**: Use only alphanumeric characters and underscores. NO special characters like (, ), /, -, etc.
@@ -273,14 +305,14 @@ Guidelines:
     - Focus on the message flow, which is the important part
     - Use notes and rect blocks for visual grouping instead
 
-19. **KEEP CONTENT CONCISE** - Mermaid has text size limits!
-    - Message labels: Maximum 50-60 characters. Use abbreviations.
+19. **KEEP CONTENT CONCISE** - Diagrams are for overview, details go in the spec text!
+    - Message labels: Maximum 30-40 characters. Use abbreviations.
     - Notes: Keep brief (1-2 short sentences max)
     - Limit to 10-12 participants per diagram
     - Limit to 20-25 messages per diagram
     - If content is complex, suggest splitting into multiple diagrams
     - WRONG: "Mobile_UE->>Access_Network: DHCP_RA_with_CAPPORT_URI_RFC8910_when_CAPTIVE_status_detected"
-    - CORRECT: "Mobile_UE->>Access_Network: DHCP RA (CAPPORT URI)"
+    - CORRECT: "Mobile_UE->>Access_Network: DHCP RA (CAPPORT)"
 
 Now generate the Mermaid sequence diagram code for the description provided. Output the mermaid code block wrapped in \`\`\`mermaid ... \`\`\`.`;
 
@@ -355,6 +387,13 @@ ${getCompactSyntaxReference('flow')}
 === MERMAID STATE DIAGRAM SYNTAX (v${docsVersion}) ===
 ${getCompactSyntaxReference('state')}
 === END SYNTAX REFERENCES ===
+
+**⚠️ CRITICAL: KEEP ALL LABELS SHORT AND SCANNABLE**
+Diagrams provide visual overview - detailed explanations belong in the specification text.
+- Node/entity labels: Maximum 15-20 characters
+- Edge/relationship labels: Maximum 20-25 characters
+- Notes/descriptions: 1-2 short sentences max
+- Use acronyms and abbreviations freely
 
 **OUTPUT REQUIREMENTS:**
 1. Output valid Mermaid syntax wrapped in \`\`\`mermaid ... \`\`\`
@@ -439,11 +478,15 @@ flowchart TD
     style Setup fill:#87CEEB
 \`\`\`
 
+**⚠️ CRITICAL: KEEP LABELS SHORT - Details belong in the specification text!**
+- Node labels: Maximum 20-25 characters
+- Edge labels: Maximum 15-20 characters
+- CORRECT: "Auth OK?", "Setup Session", "Retry < 3?"
+- WRONG: "Is authentication successful after validating credentials?"
+
 **CRITICAL SYNTAX RULES (prevent errors):**
 11. **NO newlines in node labels** - Keep all labels on a single line
-    - WRONG: \`id{Multi\\nLine}\` or \`id{Multi<br>Line}\`
-    - CORRECT: \`id{Short Label}\` or use abbreviations
-12. **Keep labels concise** - Maximum 30-40 characters per label
+12. **Keep labels concise** - Maximum 20-25 characters per label
 13. **Quote special characters** - Use \`id["Label with (special) chars"]\` for complex text
 14. **Valid node IDs** - Use only alphanumeric and underscores: \`node_id\`, \`NodeId\`, \`node1\`
 
@@ -518,17 +561,22 @@ stateDiagram-v2
     note right of Active : Primary operational state\\nwith error handling
 \`\`\`
 
+**⚠️ CRITICAL: KEEP LABELS SHORT - Details belong in the specification text!**
+- State names: Maximum 15-20 characters (e.g., "Idle", "Authenticating", "Active")
+- Transition labels: Maximum 20-25 characters (e.g., "Connect Request", "Auth Failed")
+- Notes: 1-2 short sentences max
+
 Guidelines:
 1. Start with stateDiagram-v2 directive
 2. Identify all states from the description
-3. Define clear state names (PascalCase recommended)
-4. Show all valid transitions with triggering events
+3. Define clear state names (PascalCase, keep SHORT)
+4. Show all valid transitions with brief triggering events
 5. Include start [*] and end states where applicable
 6. Use composite states for complex states with substates
-7. Add transition labels to explain conditions
-8. Use notes to clarify important states or behaviors
+7. Add brief transition labels to explain conditions
+8. Use notes sparingly to clarify important states
 9. Consider error states and recovery paths
-10. Keep the diagram logical and easy to understand
+10. Keep the diagram clean and easy to scan
 
 Now generate the Mermaid state diagram code for the description provided. Output the mermaid code block wrapped in \`\`\`mermaid ... \`\`\`.`;
 }
@@ -591,12 +639,19 @@ ${currentDiagram}
 User Feedback:
 ${feedback}
 
+**⚠️ CRITICAL: KEEP LABELS SHORT AND SCANNABLE**
+Diagrams are for visual overview - detailed explanations belong in the specification text.
+- Node/participant labels: Maximum 15-20 characters
+- Edge/message labels: Maximum 20-25 characters
+- Use acronyms and abbreviations freely
+
 Instructions:
 1. Understand what the user wants changed
 2. Make the requested improvements
 3. Maintain the overall structure unless feedback suggests major changes
 4. Ensure technical accuracy
 5. Keep the diagram clear and readable
+6. Keep ALL labels concise - if current labels are verbose, shorten them
 
 ${diagramType === 'block'
   ? 'Output the refined JSON structure matching the BlockDiagram interface.'
@@ -621,17 +676,24 @@ ${preferredType
   ? `The user prefers a ${preferredType} diagram.`
   : 'Choose the most appropriate diagram type (block, sequence, or flow) based on the content.'}
 
+**⚠️ CRITICAL: KEEP LABELS SHORT AND SCANNABLE**
+Diagrams are for visual overview - detailed explanations belong in the specification text.
+- Node/participant labels: Maximum 15-20 characters
+- Edge/message labels: Maximum 20-25 characters
+- Use acronyms and abbreviations freely
+- Extract the key concepts, not full sentences
+
 Steps:
 1. Analyze the description to identify:
-   - Entities/components mentioned
-   - Relationships and connections
+   - Entities/components mentioned (use SHORT names)
+   - Relationships and connections (use brief labels)
    - Sequence of events or flows
    - Decision points or states
 2. Determine the most suitable diagram type:
    - Block diagram: For architecture, components, interfaces
    - Sequence diagram: For message flows, interactions, protocols
    - Flow diagram: For processes, decisions, state machines
-3. Generate the appropriate diagram
+3. Generate the appropriate diagram with CONCISE labels
 
 Output:
 - State which diagram type you chose and why

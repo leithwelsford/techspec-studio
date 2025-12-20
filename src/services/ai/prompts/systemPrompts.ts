@@ -401,6 +401,37 @@ Be concise but comprehensive. Focus on information directly applicable to writin
 }
 
 /**
+ * Guidance for shared diagrams across sub-sections
+ * Prevents duplicate diagrams and encourages prose references
+ */
+export const SHARED_DIAGRAM_GUIDANCE = `
+## Diagram Placement Strategy
+
+Technical specifications often have sub-sections that share high-level diagrams:
+- Architecture diagrams typically apply to multiple sub-sections
+- Component diagrams may be referenced from different perspectives
+- Interface diagrams are often shared across protocol descriptions
+
+**Rule**: One diagram, one placement, multiple prose references.
+
+When writing sub-sections:
+1. Check if an earlier sub-section already has a relevant diagram
+2. If yes, reference it with prose: "As shown in Figure X-Y..."
+3. If no, and a new diagram is needed, place it in the current sub-section
+4. If the new diagram will be relevant to later sub-sections, note this in the TODO
+
+**Prose Reference Patterns:**
+| Pattern | Use Case |
+|---------|----------|
+| "As shown in Figure X-Y, ..." | General reference to diagram content |
+| "The architecture illustrated in Figure X-Y ..." | Referring to structure |
+| "Referring to Figure X-Y, the [component] ..." | Calling out specific element |
+| "Figure X-Y depicts the overall [topic], while this section focuses on ..." | Narrowing scope |
+| "The [element] shown in Figure X-Y ..." | Specific element reference |
+| "See Figure X-Y for the complete [view]" | Directing reader to diagram |
+`.trim();
+
+/**
  * Critical diagram requirements for all section generation
  * Ensures AI uses {{fig:...}} placeholders with explicit [DIAGRAM TYPE] hints
  */

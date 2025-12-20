@@ -4,7 +4,31 @@
  */
 
 import type { AIContext } from '../../../types';
-import { DIAGRAM_PLACEHOLDER_REQUIREMENTS } from './systemPrompts';
+import { DIAGRAM_PLACEHOLDER_REQUIREMENTS, SHARED_DIAGRAM_GUIDANCE } from './systemPrompts';
+
+/**
+ * Diagram scope guidance for document planning
+ * Helps AI identify shared vs unique diagrams before generating content
+ */
+const DIAGRAM_SCOPE_GUIDANCE = `
+## Diagram Planning
+
+When planning diagrams for the document:
+
+1. **Identify shared diagrams first**
+   - Architecture overview → likely shared across multiple sub-sections
+   - Component diagrams → may apply to related sub-sections
+   - Sequence diagrams → usually specific to one sub-section
+
+2. **Plan diagram placement**
+   - Place each shared diagram in the earliest relevant sub-section
+   - Plan prose references for subsequent sub-sections
+
+3. **Avoid diagram proliferation**
+   - Don't create separate diagrams that show the same topology
+   - Use prose references liberally
+   - A document with 10 sections shouldn't have 10 similar architecture diagrams
+`;
 
 export interface DocumentGenerationRequest {
   title: string;
@@ -83,6 +107,10 @@ For each section:
 6. Include examples or use cases where appropriate
 
 ${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
+
+${DIAGRAM_SCOPE_GUIDANCE}
+
+${SHARED_DIAGRAM_GUIDANCE}
 
 Output Format:
 - Clean markdown starting with # for top-level sections

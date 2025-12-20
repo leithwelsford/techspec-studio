@@ -1011,20 +1011,49 @@ export class AIService {
             const isReasoning = isReasoningModel(this.config.model || '');
             const maxTokens = isReasoning ? 64000 : 4000;
 
-            // Combine user guidance with TODO comments
+            // Build guidance: use specific TODO for this figure, not all TODOs combined
             let combinedGuidance = userGuidance || '';
-            if (section.todoComments && section.todoComments.length > 0) {
+
+            // Get the specific TODO for this figure (if available)
+            const specificTodo = figureRef && section.todosByFigure?.[figureRef];
+            if (specificTodo) {
+              combinedGuidance = combinedGuidance
+                ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${specificTodo}`
+                : `**IMPORTANT - Diagram Requirements from Specification:**\n${specificTodo}`;
+            } else if (section.todoComments && section.todoComments.length > 0) {
+              // Fallback: use all TODOs if no specific TODO for this figure
               const todoGuidance = section.todoComments.join('\n\n');
               combinedGuidance = combinedGuidance
                 ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`
                 : `**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`;
             }
 
-            // Add context about which specific figure we're generating
+            // Add context about which specific figure we're generating and what others exist
             if (figureRef && figureRefs.length > 1) {
+              const alreadyGenerated = blockDiagrams
+                .filter(d => d.sourceSection?.id === section.sectionId)
+                .map(d => d.title);
+
+              let figureContext = `**Specific Figure:** Generate diagram for {{fig:${figureRef}}}.\n`;
+              figureContext += `This section has ${figureRefs.length} different figure placeholders:\n`;
+              figureRefs.forEach((f, idx) => {
+                if (!f) return; // Skip null entries
+                const todo = section.todosByFigure?.[f];
+                const todoPreview = todo ? `: "${todo.substring(0, 60)}${todo.length > 60 ? '...' : ''}"` : '';
+                figureContext += `  ${idx + 1}. {{fig:${f}}}${todoPreview}\n`;
+              });
+
+              if (alreadyGenerated.length > 0) {
+                figureContext += `\n**Already generated in this section (DO NOT DUPLICATE):**\n`;
+                alreadyGenerated.forEach((title) => {
+                  figureContext += `  - ${title}\n`;
+                });
+                figureContext += `\nYour diagram MUST be DIFFERENT from the above. Focus on the specific aspect described in the TODO for {{fig:${figureRef}}}.`;
+              }
+
               combinedGuidance = combinedGuidance
-                ? `${combinedGuidance}\n\n**Specific Figure:** Generate diagram for {{fig:${figureRef}}} - this section has ${figureRefs.length} figure placeholders.`
-                : `**Specific Figure:** Generate diagram for {{fig:${figureRef}}} - this section has ${figureRefs.length} figure placeholders.`;
+                ? `${combinedGuidance}\n\n${figureContext}`
+                : figureContext;
             }
 
             const blockOptions: any = { maxTokens, userGuidance: combinedGuidance };
@@ -1110,20 +1139,49 @@ export class AIService {
             const isReasoning = isReasoningModel(this.config.model || '');
             const maxTokens = isReasoning ? 64000 : 4000;
 
-            // Combine user guidance with TODO comments
+            // Build guidance: use specific TODO for this figure, not all TODOs combined
             let combinedGuidance = userGuidance || '';
-            if (section.todoComments && section.todoComments.length > 0) {
+
+            // Get the specific TODO for this figure (if available)
+            const specificTodo = figureRef && section.todosByFigure?.[figureRef];
+            if (specificTodo) {
+              combinedGuidance = combinedGuidance
+                ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${specificTodo}`
+                : `**IMPORTANT - Diagram Requirements from Specification:**\n${specificTodo}`;
+            } else if (section.todoComments && section.todoComments.length > 0) {
+              // Fallback: use all TODOs if no specific TODO for this figure
               const todoGuidance = section.todoComments.join('\n\n');
               combinedGuidance = combinedGuidance
                 ? `${combinedGuidance}\n\n**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`
                 : `**IMPORTANT - Diagram Requirements from Specification:**\n${todoGuidance}`;
             }
 
-            // Add context about which specific figure we're generating
+            // Add context about which specific figure we're generating and what others exist
             if (figureRef && figureRefs.length > 1) {
+              const alreadyGenerated = sequenceDiagrams
+                .filter(d => d.sourceSection?.id === section.sectionId)
+                .map(d => d.title);
+
+              let figureContext = `**Specific Figure:** Generate diagram for {{fig:${figureRef}}}.\n`;
+              figureContext += `This section has ${figureRefs.length} different figure placeholders:\n`;
+              figureRefs.forEach((f, idx) => {
+                if (!f) return; // Skip null entries
+                const todo = section.todosByFigure?.[f];
+                const todoPreview = todo ? `: "${todo.substring(0, 60)}${todo.length > 60 ? '...' : ''}"` : '';
+                figureContext += `  ${idx + 1}. {{fig:${f}}}${todoPreview}\n`;
+              });
+
+              if (alreadyGenerated.length > 0) {
+                figureContext += `\n**Already generated in this section (DO NOT DUPLICATE):**\n`;
+                alreadyGenerated.forEach((title) => {
+                  figureContext += `  - ${title}\n`;
+                });
+                figureContext += `\nYour diagram MUST be DIFFERENT from the above. Focus on the specific aspect described in the TODO for {{fig:${figureRef}}}.`;
+              }
+
               combinedGuidance = combinedGuidance
-                ? `${combinedGuidance}\n\n**Specific Figure:** Generate diagram for {{fig:${figureRef}}} - this section has ${figureRefs.length} figure placeholders.`
-                : `**Specific Figure:** Generate diagram for {{fig:${figureRef}}} - this section has ${figureRefs.length} figure placeholders.`;
+                ? `${combinedGuidance}\n\n${figureContext}`
+                : figureContext;
             }
 
             const mermaidOptions: GenerationOptions = { maxTokens };

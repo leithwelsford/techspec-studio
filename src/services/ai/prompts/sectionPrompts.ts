@@ -102,6 +102,68 @@ Format: \`<!-- TODO: [DIAGRAM TYPE] Description of what the diagram should show 
 <!-- TODO: [QUADRANT CHART] Plot risks by likelihood (x) vs impact (y) -->
 *Figure 7-1: Risk Assessment Matrix*
 \`\`\`
+
+## Shared Diagrams Across Sub-Sections
+
+When a diagram conceptually applies to multiple sub-sections:
+
+1. **Place the diagram in the FIRST sub-section that uses it**
+   - Include the {{fig:...}} placeholder and caption in that first sub-section
+   - The diagram should show the complete view needed by all related sub-sections
+
+2. **Reference with prose in subsequent sub-sections**
+   - Do NOT create new diagram placeholders for the same conceptual content
+   - Use phrases like:
+     - "As shown in Figure X-Y, ..."
+     - "The architecture illustrated in Figure X-Y ..."
+     - "Referring to Figure X-Y, the [specific aspect] ..."
+
+3. **Figure numbering remains section-level**
+   - All diagrams in section 5 are numbered 5-1, 5-2, 5-3
+   - NOT 5.1-1, 5.2-1 (sub-section level)
+
+### Example: Section 5 with shared and unique diagrams
+
+\`\`\`markdown
+### 5.1 Logical Components
+{{fig:5-1-system-architecture}}
+<!-- TODO: [BLOCK DIAGRAM] Show all major components (AMF, SMF, UPF)
+     and interfaces. FOCUS ON NODES. This diagram covers 5.1, 5.2, 5.3 -->
+*Figure 5-1: System Architecture Overview*
+
+The system comprises five logical components...
+
+### 5.2 Control Plane Functions
+As shown in Figure 5-1, the control plane encompasses the Policy Controller
+and Session Manager components. This section details their responsibilities...
+[No new diagram - uses prose reference to Figure 5-1]
+
+### 5.3 User Plane Functions
+The user plane data path, illustrated in Figure 5-1, flows through the
+Access Gateway and Traffic Processor...
+[No new diagram - uses prose reference to Figure 5-1]
+
+### 5.4 Session Management
+{{fig:5-2-session-states}}
+<!-- TODO: [STATE DIAGRAM] Show session lifecycle: IDLE → INITIATING →
+     ACTIVE → TERMINATING → CLOSED with transition triggers -->
+*Figure 5-2: Session State Machine*
+
+This section requires its own diagram showing state transitions...
+\`\`\`
+
+### Indicators in TODO Comments
+
+When a diagram covers multiple sub-sections, indicate this in the TODO:
+
+\`\`\`markdown
+<!-- TODO: [BLOCK DIAGRAM] ... This diagram covers 5.1, 5.2, 5.3 -->
+\`\`\`
+
+This helps:
+- Document authors understand the diagram's scope
+- Future AI refinements know not to duplicate
+- Reviewers verify appropriate coverage
 `;
 
 /**
