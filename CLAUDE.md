@@ -28,6 +28,13 @@ cd server && npm run dev                    # With --watch hot reload
 
 **Note**: Dev server uses `strictPort: true` on port 3000. If port is in use, it will fail rather than try another port.
 
+**Editor Shortcuts** (for manual testing):
+- **Space + Drag**: Pan diagram canvas
+- **Scroll Wheel**: Zoom diagrams
+- **Double-click**: Edit node/edge labels
+- **Enter**: Send chat message
+- **Shift + Enter**: New line in chat
+
 ## Critical Rules
 
 1. **Use relative imports only** - `@/` path aliases are NOT configured
@@ -143,6 +150,7 @@ All state in `projectStore.ts` with IndexedDB persistence (middleware in `src/ut
 - `diagramPrompts.ts` - Block and Mermaid diagram generation
 - `structurePrompts.ts` - Document structure discovery
 - `templatePrompts.ts` - Template-aware generation
+- `legacyTelecomPrompts.ts` - Legacy 3GPP-specific prompts (deprecated)
 
 ### Data Flow
 
@@ -274,9 +282,12 @@ Only `VITE_` prefixed variables are exposed to the browser.
 ## Documentation
 
 Detailed docs in [docs/](docs/):
-- `docs/architecture/` - System design, AI integration
-- `docs/features/` - Feature implementations
+- `docs/architecture/` - System design, AI integration, project summaries
+- `docs/features/` - Feature implementations and testing guides
 - `docs/bugs-and-fixes/` - Bug investigations and fixes
+- `docs/phases/` - Development phase progress tracking
+- `docs/plans/` - Implementation plans for upcoming features
+- `docs/sessions/` - Development session summaries
 
 ## Git Commit Format
 

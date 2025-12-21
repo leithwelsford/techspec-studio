@@ -8,6 +8,7 @@ import type {
   Project,
   BlockDiagram,
   MermaidDiagram,
+  MermaidDiagramType,
   ReferenceDocument,
   ReferenceDocumentContent,
   BRSDocument,
@@ -89,8 +90,8 @@ export interface ProjectState {
   deleteBlockDiagram: (id: string) => void;
   setActiveBlockDiagram: (id: string | null) => void;
 
-  // Actions - Mermaid Diagrams (Sequence/Flow)
-  addMermaidDiagram: (type: 'sequence' | 'flow', diagram: Omit<MermaidDiagram, 'id'>) => string;
+  // Actions - Mermaid Diagrams (Sequence/Flow/ER/State/etc.)
+  addMermaidDiagram: (type: MermaidDiagramType, diagram: Omit<MermaidDiagram, 'id'>) => string;
   updateMermaidDiagram: (id: string, updates: Partial<MermaidDiagram>) => void;
   deleteMermaidDiagram: (id: string) => void;
   setActiveMermaidDiagram: (id: string | null) => void;
@@ -449,10 +450,16 @@ export const useProjectStore = create<ProjectState>()(
 
       // Mermaid diagram actions
       addMermaidDiagram: (type, diagram) => {
+        console.log('[Store] addMermaidDiagram called:', { type, title: diagram.title });
         const id = generateId();
         const arrayKey = type === 'sequence' ? 'sequenceDiagrams' : 'flowDiagrams';
+        console.log('[Store] Storing in array:', arrayKey, 'with id:', id);
         set((state) => {
-          if (!state.project) return state;
+          if (!state.project) {
+            console.error('[Store] No project found!');
+            return state;
+          }
+          console.log('[Store] Current', arrayKey, 'count:', state.project[arrayKey].length);
           return {
             project: {
               ...state.project,
@@ -466,6 +473,7 @@ export const useProjectStore = create<ProjectState>()(
             activeTab: type === 'sequence' ? 'sequence-diagrams' : 'flow-diagrams',
           };
         });
+        console.log('[Store] New', arrayKey, 'count:', get().project?.[arrayKey]?.length);
         // Auto-number figures after adding new diagram
         get().autoNumberFigures();
         return id;
@@ -1067,8 +1075,9 @@ export const useProjectStore = create<ProjectState>()(
           );
 
           // Separate mermaid diagrams back into sequence and flow
+          // flowDiagrams contains ALL non-sequence Mermaid types (er, gantt, state, class, etc.)
           const sequenceDiagrams = mermaidDiagrams.filter(d => d.type === 'sequence');
-          const flowDiagrams = mermaidDiagrams.filter(d => d.type === 'flow' || d.type === 'state' || d.type === 'class');
+          const flowDiagrams = mermaidDiagrams.filter(d => d.type !== 'sequence');
 
           return {
             project: {

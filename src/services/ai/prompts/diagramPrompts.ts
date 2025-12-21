@@ -386,6 +386,249 @@ ${getCompactSyntaxReference('flow')}
 
 === MERMAID STATE DIAGRAM SYNTAX (v${docsVersion}) ===
 ${getCompactSyntaxReference('state')}
+
+=== MERMAID CLASS DIAGRAM SYNTAX ===
+${getCompactSyntaxReference('class')}
+
+=== MERMAID ER DIAGRAM SYNTAX ===
+\`\`\`mermaid
+erDiagram
+    CUSTOMER {
+        int id PK
+        string name
+    }
+    ORDER {
+        int id PK
+        int customer_id FK
+    }
+    CUSTOMER ||--o{ ORDER : places
+\`\`\`
+**Cardinality:** \`||\` exactly one, \`o|\` zero/one, \`}|\` one+, \`}o\` zero+
+**CRITICAL:** Opening brace \`{\` must be on the SAME line as entity name. ONE relationship per line.
+
+=== MERMAID GANTT CHART SYNTAX ===
+\`\`\`mermaid
+gantt
+    title Project Timeline
+    dateFormat YYYY-MM-DD
+    section Phase 1
+        Task 1           :a1, 2024-01-01, 30d
+        Task 2           :after a1, 20d
+    section Phase 2
+        Task 3           :2024-02-15, 45d
+        Milestone        :milestone, m1, 2024-04-01, 0d
+\`\`\`
+**Task format:** \`name :id, start, duration\` or \`:after id, duration\`
+**Status:** \`done\`, \`active\`, \`crit\` (critical path)
+
+=== MERMAID TIMELINE SYNTAX ===
+\`\`\`mermaid
+timeline
+    title History of Events
+    2020 : Event One
+         : Event Two
+    2021 : Event Three
+    2022 : Event Four
+         : Event Five
+\`\`\`
+**Format:** Year/period on left, events indented with \`:\`
+
+=== MERMAID PIE CHART SYNTAX ===
+\`\`\`mermaid
+pie showData
+    title Distribution
+    "Category A" : 45
+    "Category B" : 30
+    "Category C" : 25
+\`\`\`
+**Format:** \`"Label" : value\` - values are percentages or counts
+
+=== MERMAID MINDMAP SYNTAX ===
+\`\`\`mermaid
+mindmap
+    root((Central Topic))
+        Branch 1
+            Leaf 1a
+            Leaf 1b
+        Branch 2
+            Leaf 2a
+                Sub-leaf
+\`\`\`
+**Indentation defines hierarchy.** Shapes: \`((circle))\`, \`[square]\`, \`(rounded)\`
+
+=== MERMAID QUADRANT CHART SYNTAX ===
+\`\`\`mermaid
+quadrantChart
+    title Priority Matrix
+    x-axis Low Effort --> High Effort
+    y-axis Low Impact --> High Impact
+    quadrant-1 Do First
+    quadrant-2 Schedule
+    quadrant-3 Delegate
+    quadrant-4 Eliminate
+    Item A: [0.8, 0.9]
+    Item B: [0.3, 0.7]
+    Item C: [0.6, 0.2]
+\`\`\`
+**Coordinates:** \`[x, y]\` where 0-1 range, quadrants numbered counter-clockwise from top-right
+
+=== MERMAID XY CHART SYNTAX ===
+\`\`\`mermaid
+xychart-beta
+    title "Sales Data"
+    x-axis [Jan, Feb, Mar, Apr, May]
+    y-axis "Revenue ($)" 0 --> 100
+    bar [30, 45, 60, 55, 70]
+    line [25, 40, 55, 50, 65]
+\`\`\`
+**Types:** \`bar\`, \`line\` - data arrays must match x-axis length
+
+=== MERMAID SANKEY DIAGRAM SYNTAX ===
+\`\`\`mermaid
+sankey-beta
+    Source1,Target1,100
+    Source1,Target2,50
+    Source2,Target2,75
+    Target1,Final,80
+\`\`\`
+**Format:** \`source,target,value\` - each line is a flow
+
+=== MERMAID C4 DIAGRAM SYNTAX ===
+\`\`\`mermaid
+C4Context
+    title System Context
+    Person(user, "User", "Description")
+    System(system, "System", "Description")
+    System_Ext(ext, "External", "Description")
+    Rel(user, system, "Uses")
+    Rel(system, ext, "Calls")
+\`\`\`
+**Levels:** \`C4Context\`, \`C4Container\`, \`C4Component\`, \`C4Dynamic\`
+**Elements:** \`Person\`, \`System\`, \`System_Ext\`, \`Container\`, \`Component\`
+
+=== MERMAID ARCHITECTURE DIAGRAM SYNTAX ===
+\`\`\`mermaid
+architecture-beta
+    group api(cloud)[API Layer]
+    service server(server)[Web Server] in api
+    service db(database)[Database] in api
+    server:R -- L:db
+\`\`\`
+**Icons:** \`cloud\`, \`server\`, \`database\`, \`disk\`
+**Connections:** \`service1:edge -- edge:service2\` where edge is L/R/T/B
+
+=== MERMAID USER JOURNEY SYNTAX ===
+\`\`\`mermaid
+journey
+    title User Journey
+    section Sign Up
+        Visit site: 5: User
+        Fill form: 3: User
+        Confirm email: 4: User, System
+    section Use App
+        Login: 5: User
+        Browse: 4: User
+\`\`\`
+**Format:** \`Task: score: actors\` - score 1-5 (satisfaction)
+
+=== MERMAID GITGRAPH SYNTAX ===
+\`\`\`mermaid
+gitGraph
+    commit id: "Initial"
+    branch develop
+    commit id: "Feature 1"
+    checkout main
+    merge develop
+    commit id: "Release"
+\`\`\`
+**Commands:** \`commit\`, \`branch name\`, \`checkout name\`, \`merge name\`
+
+=== MERMAID REQUIREMENT DIAGRAM SYNTAX ===
+\`\`\`mermaid
+requirementDiagram
+    requirement req1 {
+        id: REQ-001
+        text: System shall do X
+        risk: high
+        verifymethod: test
+    }
+    element component1 {
+        type: module
+    }
+    component1 - satisfies -> req1
+\`\`\`
+**Relations:** \`satisfies\`, \`traces\`, \`contains\`, \`derives\`, \`refines\`
+
+=== MERMAID ZENUML SYNTAX ===
+\`\`\`mermaid
+zenuml
+    @Actor User
+    @Service API
+    @Database DB
+    User->API.request() {
+        API->DB.query()
+        return data
+    }
+\`\`\`
+**Method-call style sequences.** Use \`@Actor\`, \`@Service\`, \`@Database\`
+
+=== MERMAID KANBAN SYNTAX ===
+\`\`\`mermaid
+kanban
+    column1[To Do]
+        task1[Task 1]
+        task2[Task 2]
+    column2[In Progress]
+        task3[Task 3]
+    column3[Done]
+        task4[Task 4]
+\`\`\`
+**Columns contain tasks.** Use \`[brackets]\` for names.
+
+=== MERMAID PACKET DIAGRAM SYNTAX ===
+\`\`\`mermaid
+packet-beta
+    0-15: "Source Port"
+    16-31: "Dest Port"
+    32-63: "Sequence Number"
+    64-95: "Ack Number"
+\`\`\`
+**Format:** \`start-end: "label"\` - bit ranges for protocol headers
+
+=== MERMAID RADAR CHART SYNTAX ===
+\`\`\`mermaid
+radar-beta
+    title Competency
+    axis Performance, Quality, Speed, Cost, Support
+    curve a[Team A] { 80, 70, 90, 60, 85 }
+    curve b[Team B] { 70, 85, 75, 80, 70 }
+\`\`\`
+**Define axes, then curves with values matching axis count**
+
+=== MERMAID BLOCK DIAGRAM SYNTAX ===
+\`\`\`mermaid
+block-beta
+    columns 3
+    a["Block A"]:2 b["Block B"]
+    c["Block C"] d["Block D"] e["Block E"]
+    a --> c
+    b --> d
+\`\`\`
+**Grid layout.** \`:N\` spans N columns. Arrows connect blocks.
+
+=== MERMAID TREEMAP SYNTAX ===
+\`\`\`mermaid
+treemap-beta
+    root[Total]
+        CategoryA[40]
+            ItemA1[25]
+            ItemA2[15]
+        CategoryB[35]
+            ItemB1[20]
+            ItemB2[15]
+        CategoryC[25]
+\`\`\`
+**Hierarchical proportional areas.** Values in brackets determine size.
 === END SYNTAX REFERENCES ===
 
 **⚠️ CRITICAL: KEEP ALL LABELS SHORT AND SCANNABLE**

@@ -1082,8 +1082,12 @@ export class AIService {
                 id: section.sectionId,
                 title: section.sectionTitle
               };
+              // Set slug to match {{fig:...}} reference for reliable linking
+              if (figureRef) {
+                blockResult.diagram.slug = figureRef;
+              }
               blockDiagrams.push(blockResult.diagram);
-              console.log(`✅ Block diagram generated (${mandatoryLabel}): ${section.sectionTitle} → ID: ${diagramId}`);
+              console.log(`✅ Block diagram generated (${mandatoryLabel}): ${section.sectionTitle} → ID: ${diagramId}, slug: ${figureRef || 'none'}`);
             }
             errors.push(...blockResult.errors);
             warnings.push(...blockResult.warnings);
@@ -1201,8 +1205,12 @@ export class AIService {
                 id: section.sectionId,
                 title: section.sectionTitle
               };
+              // Set slug to match {{fig:...}} reference for reliable linking
+              if (figureRef) {
+                mermaidResult.diagram.slug = figureRef;
+              }
               sequenceDiagrams.push(mermaidResult.diagram);
-              console.log(`✅ ${mermaidResult.detectedType || 'Mermaid'} diagram generated (${mandatoryLabel}): ${section.sectionTitle} → ID: ${diagramId}`);
+              console.log(`✅ ${mermaidResult.detectedType || 'Mermaid'} diagram generated (${mandatoryLabel}): ${section.sectionTitle} → ID: ${diagramId}, slug: ${figureRef || 'none'}`);
             } else {
               console.error(`❌ No diagram generated for: ${section.sectionTitle} (${diagramId})`, mermaidResult.errors);
             }

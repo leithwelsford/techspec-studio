@@ -543,12 +543,27 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
       } else if (approval.type === 'diagram') {
         // For diagrams
         const diagram = approval.generatedContent;
+        console.log('🎨 Processing diagram approval:', {
+          hasNodes: !!diagram.nodes,
+          hasEdges: !!diagram.edges,
+          hasMermaidCode: !!diagram.mermaidCode,
+          mermaidCodeLength: diagram.mermaidCode?.length,
+          diagramType: diagram.type,
+          title: diagram.title,
+        });
+
         if (diagram.nodes && diagram.edges) {
           // Block diagram
+          console.log('📐 Adding block diagram:', diagram.title);
           addBlockDiagram(diagram);
         } else if (diagram.mermaidCode) {
-          // Mermaid diagram (sequence or flow)
-          addMermaidDiagram(diagram.type || 'sequence', diagram);
+          // Mermaid diagram (sequence, flow, er, state, etc.)
+          const diagramType = diagram.type || 'sequence';
+          console.log('📊 Adding Mermaid diagram:', diagram.title, 'type:', diagramType);
+          addMermaidDiagram(diagramType, diagram);
+          console.log('✅ addMermaidDiagram called successfully');
+        } else {
+          console.warn('⚠️ Diagram has neither nodes/edges nor mermaidCode:', diagram);
         }
 
         // Create snapshot
