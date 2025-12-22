@@ -5,6 +5,7 @@
 
 import type { AIContext } from '../../../types';
 import { DIAGRAM_PLACEHOLDER_REQUIREMENTS, SHARED_DIAGRAM_GUIDANCE } from './systemPrompts';
+import { buildInterfaceTerminologyHints } from './sectionPrompts';
 
 /**
  * Diagram scope guidance for document planning
@@ -97,10 +98,12 @@ For each section:
 1. Start with a clear section heading using proper markdown hierarchy
 2. Provide a brief introduction to the section's purpose
 3. Include detailed technical content with:
-   - Definitions and terminology
+   - Definitions and terminology (use EXACT terms from reference documents)
    - Technical requirements using normative language
    - Specific parameters, values, and constraints
-   - Protocol flows and procedures where applicable
+   - Protocol flows and procedures where applicable, using specific command/message names
+     from references (e.g., "CCR-I/CCA-I exchange" not "policy request/response")
+   - State machines and transitions using terminology from standards
 4. Reference standards and specifications using:
    {{ref:reference-id}} when citing external documents
 5. Use tables for complex data structures
@@ -111,6 +114,8 @@ ${DIAGRAM_PLACEHOLDER_REQUIREMENTS}
 ${DIAGRAM_SCOPE_GUIDANCE}
 
 ${SHARED_DIAGRAM_GUIDANCE}
+
+${buildInterfaceTerminologyHints(requirements + (context?.userInstructions || ''))}
 
 Output Format:
 - Clean markdown starting with # for top-level sections

@@ -165,10 +165,18 @@ Generate → Create PendingApproval → User reviews in ReviewPanel → Approve 
 
 ### Diagram Types
 
-| Type | Technology | Editor |
-|------|------------|--------|
-| Block diagrams | Custom SVG | BlockDiagramEditor.tsx |
-| Sequence/Flow/State | Mermaid.js | SequenceDiagramEditor.tsx |
+**Two diagram technologies:**
+| Type | Technology | Editor | Use Case |
+|------|------------|--------|----------|
+| Block diagrams | Custom SVG (JSON) | BlockDiagramEditor.tsx | Architecture, network topology, interactive editing |
+| All other diagrams | Mermaid.js | SequenceDiagramEditor.tsx | 23 Mermaid types - see below |
+
+**Supported Mermaid types** (AI selects based on `<!-- TODO: [DIAGRAM TYPE] -->` comments):
+- **Core:** sequence, flow, state, class, er
+- **Planning:** gantt, timeline, kanban
+- **Data viz:** pie, quadrant, xy, sankey, radar, treemap
+- **Architecture:** c4, architecture, block-beta
+- **Other:** mindmap, journey, gitgraph, requirement, zenuml, packet
 
 **Parsers** (`src/services/ai/parsers/`): Convert AI text responses into structured diagram data:
 - `blockDiagramParser.ts` - Extracts nodes/edges from AI response

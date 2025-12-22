@@ -272,19 +272,26 @@ Guidelines:
 9. Use alt/opt/loop for conditional flows
 10. Group related messages with rect blocks
 11. Use proper interface names (Gx, Rx, S5, etc.) where applicable
-12. **IMPORTANT**: Message labels must be single-line. Do NOT use \\n or line breaks in labels.
+12. **Use standard protocol command names** for known interfaces, even if the input text uses generic descriptions:
+    - **Gx/Sd (PCRF)**: CCR-I/CCA-I (initial), CCR-U/CCA-U (update), CCR-T/CCA-T (terminate) - NOT "policy request/response"
+    - **Gy/Ro (OCS)**: CCR/CCA with CC-Request-Type - NOT "charging request/response"
+    - **Rx (PCRF)**: AAR/AAA, STR/STA - NOT "media request/response"
+    - **RADIUS**: Access-Request/Accept/Reject, Accounting-Start/Stop/Interim, Disconnect-Request/ACK/NAK
+    - **SIP**: INVITE, BYE, REGISTER, 200 OK, 180 Ringing - NOT "call setup", "hangup"
+    - **HTTP**: GET, POST, PUT, DELETE with status codes (200, 201, 404) - NOT "fetch", "create"
+13. **IMPORTANT**: Message labels must be single-line. Do NOT use \\n or line breaks in labels.
 
 **CRITICAL VALIDATION RULES (prevent syntax errors):**
-13. **Participant names**: Use only alphanumeric characters and underscores. NO special characters like (, ), /, -, etc.
+14. **Participant names**: Use only alphanumeric characters and underscores. NO special characters like (, ), /, -, etc.
     - CORRECT: P_GW, TDF_PCEF, Mobile_UE, CPE, PCRF, AAA_Server
     - WRONG: P-GW (PCEF), TDF/PCEF, UE/CPE, AAA-Server
 
-14. **AVOID activate/deactivate** - These cause the most common Mermaid errors!
+15. **AVOID activate/deactivate** - These cause the most common Mermaid errors!
     - For simple diagrams: DO NOT use activate/deactivate at all. They are optional.
     - The diagram will render correctly without them.
     - Only use them if explicitly needed for showing processing time.
 
-15. **If you MUST use activation** (only when absolutely necessary):
+16. **If you MUST use activation** (only when absolutely necessary):
     - EVERY activate MUST have a matching deactivate for the SAME participant
     - A participant can only be activated ONCE at a time
     - NEVER call deactivate on a participant that wasn't activated
@@ -293,19 +300,19 @@ Guidelines:
     - WRONG: "activate A" ... "activate A" ← ERROR: already active!
     - CORRECT: "activate A" ... "deactivate A" ... "activate A" ... "deactivate A"
 
-16. **Simpler alternative - shorthand notation** (PREFERRED over activate/deactivate):
+17. **Simpler alternative - shorthand notation** (PREFERRED over activate/deactivate):
     - Use + and - after arrows: "A->>+B: Request" activates B, "B-->>-A: Response" deactivates B
     - This is cleaner and less error-prone than separate activate/deactivate statements
 
-17. **Participant aliases**: If you need to show "P-GW (PCEF)", declare it as: participant PGW as P-GW/PCEF
+18. **Participant aliases**: If you need to show "P-GW (PCEF)", declare it as: participant PGW as P-GW/PCEF
     - Then use PGW in all messages, NOT "P-GW (PCEF)"
 
-18. **For complex diagrams with many participants**: Keep it simple!
+19. **For complex diagrams with many participants**: Keep it simple!
     - Skip activation boxes entirely - they add visual clutter and cause errors
     - Focus on the message flow, which is the important part
     - Use notes and rect blocks for visual grouping instead
 
-19. **KEEP CONTENT CONCISE** - Diagrams are for overview, details go in the spec text!
+20. **KEEP CONTENT CONCISE** - Diagrams are for overview, details go in the spec text!
     - Message labels: Maximum 30-40 characters. Use abbreviations.
     - Notes: Keep brief (1-2 short sentences max)
     - Limit to 10-12 participants per diagram
@@ -637,6 +644,14 @@ Diagrams provide visual overview - detailed explanations belong in the specifica
 - Edge/relationship labels: Maximum 20-25 characters
 - Notes/descriptions: 1-2 short sentences max
 - Use acronyms and abbreviations freely
+
+**USE STANDARD PROTOCOL COMMAND NAMES** for known interfaces (even if input uses generic terms):
+- **Gx/Sd (PCRF)**: CCR-I/CCA-I, CCR-U/CCA-U, CCR-T/CCA-T - NOT "policy init/response"
+- **Gy/Ro (OCS)**: CCR/CCA - NOT "charging request/response"
+- **Rx (PCRF)**: AAR/AAA, STR/STA - NOT "media request"
+- **RADIUS**: Acct-Start/Stop, Disconnect-Req/ACK/NAK
+- **SIP**: INVITE, BYE, 200 OK - NOT "call setup"
+- **HTTP**: GET, POST 201, PUT - NOT "fetch", "create"
 
 **OUTPUT REQUIREMENTS:**
 1. Output valid Mermaid syntax wrapped in \`\`\`mermaid ... \`\`\`

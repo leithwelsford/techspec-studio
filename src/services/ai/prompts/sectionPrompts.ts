@@ -279,6 +279,393 @@ export function buildRequirementNumberingSection(
   return guidance;
 }
 
+// ========== Interface Protocol Terminology ==========
+
+/**
+ * Maps known protocol interfaces to their standard command/message names.
+ * Used to inject terminology hints when interfaces are mentioned but
+ * reference documents may not be included.
+ */
+const INTERFACE_PROTOCOL_MAP: Record<string, { description: string; commands: string }> = {
+  // ==================== 3GPP Diameter Interfaces ====================
+  'Gx': {
+    description: 'Policy and Charging Control (PCRF)',
+    commands: 'CCR-I/CCA-I (Initial), CCR-U/CCA-U (Update), CCR-T/CCA-T (Terminate), RAR/RAA (Re-Auth)'
+  },
+  'Gy': {
+    description: 'Online Charging (OCS)',
+    commands: 'CCR/CCA with CC-Request-Type (INITIAL/UPDATE/TERMINATE), multiple-services-credit-control AVPs'
+  },
+  'Gz': {
+    description: 'Offline Charging (OFCS)',
+    commands: 'ACR/ACA (Accounting), with Accounting-Record-Type (START/INTERIM/STOP)'
+  },
+  'Rx': {
+    description: 'Application Function to PCRF',
+    commands: 'AAR/AAA (Auth-App), STR/STA (Session-Terminate), ASR/ASA (Abort-Session)'
+  },
+  'Sd': {
+    description: 'TDF to PCRF',
+    commands: 'TSR/TSA (TDF-Session), CCR-I/CCA-I for TDF session establishment'
+  },
+  'Sy': {
+    description: 'Spending Limit (OCS to PCRF)',
+    commands: 'SLR/SLA (Spending-Limit), SNR/SNA (Spending-Status-Notification)'
+  },
+  'S6a': {
+    description: 'MME to HSS',
+    commands: 'ULR/ULA (Update-Location), AIR/AIA (Auth-Info), CLR/CLA (Cancel-Location), PUR/PUA (Purge)'
+  },
+  'S6b': {
+    description: 'PDN GW to 3GPP AAA',
+    commands: 'AAR/AAA, STR/STA, ASR/ASA for trusted non-3GPP access'
+  },
+
+  // ==================== 3GPP GTP/S1-AP Interfaces ====================
+  'S5': {
+    description: 'SGW to PGW (GTP)',
+    commands: 'Create-Session-Request/Response, Modify-Bearer-Request/Response, Delete-Session-Request/Response, Create-Bearer-Request/Response'
+  },
+  'S8': {
+    description: 'SGW to PGW roaming (GTP)',
+    commands: 'Same as S5: Create-Session, Modify-Bearer, Delete-Session, Create-Bearer Request/Response'
+  },
+  'S11': {
+    description: 'MME to SGW (GTP-C)',
+    commands: 'Create-Session-Request/Response, Modify-Bearer-Request/Response, Delete-Session-Request/Response, Release-Access-Bearers'
+  },
+  'S1-MME': {
+    description: 'eNB to MME (S1-AP)',
+    commands: 'Initial-UE-Message, UE-Context-Release, Handover-Required/Command, Paging, E-RAB-Setup/Modify/Release'
+  },
+  'GTP': {
+    description: 'GPRS Tunneling Protocol (3GPP TS 29.274)',
+    commands: 'Create-Session-Request/Response, Modify-Bearer-Request/Response, Delete-Session-Request/Response, Create-Bearer-Request/Response, Delete-Bearer-Request/Response'
+  },
+
+  // ==================== AAA Protocols ====================
+  'RADIUS': {
+    description: 'AAA Protocol (RFC 2865/2866/5176)',
+    commands: 'Access-Request/Accept/Reject/Challenge, Accounting-Request (Start/Interim/Stop), Disconnect-Request/ACK/NAK, CoA-Request/ACK/NAK'
+  },
+  'TACACS': {
+    description: 'Device AAA (RFC 8907)',
+    commands: 'Authentication START/REPLY/CONTINUE, Authorization REQUEST/RESPONSE, Accounting REQUEST/RESPONSE'
+  },
+  'Diameter': {
+    description: 'AAA Protocol (RFC 6733)',
+    commands: 'CER/CEA (Capabilities-Exchange), DWR/DWA (Device-Watchdog), DPR/DPA (Disconnect-Peer), application-specific: CCR/CCA, AAR/AAA, ASR/ASA, RAR/RAA, STR/STA'
+  },
+
+  // ==================== VoIP/Telephony ====================
+  'SIP': {
+    description: 'Session Initiation Protocol (RFC 3261)',
+    commands: 'INVITE, ACK, BYE, CANCEL, REGISTER, OPTIONS, PRACK, UPDATE, INFO, SUBSCRIBE, NOTIFY, REFER, MESSAGE; Responses: 1xx/2xx/3xx/4xx/5xx/6xx'
+  },
+  'RTP': {
+    description: 'Real-time Transport Protocol (RFC 3550)',
+    commands: 'RTP packets (PT, SSRC, sequence, timestamp), RTCP: SR (Sender Report), RR (Receiver Report), SDES, BYE, APP'
+  },
+  'MGCP': {
+    description: 'Media Gateway Control Protocol (RFC 3435)',
+    commands: 'CRCX (CreateConnection), MDCX (ModifyConnection), DLCX (DeleteConnection), RQNT (NotificationRequest), NTFY (Notify), AUEP (AuditEndpoint), AUCX (AuditConnection)'
+  },
+
+  // ==================== HTTP/Web APIs ====================
+  'HTTP': {
+    description: 'REST API (RFC 7231)',
+    commands: 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS; Status: 200 OK, 201 Created, 204 No Content, 301/302 Redirect, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 409 Conflict, 500 Internal Server Error'
+  },
+  'WebSocket': {
+    description: 'Full-duplex communication (RFC 6455)',
+    commands: 'HTTP Upgrade handshake, then frames: TEXT, BINARY, PING, PONG, CLOSE; Opcodes 0x0-0xF'
+  },
+  'gRPC': {
+    description: 'Google RPC over HTTP/2',
+    commands: 'Unary RPC, Server streaming, Client streaming, Bidirectional streaming; Status: OK, CANCELLED, INVALID_ARGUMENT, NOT_FOUND, ALREADY_EXISTS, PERMISSION_DENIED, UNAUTHENTICATED'
+  },
+  'GraphQL': {
+    description: 'Query language for APIs',
+    commands: 'query, mutation, subscription; Response: data, errors, extensions'
+  },
+
+  // ==================== Routing Protocols ====================
+  'BGP': {
+    description: 'Border Gateway Protocol (RFC 4271)',
+    commands: 'OPEN, UPDATE (with NLRI, Path Attributes: AS_PATH, NEXT_HOP, MED, LOCAL_PREF), KEEPALIVE, NOTIFICATION, ROUTE-REFRESH'
+  },
+  'OSPF': {
+    description: 'Open Shortest Path First (RFC 2328)',
+    commands: 'Hello, Database Description (DBD), Link State Request (LSR), Link State Update (LSU), Link State Acknowledgment (LSAck); LSA Types 1-7'
+  },
+  'IS-IS': {
+    description: 'Intermediate System to Intermediate System (ISO 10589)',
+    commands: 'IIH (IS-IS Hello), LSP (Link State PDU), CSNP (Complete Sequence Numbers PDU), PSNP (Partial Sequence Numbers PDU)'
+  },
+  'MPLS': {
+    description: 'Multiprotocol Label Switching',
+    commands: 'Label operations: PUSH, POP, SWAP; LDP: Hello, Initialization, KeepAlive, Address, Label Mapping/Request/Release/Withdraw'
+  },
+  'LDP': {
+    description: 'Label Distribution Protocol (RFC 5036)',
+    commands: 'Hello, Initialization, KeepAlive, Address, Address Withdraw, Label Mapping, Label Request, Label Withdraw, Label Release, Notification'
+  },
+
+  // ==================== Network Infrastructure ====================
+  'DHCP': {
+    description: 'Dynamic Host Configuration (RFC 2131)',
+    commands: 'DHCPDISCOVER, DHCPOFFER, DHCPREQUEST, DHCPACK, DHCPNAK, DHCPRELEASE, DHCPDECLINE, DHCPINFORM; DHCPv6: SOLICIT, ADVERTISE, REQUEST, REPLY, RENEW, REBIND'
+  },
+  'DNS': {
+    description: 'Domain Name System (RFC 1035)',
+    commands: 'Query/Response with OPCODE (QUERY, IQUERY, STATUS, NOTIFY, UPDATE); RCODE: NOERROR, FORMERR, SERVFAIL, NXDOMAIN, REFUSED; Record types: A, AAAA, CNAME, MX, NS, PTR, SOA, SRV, TXT'
+  },
+  'NTP': {
+    description: 'Network Time Protocol (RFC 5905)',
+    commands: 'Mode: Client, Server, Broadcast, Symmetric Active/Passive; Kiss codes: DENY, RSTR, RATE; Stratum 0-15'
+  },
+  'ARP': {
+    description: 'Address Resolution Protocol (RFC 826)',
+    commands: 'ARP Request, ARP Reply, RARP Request, RARP Reply; Gratuitous ARP'
+  },
+
+  // ==================== Network Management ====================
+  'SNMP': {
+    description: 'Simple Network Management Protocol (RFC 3411-3418)',
+    commands: 'GetRequest, GetNextRequest, GetBulkRequest, SetRequest, Response, Trap, InformRequest; Error: noError, tooBig, noSuchName, badValue, readOnly, genErr'
+  },
+  'Syslog': {
+    description: 'System Logging Protocol (RFC 5424)',
+    commands: 'Facility (0-23), Severity (0-7: Emergency, Alert, Critical, Error, Warning, Notice, Informational, Debug); PRI = Facility*8 + Severity'
+  },
+  'NetFlow': {
+    description: 'Cisco NetFlow / IPFIX (RFC 7011)',
+    commands: 'Template FlowSet, Data FlowSet, Options Template; Export: source/dest IP, ports, protocol, bytes, packets, timestamps'
+  },
+  'NETCONF': {
+    description: 'Network Configuration Protocol (RFC 6241)',
+    commands: 'get, get-config, edit-config, copy-config, delete-config, lock, unlock, close-session, kill-session; Operations: merge, replace, create, delete, remove'
+  },
+  'RESTCONF': {
+    description: 'REST-like NETCONF (RFC 8040)',
+    commands: 'GET, POST, PUT, PATCH, DELETE on YANG-modeled resources; Media: application/yang-data+json, application/yang-data+xml'
+  },
+
+  // ==================== Security Protocols ====================
+  'TLS': {
+    description: 'Transport Layer Security (RFC 8446)',
+    commands: 'ClientHello, ServerHello, Certificate, CertificateVerify, Finished, NewSessionTicket, KeyUpdate, Alert; TLS 1.3: single RTT handshake'
+  },
+  'IKE': {
+    description: 'Internet Key Exchange (RFC 7296)',
+    commands: 'IKE_SA_INIT, IKE_AUTH, CREATE_CHILD_SA, INFORMATIONAL; Payloads: SA, KE, Ni/Nr, ID, AUTH, CERT, CERTREQ, TS'
+  },
+  'IPsec': {
+    description: 'IP Security (RFC 4301)',
+    commands: 'AH (Authentication Header), ESP (Encapsulating Security Payload); Modes: Transport, Tunnel; SA (Security Association)'
+  },
+  '802.1X': {
+    description: 'Port-Based Network Access Control (IEEE 802.1X)',
+    commands: 'EAP over LAN (EAPOL): Start, Logoff, Key, Encapsulated-ASF-Alert; EAP: Request, Response, Success, Failure; Methods: EAP-TLS, EAP-TTLS, PEAP, EAP-SIM, EAP-AKA'
+  },
+  'LDAP': {
+    description: 'Lightweight Directory Access Protocol (RFC 4511)',
+    commands: 'BindRequest/Response, SearchRequest/ResultEntry/ResultDone, ModifyRequest/Response, AddRequest/Response, DeleteRequest/Response, ModifyDNRequest/Response, CompareRequest/Response, AbandonRequest, ExtendedRequest/Response'
+  },
+  'Kerberos': {
+    description: 'Network Authentication Protocol (RFC 4120)',
+    commands: 'AS-REQ/AS-REP (Authentication Service), TGS-REQ/TGS-REP (Ticket-Granting Service), AP-REQ/AP-REP (Application), KRB-ERROR'
+  },
+  'OAuth': {
+    description: 'Authorization Framework (RFC 6749)',
+    commands: 'Authorization Request/Response, Access Token Request/Response; Grant types: authorization_code, client_credentials, refresh_token, implicit (deprecated); Token: Bearer, MAC'
+  },
+
+  // ==================== Messaging / IoT ====================
+  'MQTT': {
+    description: 'Message Queuing Telemetry Transport (ISO/IEC 20922)',
+    commands: 'CONNECT, CONNACK, PUBLISH, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, SUBACK, UNSUBSCRIBE, UNSUBACK, PINGREQ, PINGRESP, DISCONNECT, AUTH'
+  },
+  'AMQP': {
+    description: 'Advanced Message Queuing Protocol (ISO/IEC 19464)',
+    commands: 'connection.open/close, session.begin/end, attach/detach, transfer, disposition, flow; Outcomes: accepted, rejected, released, modified'
+  },
+  'CoAP': {
+    description: 'Constrained Application Protocol (RFC 7252)',
+    commands: 'GET, POST, PUT, DELETE; Response codes: 2.xx Success, 4.xx Client Error, 5.xx Server Error; Observe option for subscriptions'
+  },
+
+  // ==================== Storage / Data ====================
+  'iSCSI': {
+    description: 'Internet SCSI (RFC 7143)',
+    commands: 'Login Request/Response, SCSI Command/Response/Data-Out/Data-In, Task Management, Text Request/Response, Logout Request/Response, NOP-Out/NOP-In'
+  },
+  'NFS': {
+    description: 'Network File System (RFC 7530 for NFSv4)',
+    commands: 'COMPOUND procedure with operations: ACCESS, CLOSE, COMMIT, CREATE, GETATTR, GETFH, LINK, LOCK, LOOKUP, OPEN, READ, READDIR, REMOVE, RENAME, SETATTR, WRITE'
+  },
+  'SMB': {
+    description: 'Server Message Block / CIFS',
+    commands: 'Negotiate, Session Setup, Tree Connect/Disconnect, Create, Close, Read, Write, Lock, Ioctl, Query Directory, Query/Set Info, Change Notify'
+  },
+
+  // ==================== Database ====================
+  'SQL': {
+    description: 'Structured Query Language',
+    commands: 'SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, GRANT, REVOKE; Transaction: BEGIN, COMMIT, ROLLBACK, SAVEPOINT'
+  },
+  'JDBC': {
+    description: 'Java Database Connectivity',
+    commands: 'getConnection, createStatement, prepareStatement, executeQuery, executeUpdate, commit, rollback, close; ResultSet navigation'
+  },
+
+  // ==================== Virtualization / Cloud ====================
+  'VXLAN': {
+    description: 'Virtual Extensible LAN (RFC 7348)',
+    commands: 'Encapsulation: Outer UDP (port 4789), VXLAN Header (VNI 24-bit), Inner Ethernet frame; VTEP learning via data plane or control plane (EVPN)'
+  },
+  'OpenFlow': {
+    description: 'SDN Protocol (ONF)',
+    commands: 'HELLO, FEATURES_REQUEST/REPLY, PACKET_IN/OUT, FLOW_MOD, PORT_MOD, STATS_REQUEST/REPLY, BARRIER_REQUEST/REPLY, ERROR'
+  },
+};
+
+/**
+ * Detect interfaces mentioned in content and return terminology guidance
+ */
+export function buildInterfaceTerminologyHints(content: string): string {
+  if (!content) return '';
+
+  const contentUpper = content.toUpperCase();
+  const detectedInterfaces: string[] = [];
+
+  // Check for each known interface in the content
+  for (const iface of Object.keys(INTERFACE_PROTOCOL_MAP)) {
+    // Create patterns that match the interface name with word boundaries
+    const patterns = [
+      new RegExp(`\\b${iface}\\b`, 'i'),           // Exact match
+      new RegExp(`\\b${iface}[/-]`, 'i'),          // e.g., "Gx/Sd", "S5/S8"
+      new RegExp(`over\\s+${iface}\\b`, 'i'),      // e.g., "over Gx"
+      new RegExp(`via\\s+${iface}\\b`, 'i'),       // e.g., "via Gx"
+      new RegExp(`${iface}\\s+interface`, 'i'),    // e.g., "Gx interface"
+    ];
+
+    if (patterns.some(p => p.test(content))) {
+      detectedInterfaces.push(iface);
+    }
+  }
+
+  // Also detect by keywords and related terms
+  const keywordMap: Record<string, string[]> = {
+    // 3GPP
+    'Gx': ['PCRF', 'POLICY AND CHARGING RULES'],
+    'Gy': ['OCS', 'ONLINE CHARGING SYSTEM', 'CREDIT CONTROL'],
+    'Gz': ['OFCS', 'OFFLINE CHARGING'],
+    'Diameter': ['DIAMETER BASE', 'RFC 6733', 'RFC 3588'],
+    'GTP': ['GPRS TUNNEL', 'GTP-C', 'GTP-U', 'TS 29.274'],
+    // AAA
+    'RADIUS': ['RFC 2865', 'RFC 2866', 'RFC 5176', 'RADIUS ACCOUNTING', 'RADIUS AUTH'],
+    'TACACS': ['TACACS+', 'RFC 8907', 'DEVICE AAA'],
+    // VoIP
+    'SIP': ['RFC 3261', 'SESSION INITIATION', 'SIP TRUNK', 'SIP INVITE'],
+    'RTP': ['RFC 3550', 'REAL-TIME TRANSPORT', 'MEDIA STREAM', 'RTCP'],
+    'MGCP': ['RFC 3435', 'MEDIA GATEWAY CONTROL'],
+    // Routing
+    'BGP': ['RFC 4271', 'BORDER GATEWAY', 'EBGP', 'IBGP', 'AS PATH'],
+    'OSPF': ['RFC 2328', 'OPEN SHORTEST PATH', 'LINK STATE', 'LSA'],
+    'IS-IS': ['ISO 10589', 'INTERMEDIATE SYSTEM'],
+    'MPLS': ['LABEL SWITCHING', 'LABEL STACK', 'LDP', 'RSVP-TE'],
+    // Infrastructure
+    'DHCP': ['RFC 2131', 'DYNAMIC HOST', 'DHCP RELAY', 'DHCP SERVER', 'DHCPDISCOVER'],
+    'DNS': ['RFC 1035', 'DOMAIN NAME', 'DNS QUERY', 'DNS RESOLVER', 'NXDOMAIN'],
+    'NTP': ['RFC 5905', 'NETWORK TIME', 'TIME SYNC', 'STRATUM'],
+    'SNMP': ['RFC 3411', 'SIMPLE NETWORK MANAGEMENT', 'MIB', 'OID', 'TRAP'],
+    'Syslog': ['RFC 5424', 'SYSTEM LOG', 'LOG SERVER', 'FACILITY', 'SEVERITY'],
+    'NetFlow': ['RFC 7011', 'IPFIX', 'FLOW EXPORT', 'NETFLOW COLLECTOR'],
+    'NETCONF': ['RFC 6241', 'NETWORK CONFIGURATION', 'YANG MODEL'],
+    // Security
+    'TLS': ['RFC 8446', 'TRANSPORT LAYER SECURITY', 'SSL', 'CERTIFICATE', 'HANDSHAKE'],
+    'IKE': ['RFC 7296', 'INTERNET KEY EXCHANGE', 'IKEV2', 'IKE NEGOTIATION'],
+    'IPsec': ['RFC 4301', 'IP SECURITY', 'ESP', 'AH HEADER', 'SECURITY ASSOCIATION'],
+    '802.1X': ['PORT-BASED', 'NETWORK ACCESS CONTROL', 'EAPOL', 'EAP-TLS', 'EAP-TTLS', 'PEAP'],
+    'LDAP': ['RFC 4511', 'LIGHTWEIGHT DIRECTORY', 'DIRECTORY SERVICE', 'LDAP BIND'],
+    'Kerberos': ['RFC 4120', 'KDC', 'TICKET GRANTING', 'TGT', 'SERVICE TICKET'],
+    'OAuth': ['RFC 6749', 'OAUTH2', 'AUTHORIZATION CODE', 'ACCESS TOKEN', 'BEARER TOKEN'],
+    // Messaging/IoT
+    'MQTT': ['MESSAGE QUEUE TELEMETRY', 'IOT MESSAGING', 'MQTT BROKER', 'PUBLISH SUBSCRIBE'],
+    'AMQP': ['ADVANCED MESSAGE QUEUING', 'MESSAGE BROKER', 'RABBITMQ'],
+    'CoAP': ['RFC 7252', 'CONSTRAINED APPLICATION', 'IOT PROTOCOL'],
+    // Storage
+    'iSCSI': ['RFC 7143', 'INTERNET SCSI', 'ISCSI TARGET', 'ISCSI INITIATOR'],
+    'NFS': ['RFC 7530', 'NETWORK FILE SYSTEM', 'NFS MOUNT', 'NFS EXPORT'],
+    'SMB': ['CIFS', 'SERVER MESSAGE BLOCK', 'FILE SHARE', 'SAMBA'],
+    // Web/API
+    'HTTP': ['REST API', 'HTTP REQUEST', 'HTTP RESPONSE', 'STATUS CODE'],
+    'WebSocket': ['RFC 6455', 'WEBSOCKET', 'WS://', 'WSS://'],
+    'gRPC': ['GRPC', 'PROTOBUF', 'PROTOCOL BUFFERS'],
+    'GraphQL': ['GRAPHQL', 'QUERY LANGUAGE'],
+    // Cloud/SDN
+    'VXLAN': ['RFC 7348', 'VIRTUAL EXTENSIBLE', 'VNI', 'VTEP'],
+    'OpenFlow': ['SDN PROTOCOL', 'OPENFLOW', 'FLOW TABLE'],
+  };
+
+  for (const [iface, keywords] of Object.entries(keywordMap)) {
+    if (!detectedInterfaces.includes(iface)) {
+      if (keywords.some(kw => contentUpper.includes(kw))) {
+        detectedInterfaces.push(iface);
+      }
+    }
+  }
+
+  if (detectedInterfaces.length === 0) return '';
+
+  let hints = `
+## Protocol Terminology for Detected Interfaces
+
+The following interfaces are mentioned in this section. Use the **exact protocol command names** shown below, NOT generic descriptions like "send request" or "policy update":
+
+`;
+
+  for (const iface of detectedInterfaces) {
+    const info = INTERFACE_PROTOCOL_MAP[iface];
+    if (info) {
+      hints += `**${iface}** (${info.description}):
+- Commands/Messages: ${info.commands}
+
+`;
+    }
+  }
+
+  hints += `**IMPORTANT**: When writing about these interfaces, use the specific command names above. For example:
+
+**3GPP/Telecom:**
+- WRONG: "The PCEF sends a policy request to the PCRF over Gx"
+- CORRECT: "The PCEF sends a CCR-I (Credit-Control-Request-Initial) to the PCRF over Gx"
+
+**AAA:**
+- WRONG: "The AAA system sends accounting information"
+- CORRECT: "The AAA server sends Accounting-Request (Acct-Status-Type=Start) per RFC 2866"
+
+**Routing:**
+- WRONG: "The router sends route updates to its peer"
+- CORRECT: "The router sends a BGP UPDATE message with NLRI and AS_PATH attributes"
+
+**Network Management:**
+- WRONG: "The NMS queries the device for data"
+- CORRECT: "The NMS sends SNMP GetRequest for OID 1.3.6.1.2.1.1.1.0 (sysDescr)"
+
+**Security:**
+- WRONG: "The client establishes a secure connection"
+- CORRECT: "The client sends TLS ClientHello; server responds with ServerHello and Certificate"
+
+**VoIP:**
+- WRONG: "User A calls User B"
+- CORRECT: "UAC sends SIP INVITE to UAS; receives 100 Trying, 180 Ringing, then 200 OK"
+`;
+
+  return hints;
+}
+
 // ========== Context Builders ==========
 
 export interface FlexibleSectionContext {
@@ -304,6 +691,17 @@ function buildDomainExpertise(domainConfig?: DomainConfig): string {
 ## Domain Expertise
 You are an expert technical specification writer. Adapt your writing style, terminology,
 and level of detail to match the subject matter provided in the requirements.
+
+**Terminology Precision:**
+
+When reference documents are provided, they define the **authoritative vocabulary** for this specification:
+
+- **Protocol commands:** Use exact command names (CCR-I, UPDATE, INVITE), not generic verbs (request, send, notify)
+- **Message types:** Use defined message names (Credit-Control-Answer, 200 OK), not descriptions (success response)
+- **Procedures:** Use procedure names from standards (EPS Bearer Modification, TCP Three-Way Handshake)
+- **Interfaces:** Use exact interface designations (Gx, S1-U, eth0), with protocol details where defined
+
+Generic paraphrasing reduces specification precision and implementability. When in doubt, prefer the terminology found in reference documents.
 `;
   }
 
@@ -330,6 +728,20 @@ You are an expert technical specification writer specializing in **${domain}**`;
     }
     expertise += '\n';
   }
+
+  // Add terminology authority instruction
+  expertise += `
+**Terminology Precision:**
+
+When reference documents are provided, they define the **authoritative vocabulary** for this specification:
+
+- **Protocol commands:** Use exact command names (CCR-I, UPDATE, INVITE), not generic verbs (request, send, notify)
+- **Message types:** Use defined message names (Credit-Control-Answer, 200 OK), not descriptions (success response)
+- **Procedures:** Use procedure names from standards (EPS Bearer Modification, TCP Three-Way Handshake)
+- **Interfaces:** Use exact interface designations (Gx, S1-U, eth0), with protocol details where defined
+
+Generic paraphrasing reduces specification precision and implementability. When in doubt, prefer the terminology found in reference documents.
+`;
 
   return expertise;
 }
@@ -408,6 +820,38 @@ ${excerpt.content}
 
 `;
   }
+
+  // Add terminology extraction instruction
+  context += `
+## IMPORTANT: Reference Terminology Requirements
+
+The reference documents above define the **authoritative terminology** for this specification. You MUST:
+
+1. **Extract and use exact protocol/command names** from references:
+   - Telecom/Diameter: "CCR-I", "CCA-U", "RAR" (not "policy request", "charging update")
+   - Networking/BGP: "UPDATE", "KEEPALIVE", "NOTIFICATION" (not "route change", "heartbeat")
+   - WiFi/802.11: "Association Request", "Beacon", "Probe Response" (not "connect request", "broadcast")
+   - SIP: "INVITE", "BYE", "REGISTER" (not "call request", "hangup", "login")
+   - HTTP/REST: "GET", "POST 201 Created", "PUT" (not "fetch", "create", "update")
+
+2. **Do NOT paraphrase protocol terminology** with generic descriptions:
+   - WRONG: "send a policy request to the PCRF"
+   - CORRECT: "send a CCR-I (Credit-Control-Request-Initial) to the PCRF"
+   - WRONG: "route update message"
+   - CORRECT: "BGP UPDATE message with NLRI and Path Attributes"
+   - WRONG: "device connects to WiFi"
+   - CORRECT: "STA transmits Association Request frame; AP responds with Association Response"
+
+3. **Use abbreviated forms with full expansion on first use:**
+   - First use: "Credit-Control-Request-Initial (CCR-I)"
+   - Subsequent uses: "CCR-I"
+
+4. **Include procedure/command sequences** where references define them:
+   - If reference defines "session establishment uses CCR-I/CCA-I exchange", include that detail
+   - If reference defines "state machine transitions", include those states and triggers
+
+The goal is an **implementable specification** where engineers can trace requirements directly to protocol commands.
+`;
 
   return context;
 }
@@ -771,6 +1215,17 @@ ${userGuidance}
 `;
   }
 
+  // Interface terminology hints - detect interfaces from all available context
+  // and provide exact protocol command names to use
+  const contextForInterfaceDetection = [
+    brsContent || '',
+    previousSections || '',
+    section.description || '',
+    section.contentGuidance || '',
+    userGuidance || '',
+  ].join('\n');
+  prompt += buildInterfaceTerminologyHints(contextForInterfaceDetection);
+
   // Formatting instructions
   prompt += buildFormattingInstructions(markdownGuidance);
 
@@ -845,8 +1300,9 @@ Describe the system architecture and design.
 Include:
 - High-level architecture overview
 - Key components and their responsibilities
-- Interfaces and integration points
-- Data flows and communication patterns
+- Interfaces and integration points, with specific protocol commands/messages used on each interface
+  (e.g., "Gx interface: CCR-I/CCR-U/CCR-T commands", not just "Gx interface: policy control")
+- Data flows and communication patterns with exact message names from reference documents
 `,
     suggestedSubsections: section.suggestedSubsections || [
       'Architecture Overview',
@@ -899,10 +1355,11 @@ export function buildProceduresSectionPrompt(
     description: section.description || `
 Document operational procedures and workflows.
 Include:
-- Step-by-step procedures
-- Sequence diagrams for complex flows
-- Error handling procedures
-- State transitions
+- Step-by-step procedures with exact protocol command sequences from reference documents
+- Include specific message names, not generic descriptions (e.g., "UE sends Attach Request" not "UE requests attachment")
+- Sequence diagrams for complex flows showing actual protocol messages
+- Error handling procedures with specific error codes and responses
+- State transitions using terminology from standards
 `,
     suggestedSubsections: section.suggestedSubsections || [
       'Standard Procedures',
