@@ -1,18 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
+import PizZip from 'pizzip';
 import { useProjectStore } from '../store/projectStore';
 import { exportToDocx, downloadDocx, type ExportOptions, DEFAULT_EXPORT_OPTIONS } from '../utils/docxExport';
 import { exportWithTemplate, downloadTemplateDocx } from '../utils/templateDocxExport';
 import { checkPandocService, exportWithPandoc, downloadPandocDocx } from '../utils/pandocExport';
 import {
-  exportBlockDiagramAsSVG,
-  exportBlockDiagramAsPNG,
-  exportMermaidDiagramAsSVG,
-  exportMermaidDiagramAsPNG,
-  downloadSVG,
-  downloadPNG,
-} from '../utils/diagramExport';
+  generateReferencedDiagramImages,
+  transformMarkdownWithImages,
+} from '../utils/diagramImageExporter';
 import { templateAnalyzer } from '../services/templateAnalyzer';
-import type { DocxTemplateAnalysis } from '../types';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -38,6 +34,7 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const [usePandoc, setUsePandoc] = useState(false);
   const [pandocAvailable, setPandocAvailable] = useState(false);
   const [templateFile, setTemplateFile] = useState<File | null>(null);
+  const [includeImagesInMarkdown, setIncludeImagesInMarkdown] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Template analysis state
@@ -158,15 +155,13 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         blob = await exportWithPandoc(project, templateFileForPandoc, pandocExportOpts);
         downloadPandocDocx(blob, filename);
 
-      } else if (docxTemplate) {
-        // Use browser-based template export
-        console.log('[Export] Using template...');
-        blob = await exportWithTemplate(project, docxTemplate, exportOpts);
-        downloadTemplateDocx(blob, filename);
-
       } else {
-        // Use default export
-        console.log('[Export] Using default...');
+        // Use default export (template export temporarily disabled due to corruption issues)
+        // TODO: Fix templateDocxExport.ts to properly generate valid DOCX files
+        if (docxTemplate) {
+          console.log('[Export] Template found but using default export (template export disabled)');
+        }
+        console.log('[Export] Using default export...');
         blob = await exportToDocx(project, exportOpts);
         downloadDocx(blob, filename);
       }
@@ -181,22 +176,87 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
     }
   };
 
-  const handleExportMarkdown = () => {
+  const handleExportMarkdown = async () => {
     if (!project) return;
 
-    const markdown = project.specification.markdown;
-    const blob = new Blob([markdown], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${project.specification.title || 'specification'}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setExporting(true);
+    try {
+      const filename = project.specification.title || 'specification';
 
-    alert('Markdown exported successfully!');
-    onClose();
+      if (includeImagesInMarkdown) {
+        // Export as ZIP with markdown + images folder
+        console.log('[Export] Generating markdown with images...');
+        const images = await generateReferencedDiagramImages(project);
+
+        if (images.length > 0) {
+          // Transform markdown to use image references
+          const markdownWithImages = transformMarkdownWithImages(
+            project.specification.markdown,
+            images,
+            'images/'
+          );
+
+          // Create ZIP file
+          const zip = new PizZip();
+          zip.file('specification.md', markdownWithImages);
+
+          // Add images folder
+          const imagesFolder = zip.folder('images');
+          if (imagesFolder) {
+            for (const img of images) {
+              const arrayBuffer = await img.blob.arrayBuffer();
+              imagesFolder.file(img.filename, new Uint8Array(arrayBuffer));
+            }
+          }
+
+          // Generate and download ZIP
+          const content = zip.generate({ type: 'blob' });
+          const url = URL.createObjectURL(content);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${filename}-with-diagrams.zip`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          alert(`Exported markdown with ${images.length} diagram image(s) as ZIP!`);
+        } else {
+          // No images found, export plain markdown
+          const blob = new Blob([project.specification.markdown], { type: 'text/markdown' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${filename}.md`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          alert('Markdown exported (no diagrams to include)');
+        }
+      } else {
+        // Export plain markdown
+        const blob = new Blob([project.specification.markdown], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filename}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        alert('Markdown exported successfully!');
+      }
+
+      onClose();
+    } catch (error) {
+      console.error('[Export] Markdown export failed:', error);
+      alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -309,7 +369,7 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                     <span>✓</span> Template Analysis Complete
                   </h3>
                   <ul className="text-sm text-green-800 dark:text-green-400 space-y-1">
-                    <li>✓ Styles detected: {docxTemplateAnalysis.styles?.length || 0} heading levels</li>
+                    <li>✓ Styles detected: {docxTemplateAnalysis.headingStyles?.length || 0} heading levels</li>
                     <li>✓ Formatting guidance generated for AI</li>
                     <li>✓ Template ready for export</li>
                   </ul>
@@ -379,11 +439,26 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                       onChange={() => setExportFormat('markdown')}
                       className="mr-3"
                     />
-                    <div>
+                    <div className="flex-1">
                       <div className="font-medium text-gray-900 dark:text-white">Markdown (.md)</div>
                       <div className="text-sm text-gray-500 dark:text-gray-400">Plain text format, version control friendly</div>
                     </div>
                   </label>
+                  {exportFormat === 'markdown' && (
+                    <div className="ml-6 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={includeImagesInMarkdown}
+                          onChange={(e) => setIncludeImagesInMarkdown(e.target.checked)}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                          Include diagram images (exports as ZIP with images folder)
+                        </span>
+                      </label>
+                    </div>
+                  )}
                   <label className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
                     <input
                       type="radio"

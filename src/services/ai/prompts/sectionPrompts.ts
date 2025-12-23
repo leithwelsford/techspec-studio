@@ -909,6 +909,7 @@ function buildFormattingInstructions(guidance?: MarkdownGenerationGuidance | nul
 - Maximum depth: 6 levels (H6)
 
 **Numbering**: Decimal style (1, 1.1, 1.1.1) - include numbers in your headings
+- **IMPORTANT**: Subsections ALWAYS start at .1, never .0 (e.g., 9.1, 9.2, NOT 9.0)
 
 **Figures**: Use \`{{fig:diagram-id}}\` syntax. Caption placement: below the figure.
 - **IMPORTANT**: ALWAYS add a caption line after each figure reference:
@@ -944,6 +945,7 @@ function buildFormattingInstructions(guidance?: MarkdownGenerationGuidance | nul
     instructions += `- Maximum depth: ${guidance.headingLevels.maxDepth} levels\n`;
     if (guidance.headingLevels.numberingStyle === 'decimal') {
       instructions += `- **Numbering**: Decimal style (1, 1.1, 1.1.1) - include numbers in headings\n`;
+      instructions += `- **IMPORTANT**: Subsections ALWAYS start at .1, never .0 (e.g., 9.1, 9.2, NOT 9.0)\n`;
     } else {
       instructions += `- **Numbering**: ${guidance.headingLevels.numberingStyle}\n`;
     }

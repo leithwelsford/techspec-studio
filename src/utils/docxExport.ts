@@ -2,7 +2,7 @@
  * DOCX Export Utilities
  *
  * Convert technical specifications to Microsoft Word (.docx) format
- * with 3GPP-compliant styling and embedded diagrams.
+ * with 3GPP-compliant styling.
  */
 
 import {
@@ -12,19 +12,23 @@ import {
   TextRun,
   HeadingLevel,
   AlignmentType,
-  ImageRun,
   TableOfContents,
+  convertInchesToTwip,
   Table,
   TableRow,
   TableCell,
   WidthType,
   BorderStyle,
-  convertInchesToTwip,
+  ImageRun,
 } from 'docx';
 import type { Project } from '../types';
-import { resolveAllLinks, parseFigureReferences } from './linkResolver';
+import { resolveAllLinks } from './linkResolver';
 import { getDiagramsInOrder } from './figureNumbering';
-import { exportBlockDiagramAsPNG, exportMermaidDiagramAsPNG } from './diagramExport';
+import {
+  generateReferencedDiagramImages,
+  buildDiagramImageMap,
+  type DiagramImage,
+} from './diagramImageExporter';
 
 export interface ExportOptions {
   includeTOC: boolean;
@@ -38,12 +42,12 @@ export interface ExportOptions {
 }
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
-  includeTOC: false,  // Changed to false: Most markdown already has manual ToC
+  includeTOC: false,  // Most markdown already has manual ToC
   includeListOfFigures: true,
-  includeFigureList: true,   // Default for Pandoc
-  includeTableList: false,   // Default for Pandoc (opt-in)
+  includeFigureList: true,
+  includeTableList: false,
   includeBibliography: true,
-  embedDiagrams: true,
+  embedDiagrams: true,  // Embed diagrams inline at {{fig:...}} references
 };
 
 /**
@@ -122,8 +126,8 @@ function convertLineToParagraph(line: string): Paragraph {
       text: heading.text,
       heading: headingLevels[heading.level - 1],
       spacing: {
-        before: 240, // 12pt
-        after: 120, // 6pt
+        before: 240,
+        after: 120,
       },
     });
   }
@@ -136,9 +140,217 @@ function convertLineToParagraph(line: string): Paragraph {
   return new Paragraph({
     children: parseInlineMarkdown(line),
     spacing: {
-      after: 120, // 6pt
+      after: 120,
     },
   });
+}
+
+/**
+ * Check if a line is a markdown table row
+ */
+function isTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('|') && trimmed.endsWith('|');
+}
+
+/**
+ * Check if a line is a table separator (e.g., |---|---|)
+ */
+function isTableSeparator(line: string): boolean {
+  const trimmed = line.trim();
+  return isTableRow(line) && /^\|[\s\-:]+\|/.test(trimmed) && !trimmed.match(/[a-zA-Z0-9]/);
+}
+
+/**
+ * Parse a table row into cells
+ */
+function parseTableRow(line: string): string[] {
+  const trimmed = line.trim();
+  // Remove leading and trailing pipes, then split by pipe
+  const content = trimmed.slice(1, -1);
+  return content.split('|').map(cell => cell.trim());
+}
+
+/**
+ * Convert markdown table to DOCX Table
+ */
+function convertMarkdownTableToDocx(tableLines: string[]): Table {
+  // Filter out separator rows
+  const dataRows = tableLines.filter(line => !isTableSeparator(line));
+
+  // Parse all rows
+  const parsedRows = dataRows.map(line => parseTableRow(line));
+
+  // Create table rows
+  const rows = parsedRows.map((cells, rowIndex) => {
+    const isHeader = rowIndex === 0;
+
+    return new TableRow({
+      children: cells.map(cellContent =>
+        new TableCell({
+          children: [
+            new Paragraph({
+              children: parseInlineMarkdown(cellContent),
+              spacing: { before: 60, after: 60 },
+            }),
+          ],
+          shading: isHeader ? { fill: 'E7E6E6' } : undefined,
+        })
+      ),
+    });
+  });
+
+  return new Table({
+    width: {
+      size: 100,
+      type: WidthType.PERCENTAGE,
+    },
+    rows,
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
+      bottom: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
+      left: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
+      right: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
+      insideVertical: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
+    },
+  });
+}
+
+/**
+ * Create image paragraph with caption for a diagram
+ */
+function createDiagramParagraph(image: DiagramImage): Paragraph[] {
+  // Use a reasonable default size - 600px wide, scaled proportionally
+  // The actual PNG is 2x scale, so divide by 2 for display size
+  const MIN_WIDTH = 200;
+  const MAX_WIDTH = 600;
+
+  // Get actual dimensions, ensuring they're reasonable
+  let displayWidth = image.width;
+  let displayHeight = image.height;
+
+  // If dimensions are too small or invalid, use defaults
+  if (displayWidth < MIN_WIDTH || displayHeight < 50) {
+    console.log(`[DOCX Export] Image ${image.figureNumber} has small dimensions (${displayWidth}x${displayHeight}), using defaults`);
+    displayWidth = MAX_WIDTH;
+    displayHeight = 400; // Default reasonable height
+  }
+
+  // Scale to fit within max width while maintaining aspect ratio
+  if (displayWidth > MAX_WIDTH) {
+    const scale = MAX_WIDTH / displayWidth;
+    displayWidth = MAX_WIDTH;
+    displayHeight = Math.round(displayHeight * scale);
+  }
+
+  console.log(`[DOCX Export] Image ${image.figureNumber}: display size ${displayWidth}x${displayHeight}`);
+
+  const caption = image.figureNumber
+    ? `Figure ${image.figureNumber}: ${image.title}`
+    : image.title;
+
+  return [
+    // Image paragraph
+    new Paragraph({
+      children: [
+        new ImageRun({
+          data: image.arrayBuffer,
+          transformation: {
+            width: displayWidth,
+            height: displayHeight,
+          },
+          type: 'png',
+        }),
+      ],
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 240, after: 120 },
+    }),
+    // Caption paragraph
+    new Paragraph({
+      children: [
+        new TextRun({ text: caption, italics: true }),
+      ],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 240 },
+    }),
+  ];
+}
+
+/**
+ * Process markdown content and extract tables, paragraphs, and diagrams
+ * Returns an array of Paragraph or Table objects
+ */
+function processMarkdownContent(
+  markdown: string,
+  imageMap?: Map<string, DiagramImage>
+): (Paragraph | Table)[] {
+  const lines = markdown.split('\n');
+  const result: (Paragraph | Table)[] = [];
+  let currentTableLines: string[] = [];
+
+  // Pattern to match {{fig:...}} references
+  const figPattern = /\{\{fig:([a-zA-Z0-9-_]+)\}\}/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (isTableRow(line)) {
+      // Accumulate table lines
+      currentTableLines.push(line);
+    } else {
+      // If we were accumulating a table, convert it
+      if (currentTableLines.length > 0) {
+        // Need at least 2 rows (header + separator or header + data)
+        if (currentTableLines.length >= 2) {
+          result.push(convertMarkdownTableToDocx(currentTableLines));
+          // Add spacing after table
+          result.push(new Paragraph({ text: '' }));
+        } else {
+          // Not enough rows for a table, treat as regular paragraphs
+          currentTableLines.forEach(tl => result.push(convertLineToParagraph(tl)));
+        }
+        currentTableLines = [];
+      }
+
+      // Check for figure reference
+      const figMatch = line.match(figPattern);
+      if (figMatch) {
+        const ref = figMatch[1];
+        console.log(`[DOCX Export] Found figure reference: {{fig:${ref}}}`);
+
+        if (imageMap) {
+          const image = imageMap.get(ref);
+          console.log(`[DOCX Export] Looking up ref "${ref}" in imageMap:`, image ? 'FOUND' : 'NOT FOUND');
+
+          if (image) {
+            // Insert diagram image with caption
+            console.log(`[DOCX Export] Inserting image for ${ref}`);
+            result.push(...createDiagramParagraph(image));
+          } else {
+            // Diagram not found, keep the reference text
+            console.warn(`[DOCX Export] Diagram not found for reference: ${ref}`);
+            result.push(convertLineToParagraph(line));
+          }
+        } else {
+          console.log(`[DOCX Export] No imageMap available, keeping reference text`);
+          result.push(convertLineToParagraph(line));
+        }
+      } else {
+        // Process regular line
+        result.push(convertLineToParagraph(line));
+      }
+    }
+  }
+
+  // Handle any remaining table at end of document
+  if (currentTableLines.length >= 2) {
+    result.push(convertMarkdownTableToDocx(currentTableLines));
+  } else if (currentTableLines.length > 0) {
+    currentTableLines.forEach(tl => result.push(convertLineToParagraph(tl)));
+  }
+
+  return result;
 }
 
 /**
@@ -157,7 +369,7 @@ function generateTOC(): Paragraph[] {
         headingStyleRange: '1-3',
       })],
     }),
-    new Paragraph({ text: '' }), // Spacer
+    new Paragraph({ text: '' }),
   ];
 }
 
@@ -191,7 +403,7 @@ function generateListOfFigures(project: Project): Paragraph[] {
     );
   });
 
-  paragraphs.push(new Paragraph({ text: '' })); // Spacer
+  paragraphs.push(new Paragraph({ text: '' }));
 
   return paragraphs;
 }
@@ -226,7 +438,7 @@ function generateBibliography(project: Project): Paragraph[] {
     );
   });
 
-  paragraphs.push(new Paragraph({ text: '' })); // Spacer
+  paragraphs.push(new Paragraph({ text: '' }));
 
   return paragraphs;
 }
@@ -242,7 +454,7 @@ function createTitlePage(project: Project, options: ExportOptions): Paragraph[] 
       text: metadata.title || 'Technical Specification',
       heading: HeadingLevel.TITLE,
       alignment: AlignmentType.CENTER,
-      spacing: { before: 1440, after: 480 }, // 1 inch before, 0.5 inch after
+      spacing: { before: 1440, after: 480 },
     }),
     new Paragraph({
       text: metadata.subtitle || '',
@@ -285,80 +497,8 @@ function createTitlePage(project: Project, options: ExportOptions): Paragraph[] 
         spacing: { after: 120 },
       }),
     ] : []),
-    new Paragraph({ text: '', pageBreakBefore: true }), // Page break
+    new Paragraph({ text: '', pageBreakBefore: true }),
   ];
-}
-
-/**
- * Create diagram image paragraph
- */
-async function createDiagramParagraph(
-  diagramId: string,
-  figureNumber: string,
-  title: string,
-  project: Project
-): Promise<Paragraph[]> {
-  try {
-    // Find the diagram
-    const blockDiagram = project.blockDiagrams.find(d => d.id === diagramId);
-    const mermaidDiagram = [...project.sequenceDiagrams, ...project.flowDiagrams].find(d => d.id === diagramId);
-
-    let imageBlob: Blob;
-
-    if (blockDiagram) {
-      imageBlob = await exportBlockDiagramAsPNG(blockDiagram, 2);
-    } else if (mermaidDiagram) {
-      imageBlob = await exportMermaidDiagramAsPNG(mermaidDiagram, 2);
-    } else {
-      // Diagram not found
-      return [
-        new Paragraph({
-          children: [
-            new TextRun({ text: `[Figure ${figureNumber}: ${title} - Image not available]`, italics: true }),
-          ],
-          alignment: AlignmentType.CENTER,
-        }),
-      ];
-    }
-
-    // Convert blob to array buffer
-    const arrayBuffer = await imageBlob.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-
-    // Create image paragraph
-    return [
-      new Paragraph({
-        children: [
-          new ImageRun({
-            data: uint8Array,
-            transformation: {
-              width: 600,
-              height: 400,
-            },
-          }),
-        ],
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 240, after: 120 },
-      }),
-      new Paragraph({
-        children: [
-          new TextRun({ text: `Figure ${figureNumber}: ${title}`, bold: true }),
-        ],
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 240 },
-      }),
-    ];
-  } catch (error) {
-    console.error('Error creating diagram paragraph:', error);
-    return [
-      new Paragraph({
-        children: [
-          new TextRun({ text: `[Figure ${figureNumber}: ${title} - Error loading image]`, italics: true }),
-        ],
-        alignment: AlignmentType.CENTER,
-      }),
-    ];
-  }
 }
 
 /**
@@ -368,7 +508,10 @@ export async function exportToDocx(
   project: Project,
   options: ExportOptions = DEFAULT_EXPORT_OPTIONS
 ): Promise<Blob> {
-  // Resolve all links in markdown
+  console.log('[DOCX Export] Starting export...');
+  console.log('[DOCX Export] Options:', JSON.stringify(options));
+
+  // Build figure and citation references for link resolution
   const figures = project.blockDiagrams.map(d => ({
     id: d.id,
     number: d.figureNumber || 'X-X',
@@ -399,46 +542,51 @@ export async function exportToDocx(
     title: ref.title,
   }));
 
-  const resolvedMarkdown = resolveAllLinks(
-    project.specification.markdown,
-    allFigures,
-    citations
-  );
+  // Generate diagram images if enabled
+  let imageMap: Map<string, DiagramImage> | undefined;
+  if (options.embedDiagrams) {
+    console.log('[DOCX Export] Generating diagram images...');
+    console.log('[DOCX Export] Block diagrams:', project.blockDiagrams.length);
+    console.log('[DOCX Export] Sequence diagrams:', project.sequenceDiagrams.length);
+    console.log('[DOCX Export] Flow diagrams:', project.flowDiagrams.length);
 
-  // Convert markdown to paragraphs and embed diagrams
-  const lines = resolvedMarkdown.split('\n');
-  const contentParagraphs: Paragraph[] = [];
+    // Log all diagram IDs for debugging
+    project.blockDiagrams.forEach(d => console.log(`[DOCX Export] Block diagram: id=${d.id}, figNum=${d.figureNumber}, slug=${d.slug}`));
+    project.sequenceDiagrams.forEach(d => console.log(`[DOCX Export] Sequence diagram: id=${d.id}, figNum=${d.figureNumber}, slug=${d.slug}`));
+    project.flowDiagrams.forEach(d => console.log(`[DOCX Export] Flow diagram: id=${d.id}, figNum=${d.figureNumber}, slug=${d.slug}`));
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Check if this line contains a figure reference
-    const figureRefs = parseFigureReferences(line);
-
-    if (figureRefs.length > 0 && options.embedDiagrams) {
-      // Add the line first
-      contentParagraphs.push(convertLineToParagraph(line));
-
-      // Embed diagrams after the line
-      for (const figId of figureRefs) {
-        const diagram = allFigures.find(f => f.id === figId);
-        if (diagram) {
-          const diagramParas = await createDiagramParagraph(
-            diagram.id,
-            diagram.number,
-            diagram.title,
-            project
-          );
-          contentParagraphs.push(...diagramParas);
-        }
-      }
-    } else {
-      contentParagraphs.push(convertLineToParagraph(line));
+    try {
+      const images = await generateReferencedDiagramImages(project, { scale: 2 });
+      console.log(`[DOCX Export] Generated ${images.length} diagram images`);
+      images.forEach(img => console.log(`[DOCX Export] Image: id=${img.id}, figNum=${img.figureNumber}, filename=${img.filename}`));
+      imageMap = buildDiagramImageMap(images);
+      console.log(`[DOCX Export] Image map keys:`, Array.from(imageMap.keys()));
+    } catch (error) {
+      console.error('[DOCX Export] Failed to generate diagram images:', error);
+      // Continue without images
     }
   }
 
+  // Process markdown with original content (keep {{fig:...}} for image insertion)
+  // Only resolve citation links, not figure references when embedding diagrams
+  let markdownToProcess = options.embedDiagrams
+    ? project.specification.markdown.replace(
+        /\{\{ref:([a-zA-Z0-9-_]+)\}\}/g,
+        (_match, ref) => {
+          const citation = citations.find(c => c.id === ref);
+          return citation ? `[${citation.number}]` : _match;
+        }
+      )
+    : resolveAllLinks(project.specification.markdown, allFigures, citations);
+
+  // Strip HTML comments (e.g., <!-- TODO: [BLOCK DIAGRAM]... -->)
+  markdownToProcess = markdownToProcess.replace(/<!--[\s\S]*?-->/g, '');
+
+  // Convert markdown to paragraphs, tables, and diagrams
+  const contentElements = processMarkdownContent(markdownToProcess, imageMap);
+
   // Build document sections
-  const sections: Paragraph[] = [];
+  const sections: (Paragraph | Table)[] = [];
 
   // Title page
   sections.push(...createTitlePage(project, options));
@@ -454,7 +602,7 @@ export async function exportToDocx(
   }
 
   // Main content
-  sections.push(...contentParagraphs);
+  sections.push(...contentElements);
 
   // Bibliography
   if (options.includeBibliography) {
@@ -471,19 +619,19 @@ export async function exportToDocx(
         document: {
           run: {
             font: 'Calibri',
-            size: 22, // 11pt
+            size: 22,
           },
           paragraph: {
             spacing: {
-              line: 276, // 1.15 line spacing
+              line: 276,
               before: 0,
-              after: 160, // 8pt
+              after: 160,
             },
           },
         },
         heading1: {
           run: {
-            size: 32, // 16pt
+            size: 32,
             bold: true,
             color: '2E74B5',
           },
@@ -496,7 +644,7 @@ export async function exportToDocx(
         },
         heading2: {
           run: {
-            size: 28, // 14pt
+            size: 28,
             bold: true,
             color: '2E74B5',
           },
@@ -509,7 +657,7 @@ export async function exportToDocx(
         },
         heading3: {
           run: {
-            size: 24, // 12pt
+            size: 24,
             bold: true,
             color: '1F4D78',
           },
@@ -540,7 +688,9 @@ export async function exportToDocx(
   });
 
   // Generate blob
+  console.log('[DOCX Export] Generating blob...');
   const buffer = await Packer.toBlob(doc);
+  console.log(`[DOCX Export] Generated blob: ${buffer.size} bytes`);
   return buffer;
 }
 

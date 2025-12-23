@@ -41,7 +41,7 @@ const upload = multer({
   dest: path.join(TEMP_DIR, 'uploads'),
   limits: {
     fileSize: MAX_FILE_SIZE,
-    files: 3 // markdown, template, and optional metadata
+    files: 52 // markdown, template, and up to 50 images
   },
   fileFilter: (req, file, cb) => {
     // Validate file types
@@ -50,6 +50,9 @@ const upload = multer({
     }
     if (file.fieldname === 'template' && !file.originalname.endsWith('.docx')) {
       return cb(new Error('Template file must have .docx extension'));
+    }
+    if (file.fieldname === 'images' && !file.originalname.match(/\.(png|jpg|jpeg|gif|svg)$/i)) {
+      return cb(new Error('Image files must be PNG, JPG, GIF, or SVG'));
     }
     cb(null, true);
   }
@@ -99,7 +102,8 @@ app.get('/api/health', (req, res) => {
  */
 app.post('/api/export-pandoc', upload.fields([
   { name: 'markdown', maxCount: 1 },
-  { name: 'template', maxCount: 1 }
+  { name: 'template', maxCount: 1 },
+  { name: 'images', maxCount: 50 }
 ]), async (req, res) => {
   const sessionId = crypto.randomBytes(16).toString('hex');
   const workDir = path.join(TEMP_DIR, sessionId);
@@ -125,8 +129,10 @@ app.post('/api/export-pandoc', upload.fields([
     const options = req.body.options ? JSON.parse(req.body.options) : {};
     console.log(`[${sessionId}] Options:`, options);
 
-    // Create working directory
+    // Create working directory and images subdirectory
     await fs.mkdir(workDir, { recursive: true });
+    const imagesDir = path.join(workDir, 'images');
+    await fs.mkdir(imagesDir, { recursive: true });
 
     // Define file paths
     const inputMd = path.join(workDir, 'input.md');
@@ -136,6 +142,17 @@ app.post('/api/export-pandoc', upload.fields([
     // Copy uploaded files to working directory
     await fs.copyFile(markdownFile.path, inputMd);
     await fs.copyFile(templateFile.path, templateDocx);
+
+    // Copy images to working directory if provided
+    const imageFiles = req.files.images || [];
+    if (imageFiles.length > 0) {
+      console.log(`[${sessionId}] Processing ${imageFiles.length} images...`);
+      for (const imageFile of imageFiles) {
+        const imageDest = path.join(imagesDir, imageFile.originalname);
+        await fs.copyFile(imageFile.path, imageDest);
+        console.log(`[${sessionId}] Copied image: ${imageFile.originalname}`);
+      }
+    }
 
     // Build pandoc command
     // Note: Using 'markdown' (not 'gfm') to support Pandoc fenced divs for custom styles
@@ -169,9 +186,10 @@ app.post('/api/export-pandoc', upload.fields([
     const pandocCmd = `pandoc ${pandocArgs.join(' ')}`;
     console.log(`[${sessionId}] Executing: ${pandocCmd}`);
 
-    // Execute pandoc
+    // Execute pandoc from working directory (so relative image paths work)
     await new Promise((resolve, reject) => {
       exec(pandocCmd, {
+        cwd: workDir, // Run from working directory for relative image paths
         timeout: 60000, // 60 second timeout
         maxBuffer: 10 * 1024 * 1024 // 10MB buffer
       }, (error, stdout, stderr) => {
@@ -196,6 +214,12 @@ app.post('/api/export-pandoc', upload.fields([
     const stats = await fs.stat(outputDocx);
     console.log(`[${sessionId}] Export successful: ${stats.size} bytes`);
 
+    // Collect all uploaded file paths for cleanup
+    const uploadedPaths = [markdownFile.path, templateFile.path];
+    for (const imageFile of imageFiles) {
+      uploadedPaths.push(imageFile.path);
+    }
+
     // Send file back to client
     res.download(outputDocx, 'specification.docx', async (err) => {
       if (err) {
@@ -204,7 +228,7 @@ app.post('/api/export-pandoc', upload.fields([
 
       // Cleanup: delete working directory and uploaded files
       console.log(`[${sessionId}] Cleaning up...`);
-      await cleanupFiles(workDir, markdownFile.path, templateFile.path);
+      await cleanupFiles(workDir, ...uploadedPaths);
     });
 
   } catch (error) {

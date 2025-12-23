@@ -6,7 +6,13 @@
  */
 
 import type { Project, MarkdownGenerationGuidance } from '../types';
-import { resolveAllLinks } from './linkResolver';
+import { resolveAllLinks, parseFigureReferences } from './linkResolver';
+import {
+  generateReferencedDiagramImages,
+  buildDiagramImageMap,
+  transformMarkdownWithImages,
+  type DiagramImage,
+} from './diagramImageExporter';
 
 const PANDOC_API_URL = import.meta.env.VITE_PANDOC_API_URL || 'http://localhost:3001/api';
 
@@ -309,12 +315,34 @@ export async function exportWithPandoc(
     title: ref.title,
   }));
 
+  // Generate diagram images if embedding is enabled
+  let diagramImages: DiagramImage[] = [];
+  if (options.embedDiagrams) {
+    console.log('[Pandoc Export] Generating diagram images...');
+    diagramImages = await generateReferencedDiagramImages(project);
+    console.log(`[Pandoc Export] Generated ${diagramImages.length} diagram images`);
+  }
+
   // Resolve all {{fig:...}} and {{ref:...}} links in markdown
-  let resolvedMarkdown = resolveAllLinks(
-    project.specification.markdown,
-    allFigures,
-    citations
-  );
+  // If embedding diagrams, transform to markdown image syntax first
+  let resolvedMarkdown: string;
+
+  if (options.embedDiagrams && diagramImages.length > 0) {
+    // Transform {{fig:...}} to ![caption](images/...) syntax
+    const markdownWithImages = transformMarkdownWithImages(
+      project.specification.markdown,
+      diagramImages,
+      'images/'
+    );
+    // Then resolve any remaining links (refs, etc)
+    resolvedMarkdown = resolveAllLinks(markdownWithImages, allFigures, citations);
+  } else {
+    resolvedMarkdown = resolveAllLinks(
+      project.specification.markdown,
+      allFigures,
+      citations
+    );
+  }
 
   // Strip manual numbering from headings (e.g., "# 1. Introduction" → "# Introduction")
   // This prevents double-numbering when Pandoc's --number-sections is enabled
@@ -419,10 +447,19 @@ abstract: |
   // Add template file
   formData.append('template', templateFile, templateFile.name);
 
+  // Add diagram images if embedding is enabled
+  if (options.embedDiagrams && diagramImages.length > 0) {
+    console.log(`[Pandoc Export] Adding ${diagramImages.length} images to form data`);
+    for (const image of diagramImages) {
+      formData.append('images', image.blob, image.filename);
+    }
+  }
+
   // Add export options
   const exportOptions = {
     includeTOC: options.includeTOC,
     includeNumberSections: options.includeNumberSections,
+    embedDiagrams: options.embedDiagrams,
     metadata: {
       title: project.specification.title || 'Technical Specification',
       author: options.author || project.specification.author || 'TechSpec Studio',

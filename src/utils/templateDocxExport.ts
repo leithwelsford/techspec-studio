@@ -9,7 +9,12 @@ import PizZip from 'pizzip';
 import type { Project } from '../types';
 import type { ExportOptions } from './docxExport';
 import { resolveAllLinks, parseFigureReferences } from './linkResolver';
-import { exportBlockDiagramAsPNG, exportMermaidDiagramAsPNG } from './diagramExport';
+import {
+  generateReferencedDiagramImages,
+  buildDiagramImageMap,
+  calculateEmuDimensions,
+  type DiagramImage,
+} from './diagramImageExporter';
 
 /**
  * Normalize Word XML to merge split text runs
@@ -195,6 +200,240 @@ function generateBibliographyXml(references: Array<{ number: string; title: stri
 }
 
 /**
+ * Add image to DOCX ZIP structure
+ * Returns the relationship ID for the image
+ */
+function addImageToDocx(
+  zip: PizZip,
+  imageData: Uint8Array,
+  imageIndex: number
+): string {
+  const rId = `rIdImg${imageIndex}`;
+  const imagePath = `word/media/image${imageIndex}.png`;
+
+  // Add image to media folder
+  zip.file(imagePath, imageData);
+
+  return rId;
+}
+
+/**
+ * Update [Content_Types].xml to include PNG images
+ */
+function updateContentTypes(zip: PizZip): void {
+  const contentTypesPath = '[Content_Types].xml';
+  let contentTypes = zip.file(contentTypesPath)?.asText();
+
+  if (!contentTypes) {
+    console.warn('[Template Export] Content_Types.xml not found');
+    return;
+  }
+
+  // Check if PNG extension is already defined
+  if (!contentTypes.includes('Extension="png"')) {
+    // Add PNG extension before </Types>
+    contentTypes = contentTypes.replace(
+      '</Types>',
+      '<Default Extension="png" ContentType="image/png"/></Types>'
+    );
+    zip.file(contentTypesPath, contentTypes);
+  }
+}
+
+/**
+ * Add image relationships to document.xml.rels
+ */
+function addImageRelationships(
+  zip: PizZip,
+  images: Array<{ rId: string; imageIndex: number }>
+): void {
+  const relsPath = 'word/_rels/document.xml.rels';
+  let rels = zip.file(relsPath)?.asText();
+
+  if (!rels) {
+    // Create new relationships file if it doesn't exist
+    rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+</Relationships>`;
+  }
+
+  // Add relationship for each image
+  for (const img of images) {
+    const relationship = `<Relationship Id="${img.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${img.imageIndex}.png"/>`;
+
+    // Insert before closing tag
+    rels = rels.replace('</Relationships>', `${relationship}</Relationships>`);
+  }
+
+  zip.file(relsPath, rels);
+}
+
+/**
+ * Generate Word drawing XML for inline image
+ * Uses DrawingML format for proper image embedding
+ */
+function generateDrawingXml(
+  rId: string,
+  image: DiagramImage,
+  figureNumber: string
+): string {
+  // Calculate dimensions in EMUs (English Metric Units)
+  // 914400 EMUs = 1 inch
+  const { widthEmu, heightEmu } = calculateEmuDimensions(image.width, image.height, 6.0);
+
+  // Unique IDs for drawing elements
+  const docPrId = Math.floor(Math.random() * 100000);
+
+  return `<w:p>
+    <w:pPr><w:jc w:val="center"/></w:pPr>
+    <w:r>
+      <w:drawing>
+        <wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
+          <wp:extent cx="${widthEmu}" cy="${heightEmu}"/>
+          <wp:effectExtent l="0" t="0" r="0" b="0"/>
+          <wp:docPr id="${docPrId}" name="${escapeXml(image.title)}" descr="${escapeXml(image.title)}"/>
+          <wp:cNvGraphicFramePr>
+            <a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
+          </wp:cNvGraphicFramePr>
+          <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+              <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:nvPicPr>
+                  <pic:cNvPr id="${docPrId}" name="${escapeXml(image.title)}"/>
+                  <pic:cNvPicPr/>
+                </pic:nvPicPr>
+                <pic:blipFill>
+                  <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/>
+                  <a:stretch>
+                    <a:fillRect/>
+                  </a:stretch>
+                </pic:blipFill>
+                <pic:spPr>
+                  <a:xfrm>
+                    <a:off x="0" y="0"/>
+                    <a:ext cx="${widthEmu}" cy="${heightEmu}"/>
+                  </a:xfrm>
+                  <a:prstGeom prst="rect">
+                    <a:avLst/>
+                  </a:prstGeom>
+                </pic:spPr>
+              </pic:pic>
+            </a:graphicData>
+          </a:graphic>
+        </wp:inline>
+      </w:drawing>
+    </w:r>
+  </w:p>
+  <w:p>
+    <w:pPr><w:pStyle w:val="Caption"/><w:jc w:val="center"/></w:pPr>
+    <w:r><w:rPr><w:b/></w:rPr><w:t>Figure ${figureNumber}: ${escapeXml(image.title)}</w:t></w:r>
+  </w:p>`;
+}
+
+/**
+ * Process markdown and embed diagrams as images
+ * Returns WordML with embedded images
+ */
+async function processMarkdownWithDiagrams(
+  markdown: string,
+  project: Project,
+  zip: PizZip,
+  embedDiagrams: boolean
+): Promise<string> {
+  if (!embedDiagrams) {
+    // No diagram embedding - just convert markdown to WordML
+    const allFigures = [
+      ...project.blockDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'block' as const })),
+      ...project.sequenceDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'sequence' as const })),
+      ...project.flowDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'flow' as const })),
+    ];
+    const citations = project.references.map((ref, index) => ({
+      id: ref.id,
+      number: String(index + 1),
+      title: ref.title,
+    }));
+    const resolvedMarkdown = resolveAllLinks(markdown, allFigures, citations);
+    return markdownToWordML(resolvedMarkdown);
+  }
+
+  // Generate diagram images
+  console.log('[Template Export] Generating diagram images...');
+  const images = await generateReferencedDiagramImages(project);
+  const imageMap = buildDiagramImageMap(images);
+  console.log(`[Template Export] Generated ${images.length} diagram images`);
+
+  // Add images to DOCX structure
+  const imageRelationships: Array<{ rId: string; imageIndex: number }> = [];
+  const rIdMap = new Map<string, string>();
+
+  let imageIndex = 1;
+  for (const image of images) {
+    const imageData = new Uint8Array(image.arrayBuffer);
+    const rId = addImageToDocx(zip, imageData, imageIndex);
+    imageRelationships.push({ rId, imageIndex });
+    rIdMap.set(image.id, rId);
+    if (image.figureNumber) {
+      rIdMap.set(image.figureNumber, rId);
+    }
+    imageIndex++;
+  }
+
+  // Update content types and relationships
+  updateContentTypes(zip);
+  addImageRelationships(zip, imageRelationships);
+
+  // Build figure references for link resolution
+  const allFigures = [
+    ...project.blockDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'block' as const })),
+    ...project.sequenceDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'sequence' as const })),
+    ...project.flowDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'flow' as const })),
+  ];
+  const citations = project.references.map((ref, index) => ({
+    id: ref.id,
+    number: String(index + 1),
+    title: ref.title,
+  }));
+
+  // Process markdown line by line
+  const lines = markdown.split('\n');
+  let xml = '';
+
+  for (const line of lines) {
+    const figureRefs = parseFigureReferences(line);
+
+    if (figureRefs.length > 0) {
+      // Resolve the text part of the line
+      const resolvedLine = resolveAllLinks(line, allFigures, citations);
+
+      // Add the text paragraph
+      if (resolvedLine.trim()) {
+        xml += markdownToWordML(resolvedLine);
+      }
+
+      // Add diagram images after the reference
+      for (const figRef of figureRefs) {
+        const image = imageMap.get(figRef);
+        if (image) {
+          const rId = rIdMap.get(image.id) || rIdMap.get(figRef);
+          if (rId) {
+            xml += generateDrawingXml(rId, image, image.figureNumber || 'X-X');
+          }
+        } else {
+          // Placeholder for missing diagram
+          xml += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/></w:rPr><w:t>[Diagram not found: ${escapeXml(figRef)}]</w:t></w:r></w:p>`;
+        }
+      }
+    } else {
+      // No figure references - resolve and convert normally
+      const resolvedLine = resolveAllLinks(line, allFigures, citations);
+      xml += markdownToWordML(resolvedLine);
+    }
+  }
+
+  return xml;
+}
+
+/**
  * Export project to DOCX using template
  */
 export async function exportWithTemplate(
@@ -223,7 +462,15 @@ export async function exportWithTemplate(
     console.log('[Template Export] Template loaded successfully');
     console.log('[Template Export] Document XML length:', documentXml.length);
 
-    // Resolve all links in markdown
+    // Process markdown with optional diagram embedding
+    const contentXml = await processMarkdownWithDiagrams(
+      project.specification.markdown,
+      project,
+      zip,
+      options.embedDiagrams
+    );
+
+    // Build figure list for List of Figures section
     const allFigures = [
       ...project.blockDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'block' as const })),
       ...project.sequenceDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'sequence' as const })),
@@ -235,15 +482,6 @@ export async function exportWithTemplate(
       number: String(index + 1),
       title: ref.title,
     }));
-
-    const resolvedMarkdown = resolveAllLinks(
-      project.specification.markdown,
-      allFigures,
-      citations
-    );
-
-    // Convert markdown to WordML
-    const contentXml = markdownToWordML(resolvedMarkdown);
 
     // Prepare replacements
     const replacements: Record<string, string> = {

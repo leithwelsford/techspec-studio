@@ -93,6 +93,7 @@ CRITICAL FORMATTING RULES:
 - Use # (single hash) for main sections (e.g., "# 1. Scope")
 - Use ## (double hash) for subsections (e.g., "## 1.1 Overview")
 - Use ### (triple hash) for sub-subsections (e.g., "### 1.1.1 Purpose")
+- **IMPORTANT**: Subsections ALWAYS start at .1, never .0 (e.g., 5.1, 5.2, NOT 5.0)
 
 For each section:
 1. Start with a clear section heading using proper markdown hierarchy
