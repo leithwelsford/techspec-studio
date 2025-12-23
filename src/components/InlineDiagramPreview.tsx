@@ -53,7 +53,7 @@ function BlockNode({ id, meta, pos, size }: {
   return (
     <g transform={`translate(${pos.x}, ${pos.y})`}>
       {meta.shape === 'cloud' ? (
-        <path d={cloudPath(s.w, s.h)} fill="#ffffff" stroke="#60a5fa" strokeWidth={1.5} />
+        <path d={cloudPath(s.w, s.h)} fill="#ffffff" stroke="#000000" strokeWidth={1} />
       ) : (
         <rect
           x={0}
@@ -61,9 +61,9 @@ function BlockNode({ id, meta, pos, size }: {
           width={s.w}
           height={s.h}
           fill="#ffffff"
-          stroke="#60a5fa"
-          strokeWidth={1.5}
-          rx={4}
+          stroke="#000000"
+          strokeWidth={1}
+          rx={0}
         />
       )}
       <text
@@ -71,10 +71,10 @@ function BlockNode({ id, meta, pos, size }: {
         y={s.h / 2}
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize={12}
-        fill="#1e293b"
-        fontWeight={500}
-        fontFamily="system-ui, sans-serif"
+        fontSize={11}
+        fill="#000000"
+        fontWeight={400}
+        fontFamily="Arial, Helvetica, sans-serif"
       >
         {meta.label}
       </text>
@@ -89,9 +89,9 @@ function BlockEdge({ a, b, label, style }: {
   label?: string;
   style?: EdgeStyle;
 }) {
-  const strokeDasharray = style === 'dashed' ? '5,5' : undefined;
-  const strokeWidth = style === 'bold' ? 2.5 : 1.5;
-  const stroke = '#94a3b8'; // Light gray for dark mode visibility
+  const strokeDasharray = style === 'dashed' ? '4,4' : undefined;
+  const strokeWidth = style === 'bold' ? 1.5 : 1;
+  const stroke = '#000000'; // Black for 3GPP-style diagrams
   const midPoint = mid(a, b);
 
   return (
@@ -108,22 +108,22 @@ function BlockEdge({ a, b, label, style }: {
       />
       {label && (
         <>
-          {/* Background for label readability */}
+          {/* White background for label readability */}
           <rect
-            x={midPoint.x - (label.length * 3.5)}
-            y={midPoint.y - 18}
-            width={label.length * 7}
+            x={midPoint.x - (label.length * 3) - 2}
+            y={midPoint.y - 15}
+            width={label.length * 6 + 4}
             height={14}
-            fill="rgba(30, 41, 59, 0.85)"
-            rx={2}
+            fill="#ffffff"
+            stroke="none"
           />
           <text
             x={midPoint.x}
-            y={midPoint.y - 8}
+            y={midPoint.y - 5}
             textAnchor="middle"
-            fontSize={10}
-            fill="#e2e8f0"
-            fontFamily="system-ui, sans-serif"
+            fontSize={9}
+            fill="#000000"
+            fontFamily="Arial, Helvetica, sans-serif"
           >
             {label}
           </text>
@@ -209,7 +209,7 @@ function BlockDiagramPreview({ diagram, maxWidth = 800 }: { diagram: BlockDiagra
           refY="3.5"
           orient="auto"
         >
-          <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+          <polygon points="0 0, 10 3.5, 0 7" fill="#000000" />
         </marker>
       </defs>
 
@@ -232,8 +232,55 @@ function BlockDiagramPreview({ diagram, maxWidth = 800 }: { diagram: BlockDiagra
   );
 }
 
+/**
+ * Post-process Mermaid SVG to crop to actual content bounds
+ * This removes excessive whitespace that Mermaid often adds
+ */
+function cropMermaidSvgToContent(svgElement: SVGSVGElement): void {
+  try {
+    // Get the bounding box of all content
+    const bbox = svgElement.getBBox();
+
+    if (bbox.width > 0 && bbox.height > 0) {
+      // Add small padding around content
+      const padding = 20;
+      const newViewBox = `${bbox.x - padding} ${bbox.y - padding} ${bbox.width + padding * 2} ${bbox.height + padding * 2}`;
+
+      svgElement.setAttribute('viewBox', newViewBox);
+
+      // Set dimensions based on actual content size
+      // Use reasonable max dimensions to prevent oversized diagrams
+      const maxWidth = 1200;
+      const maxHeight = 800;
+
+      let finalWidth = bbox.width + padding * 2;
+      let finalHeight = bbox.height + padding * 2;
+
+      // Scale down proportionally if too large
+      if (finalWidth > maxWidth) {
+        const scale = maxWidth / finalWidth;
+        finalWidth = maxWidth;
+        finalHeight *= scale;
+      }
+      if (finalHeight > maxHeight) {
+        const scale = maxHeight / finalHeight;
+        finalHeight = maxHeight;
+        finalWidth *= scale;
+      }
+
+      svgElement.setAttribute('width', `${finalWidth}px`);
+      svgElement.setAttribute('height', `${finalHeight}px`);
+      svgElement.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    }
+  } catch (e) {
+    // getBBox can fail if SVG isn't in DOM - ignore
+    console.warn('Could not crop SVG:', e);
+  }
+}
+
 // Render a Mermaid diagram
-function MermaidDiagramPreview({ diagram, maxWidth = 800 }: { diagram: MermaidDiagram; maxWidth?: number }) {
+// Uses useLayoutEffect to crop SVG to actual content after rendering
+function MermaidDiagramPreview({ diagram }: { diagram: MermaidDiagram; maxWidth?: number }) {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string>('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -261,6 +308,19 @@ function MermaidDiagramPreview({ diagram, maxWidth = 800 }: { diagram: MermaidDi
     renderDiagram();
   }, [diagram.id, diagram.mermaidCode]);
 
+  // After SVG is inserted into DOM, crop it to actual content
+  useEffect(() => {
+    if (svg && containerRef.current) {
+      const svgElement = containerRef.current.querySelector('svg');
+      if (svgElement) {
+        // Use requestAnimationFrame to ensure SVG is fully rendered
+        requestAnimationFrame(() => {
+          cropMermaidSvgToContent(svgElement as SVGSVGElement);
+        });
+      }
+    }
+  }, [svg]);
+
   if (error) {
     return (
       <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400 text-sm">
@@ -282,7 +342,10 @@ function MermaidDiagramPreview({ diagram, maxWidth = 800 }: { diagram: MermaidDi
     <div
       ref={containerRef}
       className="inline-diagram-mermaid"
-      style={{ maxWidth, overflow: 'auto' }}
+      style={{
+        overflowX: 'auto',
+        overflowY: 'auto',
+      }}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );

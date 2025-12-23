@@ -352,11 +352,10 @@ export default function DiagramViewer() {
               <div className="flex-1 overflow-hidden">
                 {selectedDiagram.type === 'block' ? (
                   <BlockDiagramEditor diagramId={selectedDiagram.id} />
-                ) : selectedDiagram.type === 'sequence' ? (
+                ) : (
+                  /* All Mermaid diagram types use the same code editor */
                   <SequenceDiagramEditor diagramId={selectedDiagram.id} />
-                ) : selectedDiagram.type === 'flow' ? (
-                  <SequenceDiagramEditor diagramId={selectedDiagram.id} />
-                ) : null}
+                )}
               </div>
             ) : (
               <div className="flex-1 overflow-hidden">
