@@ -186,6 +186,8 @@ Generate → Create PendingApproval → User reviews in ReviewPanel → Approve 
 
 **Mermaid Docs Cache** (`src/services/ai/mermaidDocsCache.ts`): Pre-fetches and caches Mermaid documentation at app startup (non-blocking). Provides syntax examples to AI for accurate diagram generation and error correction.
 
+**Protocol Terminology** (`sectionPrompts.ts`): Auto-detects 50+ protocols (Gx, RADIUS, BGP, TLS, etc.) in content and injects exact command names into AI prompts. Ensures specifications use precise terminology (e.g., "CCR-I" not "policy request") even without reference documents.
+
 ## Key Patterns
 
 ### Link Resolution
@@ -248,6 +250,13 @@ Upload Word templates for style-aware export:
 - `DocxTemplateAnalysis` stores extracted styles, numbering, structure
 - Template stored in IndexedDB, analysis cached in store
 - Pandoc export uses extracted styles for `custom-style` attributes
+
+### Requirement Numbering
+Normative statements (SHALL, MUST, SHOULD, MAY per RFC 2119) get unique IDs:
+- **Format**: `<SUBSYSTEM>-<FEATURE>-<ARTEFACT>-<NNNNN>` (e.g., `PCC-CAPTIVE-REQ-00001`)
+- **ARTEFACT types**: `REQ` (general), `FR` (functional), `NFR` (non-functional), `INT` (interface), `SEC` (security), `CFG` (config), `TST` (test)
+- Counters track per-prefix state across sections via `RequirementCounterState`
+- Can be toggled per-section in generation options
 
 ## Troubleshooting
 
