@@ -1,548 +1,490 @@
 /**
  * Template-based DOCX Export
  *
- * Uses an uploaded DOCX template and replaces placeholders with specification content.
- * Template should contain placeholders like {{TITLE}}, {{CONTENT}}, {{AUTHOR}}, etc.
+ * Creates DOCX documents using styles extracted from an uploaded Word template.
+ * Uses the docx library with externalStyles to reference template styles.
  */
 
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  HeadingLevel,
+  AlignmentType,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+  ImageRun,
+} from 'docx';
 import PizZip from 'pizzip';
-import type { Project } from '../types';
+import type { Project, DocxTemplateAnalysis } from '../types';
 import type { ExportOptions } from './docxExport';
-import { resolveAllLinks, parseFigureReferences } from './linkResolver';
+import { resolveAllLinks } from './linkResolver';
+import { getDiagramsInOrder } from './figureNumbering';
 import {
   generateReferencedDiagramImages,
   buildDiagramImageMap,
-  calculateEmuDimensions,
   type DiagramImage,
 } from './diagramImageExporter';
 
 /**
- * Normalize Word XML to merge split text runs
- * Word often splits {{PLACEHOLDER}} across multiple <w:t> tags like:
- * <w:t>{{</w:t><w:t>TITLE</w:t><w:t>}}</w:t>
- * This function merges them into a single run for easier replacement
+ * Extract styles.xml from a DOCX template
+ * Returns the XML string that can be used with docx library's externalStyles
  */
-function normalizeWordXml(xml: string): string {
-  // Merge consecutive <w:t> elements within the same <w:r> (run)
-  return xml.replace(/<w:r[^>]*>(.*?)<\/w:r>/g, (match, runContent) => {
-    // Extract all text content from <w:t> tags within this run
-    const textParts: string[] = [];
-    let normalizedContent = runContent.replace(/<w:t[^>]*>(.*?)<\/w:t>/g, (_: string, text: string) => {
-      textParts.push(text);
-      return ''; // Remove the original <w:t> tags
-    });
+export function extractStylesFromTemplate(templateBase64: string): string | null {
+  try {
+    const templateData = atob(templateBase64);
+    const zip = new PizZip(templateData);
 
-    // If we found text, replace with a single merged <w:t> tag
-    if (textParts.length > 0) {
-      const mergedText = textParts.join('');
-      // Re-insert the merged text as a single <w:t> tag
-      // Keep any other run properties (formatting) that might exist
-      const beforeText = normalizedContent.substring(0, normalizedContent.lastIndexOf('</w:rPr>') + 8);
-      const afterText = normalizedContent.substring(normalizedContent.lastIndexOf('</w:rPr>') + 8);
-
-      if (normalizedContent.includes('</w:rPr>')) {
-        return `<w:r>${beforeText}<w:t xml:space="preserve">${mergedText}</w:t>${afterText}</w:r>`;
-      } else {
-        return `<w:r><w:t xml:space="preserve">${mergedText}</w:t>${normalizedContent}</w:r>`;
-      }
+    const stylesFile = zip.file('word/styles.xml');
+    if (!stylesFile) {
+      console.warn('[Template Export] No styles.xml found in template');
+      return null;
     }
 
-    return match; // Return original if no text found
+    const stylesXml = stylesFile.asText();
+    console.log('[Template Export] Extracted styles.xml, length:', stylesXml.length);
+    return stylesXml;
+  } catch (error) {
+    console.error('[Template Export] Failed to extract styles:', error);
+    return null;
+  }
+}
+
+/**
+ * Map heading level to HeadingLevel enum
+ */
+function getHeadingLevel(level: number): (typeof HeadingLevel)[keyof typeof HeadingLevel] {
+  const levelMap: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel]> = {
+    1: HeadingLevel.HEADING_1,
+    2: HeadingLevel.HEADING_2,
+    3: HeadingLevel.HEADING_3,
+    4: HeadingLevel.HEADING_4,
+    5: HeadingLevel.HEADING_5,
+    6: HeadingLevel.HEADING_6,
+  };
+  return levelMap[level] || HeadingLevel.HEADING_6;
+}
+
+/**
+ * Parse markdown heading to extract level and text
+ */
+function parseHeading(line: string): { level: number; text: string } | null {
+  const match = line.match(/^(#{1,6})\s+(.+)$/);
+  if (!match) return null;
+  return {
+    level: match[1].length,
+    text: match[2].trim(),
+  };
+}
+
+/**
+ * Convert markdown inline formatting to TextRun array
+ */
+function parseInlineMarkdown(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  let lastIndex = 0;
+
+  // Pattern for bold, italic, code, links
+  const pattern = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)`|\[([^\]]+)\]\(([^)]+)\)/g;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    // Add text before match
+    if (match.index > lastIndex) {
+      runs.push(new TextRun(text.substring(lastIndex, match.index)));
+    }
+
+    if (match[2]) {
+      // Bold: **text** or __text__
+      runs.push(new TextRun({ text: match[2], bold: true }));
+    } else if (match[4]) {
+      // Italic: *text* or _text_
+      runs.push(new TextRun({ text: match[4], italics: true }));
+    } else if (match[6]) {
+      // Code: `text`
+      runs.push(new TextRun({
+        text: match[6],
+        font: 'Courier New',
+        size: 20, // 10pt
+      }));
+    } else if (match[7] && match[8]) {
+      // Link: [text](url) - just show text
+      runs.push(new TextRun({ text: match[7], color: '0563C1', underline: {} }));
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    runs.push(new TextRun(text.substring(lastIndex)));
+  }
+
+  // If no matches, return simple text
+  if (runs.length === 0) {
+    runs.push(new TextRun(text));
+  }
+
+  return runs;
+}
+
+/**
+ * Parse markdown table
+ */
+function parseMarkdownTable(lines: string[]): { headers: string[]; rows: string[][] } | null {
+  if (lines.length < 2) return null;
+
+  // First line should be header
+  const headerLine = lines[0];
+  if (!headerLine.includes('|')) return null;
+
+  // Second line should be separator
+  const separatorLine = lines[1];
+  if (!separatorLine.match(/^\|?[\s\-:|]+\|?$/)) return null;
+
+  // Parse header
+  const headers = headerLine.split('|').map(s => s.trim()).filter(s => s);
+
+  // Parse rows
+  const rows: string[][] = [];
+  for (let i = 2; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.includes('|')) break;
+    const cells = line.split('|').map(s => s.trim()).filter(s => s);
+    if (cells.length > 0) {
+      rows.push(cells);
+    }
+  }
+
+  return { headers, rows };
+}
+
+/**
+ * Create a table from parsed markdown
+ */
+function createTable(tableData: { headers: string[]; rows: string[][] }): Table {
+  const { headers, rows } = tableData;
+
+  const headerRow = new TableRow({
+    children: headers.map(header => new TableCell({
+      children: [new Paragraph({
+        children: [new TextRun({ text: header, bold: true })],
+      })],
+      shading: { fill: 'E7E6E6' },
+    })),
+  });
+
+  const dataRows = rows.map(row => new TableRow({
+    children: row.map(cell => new TableCell({
+      children: [new Paragraph({
+        children: parseInlineMarkdown(cell),
+      })],
+    })),
+  }));
+
+  return new Table({
+    rows: [headerRow, ...dataRows],
+    width: { size: 100, type: WidthType.PERCENTAGE },
   });
 }
 
 /**
- * Replace placeholders in template XML
+ * Convert markdown to DOCX paragraphs with template styles
  */
-function replacePlaceholders(xml: string, replacements: Record<string, string>): string {
-  // First normalize XML to merge split text runs
-  let result = normalizeWordXml(xml);
-
-  console.log('[Template Export] Starting placeholder replacement...');
-
-  // Debug: Show a sample of the normalized XML
-  const sample = result.substring(0, 2000);
-  console.log('[Template Export] Normalized XML sample (first 2000 chars):', sample);
-
-  // Debug: Search for any double curly braces
-  const doubleBraceMatches = result.match(/\{\{[^}]*\}\}/g);
-  if (doubleBraceMatches) {
-    console.log('[Template Export] Found placeholders in template:', doubleBraceMatches);
-  } else {
-    console.warn('[Template Export] NO placeholders found in template!');
-  }
-
-  for (const [key, value] of Object.entries(replacements)) {
-    // Replace {{KEY}} with value
-    const placeholder = `{{${key}}}`;
-    const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-    const matches = result.match(regex);
-
-    if (matches) {
-      console.log(`[Template Export] Found ${matches.length} occurrence(s) of ${placeholder}`);
-      console.log(`[Template Export] Replacing with: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
-      result = result.replace(regex, value); // Don't escape - value is already WordML XML
-    } else {
-      console.warn(`[Template Export] Placeholder ${placeholder} not found in template`);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Escape XML special characters
- */
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-/**
- * Convert markdown to WordprocessingML (DOCX XML format)
- */
-function markdownToWordML(markdown: string): string {
-  const lines = markdown.split('\n');
-  let xml = '';
-
-  for (const line of lines) {
-    if (!line.trim()) {
-      // Empty paragraph
-      xml += '<w:p><w:pPr></w:pPr></w:p>';
-      continue;
-    }
-
-    // Headings
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      const text = headingMatch[2];
-      xml += `<w:p><w:pPr><w:pStyle w:val="Heading${level}"/></w:pPr><w:r><w:t>${escapeXml(text)}</w:t></w:r></w:p>`;
-      continue;
-    }
-
-    // Lists
-    if (line.match(/^[-*]\s+/)) {
-      const text = line.replace(/^[-*]\s+/, '');
-      xml += `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>${escapeXml(text)}</w:t></w:r></w:p>`;
-      continue;
-    }
-
-    // Regular paragraph with inline formatting
-    let processedLine = line;
-
-    // Bold: **text**
-    processedLine = processedLine.replace(/\*\*(.+?)\*\*/g, '<w:r><w:rPr><w:b/></w:rPr><w:t>$1</w:t></w:r>');
-
-    // Italic: *text*
-    processedLine = processedLine.replace(/\*(.+?)\*/g, '<w:r><w:rPr><w:i/></w:rPr><w:t>$1</w:t></w:r>');
-
-    // Code: `code`
-    processedLine = processedLine.replace(/`(.+?)`/g, '<w:r><w:rPr><w:rFonts w:ascii="Courier New"/></w:rPr><w:t>$1</w:t></w:r>');
-
-    xml += `<w:p><w:r><w:t>${processedLine}</w:t></w:r></w:p>`;
-  }
-
-  return xml;
-}
-
-/**
- * Generate Table of Contents XML
- */
-function generateTOCXml(): string {
-  return `<w:p>
-    <w:pPr><w:pStyle w:val="TOC"/></w:pPr>
-    <w:r><w:t>Table of Contents</w:t></w:r>
-  </w:p>
-  <w:p>
-    <w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr>
-  </w:p>
-  <w:sdt>
-    <w:sdtContent>
-      <w:p>
-        <w:pPr><w:pStyle w:val="TOC1"/></w:pPr>
-        <w:hyperlink w:anchor="_Toc">
-          <w:r><w:t>Contents will be generated by Word when document is opened</w:t></w:r>
-        </w:hyperlink>
-      </w:p>
-    </w:sdtContent>
-  </w:sdt>`;
-}
-
-/**
- * Generate List of Figures XML
- */
-function generateListOfFiguresXml(figures: Array<{ number: string; title: string }>): string {
-  let xml = `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>List of Figures</w:t></w:r></w:p>`;
-
-  for (const figure of figures) {
-    xml += `<w:p><w:r><w:t>Figure ${figure.number}: ${escapeXml(figure.title)}</w:t></w:r></w:p>`;
-  }
-
-  return xml;
-}
-
-/**
- * Generate Bibliography XML
- */
-function generateBibliographyXml(references: Array<{ number: string; title: string }>): string {
-  let xml = `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>References</w:t></w:r></w:p>`;
-
-  for (const ref of references) {
-    xml += `<w:p><w:r><w:t>[${ref.number}] ${escapeXml(ref.title)}</w:t></w:r></w:p>`;
-  }
-
-  return xml;
-}
-
-/**
- * Add image to DOCX ZIP structure
- * Returns the relationship ID for the image
- */
-function addImageToDocx(
-  zip: PizZip,
-  imageData: Uint8Array,
-  imageIndex: number
-): string {
-  const rId = `rIdImg${imageIndex}`;
-  const imagePath = `word/media/image${imageIndex}.png`;
-
-  // Add image to media folder
-  zip.file(imagePath, imageData);
-
-  return rId;
-}
-
-/**
- * Update [Content_Types].xml to include PNG images
- */
-function updateContentTypes(zip: PizZip): void {
-  const contentTypesPath = '[Content_Types].xml';
-  let contentTypes = zip.file(contentTypesPath)?.asText();
-
-  if (!contentTypes) {
-    console.warn('[Template Export] Content_Types.xml not found');
-    return;
-  }
-
-  // Check if PNG extension is already defined
-  if (!contentTypes.includes('Extension="png"')) {
-    // Add PNG extension before </Types>
-    contentTypes = contentTypes.replace(
-      '</Types>',
-      '<Default Extension="png" ContentType="image/png"/></Types>'
-    );
-    zip.file(contentTypesPath, contentTypes);
-  }
-}
-
-/**
- * Add image relationships to document.xml.rels
- */
-function addImageRelationships(
-  zip: PizZip,
-  images: Array<{ rId: string; imageIndex: number }>
-): void {
-  const relsPath = 'word/_rels/document.xml.rels';
-  let rels = zip.file(relsPath)?.asText();
-
-  if (!rels) {
-    // Create new relationships file if it doesn't exist
-    rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-</Relationships>`;
-  }
-
-  // Add relationship for each image
-  for (const img of images) {
-    const relationship = `<Relationship Id="${img.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${img.imageIndex}.png"/>`;
-
-    // Insert before closing tag
-    rels = rels.replace('</Relationships>', `${relationship}</Relationships>`);
-  }
-
-  zip.file(relsPath, rels);
-}
-
-/**
- * Generate Word drawing XML for inline image
- * Uses DrawingML format for proper image embedding
- */
-function generateDrawingXml(
-  rId: string,
-  image: DiagramImage,
-  figureNumber: string
-): string {
-  // Calculate dimensions in EMUs (English Metric Units)
-  // 914400 EMUs = 1 inch
-  const { widthEmu, heightEmu } = calculateEmuDimensions(image.width, image.height, 6.0);
-
-  // Unique IDs for drawing elements
-  const docPrId = Math.floor(Math.random() * 100000);
-
-  return `<w:p>
-    <w:pPr><w:jc w:val="center"/></w:pPr>
-    <w:r>
-      <w:drawing>
-        <wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
-          <wp:extent cx="${widthEmu}" cy="${heightEmu}"/>
-          <wp:effectExtent l="0" t="0" r="0" b="0"/>
-          <wp:docPr id="${docPrId}" name="${escapeXml(image.title)}" descr="${escapeXml(image.title)}"/>
-          <wp:cNvGraphicFramePr>
-            <a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
-          </wp:cNvGraphicFramePr>
-          <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-            <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
-              <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-                <pic:nvPicPr>
-                  <pic:cNvPr id="${docPrId}" name="${escapeXml(image.title)}"/>
-                  <pic:cNvPicPr/>
-                </pic:nvPicPr>
-                <pic:blipFill>
-                  <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/>
-                  <a:stretch>
-                    <a:fillRect/>
-                  </a:stretch>
-                </pic:blipFill>
-                <pic:spPr>
-                  <a:xfrm>
-                    <a:off x="0" y="0"/>
-                    <a:ext cx="${widthEmu}" cy="${heightEmu}"/>
-                  </a:xfrm>
-                  <a:prstGeom prst="rect">
-                    <a:avLst/>
-                  </a:prstGeom>
-                </pic:spPr>
-              </pic:pic>
-            </a:graphicData>
-          </a:graphic>
-        </wp:inline>
-      </w:drawing>
-    </w:r>
-  </w:p>
-  <w:p>
-    <w:pPr><w:pStyle w:val="Caption"/><w:jc w:val="center"/></w:pPr>
-    <w:r><w:rPr><w:b/></w:rPr><w:t>Figure ${figureNumber}: ${escapeXml(image.title)}</w:t></w:r>
-  </w:p>`;
-}
-
-/**
- * Process markdown and embed diagrams as images
- * Returns WordML with embedded images
- */
-async function processMarkdownWithDiagrams(
+async function markdownToDocxElements(
   markdown: string,
   project: Project,
-  zip: PizZip,
-  embedDiagrams: boolean
-): Promise<string> {
-  if (!embedDiagrams) {
-    // No diagram embedding - just convert markdown to WordML
-    const allFigures = [
-      ...project.blockDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'block' as const })),
-      ...project.sequenceDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'sequence' as const })),
-      ...project.flowDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'flow' as const })),
-    ];
-    const citations = project.references.map((ref, index) => ({
-      id: ref.id,
-      number: String(index + 1),
-      title: ref.title,
-    }));
-    const resolvedMarkdown = resolveAllLinks(markdown, allFigures, citations);
-    return markdownToWordML(resolvedMarkdown);
+  options: ExportOptions,
+  templateAnalysis?: DocxTemplateAnalysis | null,
+): Promise<(Paragraph | Table)[]> {
+  const elements: (Paragraph | Table)[] = [];
+  const lines = markdown.split('\n');
+
+  // Generate diagram images if embedding is enabled
+  let diagramImages: DiagramImage[] = [];
+  let imageMap: Map<string, DiagramImage> = new Map();
+
+  if (options.embedDiagrams) {
+    console.log('[Template Export] Generating diagram images...');
+    diagramImages = await generateReferencedDiagramImages(project);
+    imageMap = buildDiagramImageMap(diagramImages);
+    console.log(`[Template Export] Generated ${diagramImages.length} diagram images`);
   }
-
-  // Generate diagram images
-  console.log('[Template Export] Generating diagram images...');
-  const images = await generateReferencedDiagramImages(project);
-  const imageMap = buildDiagramImageMap(images);
-  console.log(`[Template Export] Generated ${images.length} diagram images`);
-
-  // Add images to DOCX structure
-  const imageRelationships: Array<{ rId: string; imageIndex: number }> = [];
-  const rIdMap = new Map<string, string>();
-
-  let imageIndex = 1;
-  for (const image of images) {
-    const imageData = new Uint8Array(image.arrayBuffer);
-    const rId = addImageToDocx(zip, imageData, imageIndex);
-    imageRelationships.push({ rId, imageIndex });
-    rIdMap.set(image.id, rId);
-    if (image.figureNumber) {
-      rIdMap.set(image.figureNumber, rId);
-    }
-    imageIndex++;
-  }
-
-  // Update content types and relationships
-  updateContentTypes(zip);
-  addImageRelationships(zip, imageRelationships);
 
   // Build figure references for link resolution
-  const allFigures = [
-    ...project.blockDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'block' as const })),
-    ...project.sequenceDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'sequence' as const })),
-    ...project.flowDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'flow' as const })),
+  const mermaidDiagrams = [
+    ...project.sequenceDiagrams,
+    ...project.flowDiagrams,
   ];
+  const allFigures = getDiagramsInOrder(
+    project.specification.markdown,
+    project.blockDiagrams,
+    mermaidDiagrams
+  ).map(d => ({
+    id: d.id,
+    number: d.figureNumber || 'X-X',
+    title: d.title,
+    type: d.type as 'block' | 'sequence' | 'flow',
+  }));
+
   const citations = project.references.map((ref, index) => ({
     id: ref.id,
     number: String(index + 1),
     title: ref.title,
   }));
 
-  // Process markdown line by line
-  const lines = markdown.split('\n');
-  let xml = '';
+  // Get caption style from template
+  const captionStyleId = templateAnalysis?.captionStyles?.figureCaption?.styleId;
 
-  for (const line of lines) {
-    const figureRefs = parseFigureReferences(line);
+  let i = 0;
+  let inCodeBlock = false;
+  let codeBlockContent: string[] = [];
 
-    if (figureRefs.length > 0) {
-      // Resolve the text part of the line
-      const resolvedLine = resolveAllLinks(line, allFigures, citations);
+  while (i < lines.length) {
+    const line = lines[i];
 
-      // Add the text paragraph
-      if (resolvedLine.trim()) {
-        xml += markdownToWordML(resolvedLine);
+    // Handle code blocks
+    if (line.startsWith('```')) {
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeBlockContent = [];
+      } else {
+        // End of code block
+        inCodeBlock = false;
+
+        // Get code style from template or use default
+        const codeStyleId = templateAnalysis?.specialStyles?.otherStyles.find(
+          s => /code|source|listing/i.test(s.name)
+        )?.styleId;
+
+        // Add code block as paragraphs with monospace font
+        elements.push(new Paragraph({
+          children: [new TextRun({
+            text: codeBlockContent.join('\n'),
+            font: 'Courier New',
+            size: 18, // 9pt
+          })],
+          style: codeStyleId,
+          spacing: { before: 120, after: 120 },
+        }));
       }
-
-      // Add diagram images after the reference
-      for (const figRef of figureRefs) {
-        const image = imageMap.get(figRef);
-        if (image) {
-          const rId = rIdMap.get(image.id) || rIdMap.get(figRef);
-          if (rId) {
-            xml += generateDrawingXml(rId, image, image.figureNumber || 'X-X');
-          }
-        } else {
-          // Placeholder for missing diagram
-          xml += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/></w:rPr><w:t>[Diagram not found: ${escapeXml(figRef)}]</w:t></w:r></w:p>`;
-        }
-      }
-    } else {
-      // No figure references - resolve and convert normally
-      const resolvedLine = resolveAllLinks(line, allFigures, citations);
-      xml += markdownToWordML(resolvedLine);
+      i++;
+      continue;
     }
+
+    if (inCodeBlock) {
+      codeBlockContent.push(line);
+      i++;
+      continue;
+    }
+
+    // Skip empty lines
+    if (!line.trim()) {
+      i++;
+      continue;
+    }
+
+    // Handle headings
+    const heading = parseHeading(line);
+    if (heading) {
+      elements.push(new Paragraph({
+        text: heading.text,
+        heading: getHeadingLevel(heading.level),
+      }));
+      i++;
+      continue;
+    }
+
+    // Handle figure references {{fig:...}}
+    const figMatch = line.match(/\{\{fig:([^}]+)\}\}/);
+    if (figMatch && options.embedDiagrams) {
+      const figRef = figMatch[1];
+      const image = imageMap.get(figRef);
+
+      if (image && image.arrayBuffer) {
+        // Add the image
+        const maxWidth = 500; // pixels
+        const scale = Math.min(1, maxWidth / image.width);
+        const width = Math.round(image.width * scale);
+        const height = Math.round(image.height * scale);
+
+        elements.push(new Paragraph({
+          children: [
+            new ImageRun({
+              data: image.arrayBuffer,
+              transformation: { width, height },
+              type: 'png',
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+        }));
+
+        // Add caption using template style
+        elements.push(new Paragraph({
+          children: [
+            new TextRun({ text: `Figure ${image.figureNumber || 'X-X'}: `, bold: true }),
+            new TextRun({ text: image.title }),
+          ],
+          alignment: AlignmentType.CENTER,
+          style: captionStyleId,
+        }));
+      } else {
+        // Resolve the line normally if image not found
+        const resolved = resolveAllLinks(line, allFigures, citations);
+        elements.push(new Paragraph({
+          children: parseInlineMarkdown(resolved),
+        }));
+      }
+      i++;
+      continue;
+    }
+
+    // Handle tables
+    if (line.includes('|') && i + 1 < lines.length && lines[i + 1].match(/^\|?[\s\-:|]+\|?$/)) {
+      const tableLines: string[] = [];
+      while (i < lines.length && (lines[i].includes('|') || lines[i].match(/^\|?[\s\-:|]+\|?$/))) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      const tableData = parseMarkdownTable(tableLines);
+      if (tableData) {
+        elements.push(createTable(tableData));
+      }
+      continue;
+    }
+
+    // Handle blockquotes
+    if (line.startsWith('>')) {
+      const quoteText = line.replace(/^>\s?/, '');
+      const quoteStyleId = templateAnalysis?.specialStyles?.otherStyles.find(
+        s => /quote|block\s*text/i.test(s.name)
+      )?.styleId;
+
+      elements.push(new Paragraph({
+        children: parseInlineMarkdown(quoteText),
+        style: quoteStyleId,
+        indent: { left: 720 }, // 0.5 inch indent
+      }));
+      i++;
+      continue;
+    }
+
+    // Handle bullet lists
+    if (line.match(/^[-*]\s+/)) {
+      const listText = line.replace(/^[-*]\s+/, '');
+      elements.push(new Paragraph({
+        children: parseInlineMarkdown(resolveAllLinks(listText, allFigures, citations)),
+        bullet: { level: 0 },
+      }));
+      i++;
+      continue;
+    }
+
+    // Handle numbered lists
+    if (line.match(/^\d+\.\s+/)) {
+      const listText = line.replace(/^\d+\.\s+/, '');
+      elements.push(new Paragraph({
+        children: parseInlineMarkdown(resolveAllLinks(listText, allFigures, citations)),
+        numbering: { reference: 'default-numbering', level: 0 },
+      }));
+      i++;
+      continue;
+    }
+
+    // Regular paragraph
+    const resolved = resolveAllLinks(line, allFigures, citations);
+    elements.push(new Paragraph({
+      children: parseInlineMarkdown(resolved),
+    }));
+    i++;
   }
 
-  return xml;
+  return elements;
 }
 
 /**
- * Export project to DOCX using template
+ * Export project to DOCX using template styles
  */
 export async function exportWithTemplate(
   project: Project,
   templateBase64: string,
-  options: ExportOptions
+  options: ExportOptions,
+  templateAnalysis?: DocxTemplateAnalysis | null,
 ): Promise<Blob> {
   try {
-    console.log('[Template Export] Starting export...');
-    console.log('[Template Export] Template base64 length:', templateBase64?.length);
-    console.log('[Template Export] Project:', project?.name);
+    console.log('[Template Export] Starting export with template styles...');
 
-    // Decode template from base64
-    const templateData = atob(templateBase64);
-    console.log('[Template Export] Decoded template data length:', templateData.length);
+    // Extract styles from template
+    const externalStyles = extractStylesFromTemplate(templateBase64);
 
-    const zip = new PizZip(templateData);
-    console.log('[Template Export] PizZip created');
-
-    // Get document.xml
-    const documentXml = zip.file('word/document.xml')?.asText();
-    if (!documentXml) {
-      throw new Error('Invalid template: document.xml not found');
-    }
-
-    console.log('[Template Export] Template loaded successfully');
-    console.log('[Template Export] Document XML length:', documentXml.length);
-
-    // Process markdown with optional diagram embedding
-    const contentXml = await processMarkdownWithDiagrams(
+    // Convert markdown to DOCX elements
+    const contentElements = await markdownToDocxElements(
       project.specification.markdown,
       project,
-      zip,
-      options.embedDiagrams
+      options,
+      templateAnalysis,
     );
 
-    // Build figure list for List of Figures section
-    const allFigures = [
-      ...project.blockDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'block' as const })),
-      ...project.sequenceDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'sequence' as const })),
-      ...project.flowDiagrams.map(d => ({ id: d.id, number: d.figureNumber || 'X-X', title: d.title, type: 'flow' as const })),
-    ];
+    // Build the document sections
+    const children: (Paragraph | Table)[] = [];
 
-    const citations = project.references.map((ref, index) => ({
-      id: ref.id,
-      number: String(index + 1),
-      title: ref.title,
+    // Title page
+    children.push(new Paragraph({
+      text: project.specification.title || project.name,
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 3000, after: 500 },
     }));
 
-    // Prepare replacements
-    const replacements: Record<string, string> = {
-      TITLE: project.specification.title || project.name,
-      VERSION: project.version,
-      DATE: new Date().toLocaleDateString(),
-      AUTHOR: options.author || project.specification.metadata.author || '',
-      COMPANY: options.company || '',
-      CUSTOMER: project.specification.metadata.customer || '',
-      CONTENT: contentXml,
-    };
-
-    // Add optional sections
-    if (options.includeTOC) {
-      replacements.TOC = generateTOCXml();
-    } else {
-      replacements.TOC = '';
+    if (project.specification.metadata?.version) {
+      children.push(new Paragraph({
+        text: `Version ${project.specification.metadata.version}`,
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 500 },
+      }));
     }
 
-    if (options.includeListOfFigures) {
-      replacements.FIGURES = generateListOfFiguresXml(allFigures);
-    } else {
-      replacements.FIGURES = '';
-    }
+    children.push(new Paragraph({
+      text: new Date().toLocaleDateString(),
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 2000 },
+    }));
 
-    if (options.includeBibliography) {
-      replacements.BIBLIOGRAPHY = generateBibliographyXml(citations);
-    } else {
-      replacements.BIBLIOGRAPHY = '';
-    }
+    // Page break before content
+    children.push(new Paragraph({ pageBreakBefore: true }));
 
-    // Replace placeholders in document XML
-    console.log('[Template Export] Replacing placeholders...');
-    const updatedXml = replacePlaceholders(documentXml, replacements);
-    console.log('[Template Export] Updated XML length:', updatedXml.length);
+    // Add content
+    children.push(...contentElements);
 
-    // Update document.xml in zip
-    zip.file('word/document.xml', updatedXml);
-    console.log('[Template Export] Updated document.xml in zip');
+    // Create document with external styles
+    const doc = new Document({
+      externalStyles: externalStyles || undefined,
+      numbering: {
+        config: [{
+          reference: 'default-numbering',
+          levels: [{
+            level: 0,
+            format: 'decimal',
+            text: '%1.',
+            alignment: AlignmentType.START,
+          }],
+        }],
+      },
+      sections: [{
+        children,
+      }],
+    });
 
-    // Generate binary string using PizZip
     console.log('[Template Export] Generating DOCX...');
-    const content = zip.generate({
-      type: 'base64',
-      compression: 'DEFLATE',
-    });
-    console.log('[Template Export] Generated base64 length:', content.length);
+    const blob = await Packer.toBlob(doc);
 
-    // Convert base64 to blob
-    const binary = atob(content);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-
-    console.log('[Template Export] Blob created, size:', bytes.length);
-    return new Blob([bytes], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    });
+    console.log('[Template Export] Export complete, size:', blob.size);
+    return blob;
   } catch (error) {
-    console.error('Template export error:', error);
+    console.error('[Template Export] Export failed:', error);
     throw new Error(`Failed to export with template: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

@@ -6,10 +6,9 @@
  */
 
 import type { Project, MarkdownGenerationGuidance } from '../types';
-import { resolveAllLinks, parseFigureReferences } from './linkResolver';
+import { resolveAllLinks } from './linkResolver';
 import {
   generateReferencedDiagramImages,
-  buildDiagramImageMap,
   transformMarkdownWithImages,
   type DiagramImage,
 } from './diagramImageExporter';
@@ -34,7 +33,7 @@ export interface PandocExportOptions {
 
 /**
  * Apply Pandoc custom-style wrappers to markdown content
- * Transforms lists and captions to use ::: {custom-style="..."} syntax
+ * Transforms various elements to use ::: {custom-style="..."} syntax
  */
 export function applyPandocCustomStyles(
   markdown: string,
@@ -58,6 +57,27 @@ export function applyPandocCustomStyles(
   // - "List Number" style for numbered lists
   // - These must be the default list styles in the template
 
+  // Transform code blocks (must be done early to avoid interference with other patterns)
+  if (pandocStyles.codeStyle) {
+    result = wrapCodeBlocks(result, pandocStyles.codeStyle);
+  }
+
+  // Transform note/warning callouts (must be done BEFORE general blockquotes)
+  // These are special blockquotes that start with > **Note:** etc.
+  if (pandocStyles.noteStyle || pandocStyles.warningStyle) {
+    result = wrapCallouts(
+      result,
+      pandocStyles.noteStyle,
+      pandocStyles.warningStyle,
+      pandocStyles.otherStyles?.['tip'] // Look for tip style in otherStyles
+    );
+  }
+
+  // Transform regular blockquotes (after callouts are handled)
+  if (pandocStyles.quoteStyle) {
+    result = wrapBlockquotes(result, pandocStyles.quoteStyle);
+  }
+
   // Transform figure captions
   if (pandocStyles.figureCaption) {
     result = wrapFigureCaptions(result, pandocStyles.figureCaption);
@@ -71,113 +91,9 @@ export function applyPandocCustomStyles(
   return result;
 }
 
-/**
- * Wrap bullet lists with Pandoc custom-style div
- * Finds contiguous bullet list blocks and wraps them
- *
- * IMPORTANT: Pandoc fenced divs require:
- * - Opening ::: on its own line
- * - Blank line after opening :::
- * - Content
- * - Blank line before closing :::
- * - Closing ::: on its own line
- */
-function wrapBulletLists(markdown: string, styleName: string): string {
-  // Match contiguous bullet list blocks (lines starting with - or * at beginning of line)
-  // Must handle multi-line items and nested lists
-  const lines = markdown.split('\n');
-  const result: string[] = [];
-  let inList = false;
-  let listBuffer: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // Only match actual list items (line starts with - or * followed by space)
-    // Don't match horizontal rules (---) or emphasis markers
-    const isBulletLine = /^(\s*)[-*]\s+\S/.test(line) && !/^---+\s*$/.test(line);
-    const isContinuation = inList && /^\s{2,}/.test(line) && !line.trim().startsWith('#');
-    const isEmptyInList = line.trim() === '' && inList && i + 1 < lines.length && /^(\s*)[-*]\s+\S/.test(lines[i + 1]);
-
-    if (isBulletLine || isContinuation || isEmptyInList) {
-      if (!inList) {
-        inList = true;
-        listBuffer = [];
-      }
-      listBuffer.push(line);
-    } else {
-      if (inList) {
-        // End of list - wrap and flush with proper blank lines for Pandoc
-        result.push('');
-        result.push(`::: {custom-style="${styleName}"}`);
-        result.push(...listBuffer);
-        result.push(':::');
-        result.push('');
-        inList = false;
-        listBuffer = [];
-      }
-      result.push(line);
-    }
-  }
-
-  // Handle list at end of document
-  if (inList && listBuffer.length > 0) {
-    result.push('');
-    result.push(`::: {custom-style="${styleName}"}`);
-    result.push(...listBuffer);
-    result.push(':::');
-  }
-
-  return result.join('\n');
-}
-
-/**
- * Wrap numbered lists with Pandoc custom-style div
- * Finds contiguous numbered list blocks and wraps them
- */
-function wrapNumberedLists(markdown: string, styleName: string): string {
-  const lines = markdown.split('\n');
-  const result: string[] = [];
-  let inList = false;
-  let listBuffer: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // Only match actual numbered list items (line starts with digit(s), period, space, then content)
-    const isNumberedLine = /^(\s*)\d+\.\s+\S/.test(line);
-    const isContinuation = inList && /^\s{2,}/.test(line) && !line.trim().startsWith('#');
-    const isEmptyInList = line.trim() === '' && inList && i + 1 < lines.length && /^(\s*)\d+\.\s+\S/.test(lines[i + 1]);
-
-    if (isNumberedLine || isContinuation || isEmptyInList) {
-      if (!inList) {
-        inList = true;
-        listBuffer = [];
-      }
-      listBuffer.push(line);
-    } else {
-      if (inList) {
-        // End of list - wrap and flush with proper blank lines for Pandoc
-        result.push('');
-        result.push(`::: {custom-style="${styleName}"}`);
-        result.push(...listBuffer);
-        result.push(':::');
-        result.push('');
-        inList = false;
-        listBuffer = [];
-      }
-      result.push(line);
-    }
-  }
-
-  // Handle list at end of document
-  if (inList && listBuffer.length > 0) {
-    result.push('');
-    result.push(`::: {custom-style="${styleName}"}`);
-    result.push(...listBuffer);
-    result.push(':::');
-  }
-
-  return result.join('\n');
-}
+// NOTE: List wrapping functions were removed because Pandoc's fenced div custom-style
+// applies to the container, not individual list items. Pandoc's --reference-doc
+// uses the template's native list styles (List Bullet, List Number).
 
 /**
  * Wrap figure captions with Pandoc custom-style
@@ -243,6 +159,145 @@ function wrapTableCaptions(markdown: string, styleName: string): string {
   );
 
   return result;
+}
+
+/**
+ * Wrap fenced code blocks with Pandoc custom-style
+ * Transforms ```language ... ``` blocks to use custom-style div
+ *
+ * Note: Pandoc handles code blocks specially. For custom styling, we wrap
+ * the entire code block in a fenced div with the custom-style attribute.
+ */
+function wrapCodeBlocks(markdown: string, styleName: string): string {
+  // Match fenced code blocks: ```language\n...\n```
+  // Capture the language (if any) and content
+  return markdown.replace(
+    /^(```(\w*)\n)([\s\S]*?)(^```\s*$)/gm,
+    (_match, openFence, _language, content, closeFence) => {
+      // Preserve the original code block inside the custom-style div
+      return `\n::: {custom-style="${styleName}"}\n${openFence}${content}${closeFence}\n:::\n`;
+    }
+  );
+}
+
+/**
+ * Wrap blockquotes with Pandoc custom-style
+ * Transforms > quoted text to use custom-style div
+ *
+ * Handles contiguous blockquote lines as a single block.
+ */
+function wrapBlockquotes(markdown: string, styleName: string): string {
+  const lines = markdown.split('\n');
+  const result: string[] = [];
+  let inQuote = false;
+  let quoteBuffer: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Match blockquote lines (starting with > )
+    const isQuoteLine = /^>\s?/.test(line);
+    // Empty line within a quote block (next line is also a quote)
+    const isEmptyInQuote = line.trim() === '' && inQuote &&
+      i + 1 < lines.length && /^>\s?/.test(lines[i + 1]);
+
+    if (isQuoteLine || isEmptyInQuote) {
+      if (!inQuote) {
+        inQuote = true;
+        quoteBuffer = [];
+      }
+      quoteBuffer.push(line);
+    } else {
+      if (inQuote) {
+        // End of blockquote - wrap and flush
+        result.push('');
+        result.push(`::: {custom-style="${styleName}"}`);
+        result.push(...quoteBuffer);
+        result.push(':::');
+        result.push('');
+        inQuote = false;
+        quoteBuffer = [];
+      }
+      result.push(line);
+    }
+  }
+
+  // Handle blockquote at end of document
+  if (inQuote && quoteBuffer.length > 0) {
+    result.push('');
+    result.push(`::: {custom-style="${styleName}"}`);
+    result.push(...quoteBuffer);
+    result.push(':::');
+  }
+
+  return result.join('\n');
+}
+
+/**
+ * Wrap note/warning/tip callouts with Pandoc custom-style
+ * Detects patterns like:
+ *   - > **Note:** text
+ *   - > **Warning:** text
+ *   - > **Important:** text
+ *   - > **Tip:** text
+ *
+ * These are special blockquotes that get their own style.
+ * Must be called BEFORE wrapBlockquotes to handle these specially.
+ */
+function wrapCallouts(
+  markdown: string,
+  noteStyle?: string,
+  warningStyle?: string,
+  tipStyle?: string
+): string {
+  let result = markdown;
+
+  // Define callout patterns and their styles
+  const calloutPatterns: Array<{ pattern: RegExp; style: string | undefined }> = [
+    { pattern: /^>\s*\*\*Note:\*\*/i, style: noteStyle },
+    { pattern: /^>\s*\*\*Warning:\*\*/i, style: warningStyle || noteStyle },
+    { pattern: /^>\s*\*\*Important:\*\*/i, style: warningStyle || noteStyle },
+    { pattern: /^>\s*\*\*Tip:\*\*/i, style: tipStyle || noteStyle },
+    { pattern: /^>\s*\*\*Caution:\*\*/i, style: warningStyle || noteStyle },
+  ];
+
+  const lines = result.split('\n');
+  const processedLines: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Check if this line starts a callout
+    let matchedStyle: string | undefined;
+    for (const { pattern, style } of calloutPatterns) {
+      if (pattern.test(line) && style) {
+        matchedStyle = style;
+        break;
+      }
+    }
+
+    if (matchedStyle) {
+      // Collect all lines of this callout (contiguous > lines)
+      const calloutLines: string[] = [line];
+      i++;
+      while (i < lines.length && /^>\s?/.test(lines[i])) {
+        calloutLines.push(lines[i]);
+        i++;
+      }
+
+      // Wrap the callout
+      processedLines.push('');
+      processedLines.push(`::: {custom-style="${matchedStyle}"}`);
+      processedLines.push(...calloutLines);
+      processedLines.push(':::');
+      processedLines.push('');
+    } else {
+      processedLines.push(line);
+      i++;
+    }
+  }
+
+  return processedLines.join('\n');
 }
 
 /**

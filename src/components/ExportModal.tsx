@@ -155,13 +155,15 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         blob = await exportWithPandoc(project, templateFileForPandoc, pandocExportOpts);
         downloadPandocDocx(blob, filename);
 
+      } else if (docxTemplate && docxTemplateAnalysis) {
+        // Use browser-based template export with detected styles
+        console.log('[Export] Using browser-based template export...');
+        blob = await exportWithTemplate(project, docxTemplate, exportOpts, docxTemplateAnalysis);
+        downloadTemplateDocx(blob, filename);
+
       } else {
-        // Use default export (template export temporarily disabled due to corruption issues)
-        // TODO: Fix templateDocxExport.ts to properly generate valid DOCX files
-        if (docxTemplate) {
-          console.log('[Export] Template found but using default export (template export disabled)');
-        }
-        console.log('[Export] Using default export...');
+        // Use default export (no template)
+        console.log('[Export] Using default export (no template)...');
         blob = await exportToDocx(project, exportOpts);
         downloadDocx(blob, filename);
       }
@@ -365,14 +367,56 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
               {/* Analysis Results */}
               {docxTemplateAnalysis && !analyzingTemplate && (
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                  <h3 className="font-medium text-green-900 dark:text-green-300 mb-2 flex items-center gap-2">
+                  <h3 className="font-medium text-green-900 dark:text-green-300 mb-3 flex items-center gap-2">
                     <span>✓</span> Template Analysis Complete
                   </h3>
-                  <ul className="text-sm text-green-800 dark:text-green-400 space-y-1">
-                    <li>✓ Styles detected: {docxTemplateAnalysis.headingStyles?.length || 0} heading levels</li>
-                    <li>✓ Formatting guidance generated for AI</li>
-                    <li>✓ Template ready for export</li>
-                  </ul>
+
+                  {/* Detected Styles Grid */}
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    {/* Heading Styles */}
+                    <div className="text-sm">
+                      <div className="font-medium text-green-900 dark:text-green-300 mb-1">Heading Styles</div>
+                      <ul className="text-green-800 dark:text-green-400 space-y-0.5">
+                        {docxTemplateAnalysis.headingStyles?.slice(0, 3).map((h, i) => (
+                          <li key={i} className="text-xs">• Heading {h.level} ({h.fontSize}pt, {h.font})</li>
+                        ))}
+                        {(docxTemplateAnalysis.headingStyles?.length || 0) > 3 && (
+                          <li className="text-xs text-green-600 dark:text-green-500">
+                            +{(docxTemplateAnalysis.headingStyles?.length || 0) - 3} more
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+
+                    {/* Special Styles */}
+                    <div className="text-sm">
+                      <div className="font-medium text-green-900 dark:text-green-300 mb-1">Special Styles</div>
+                      <ul className="text-green-800 dark:text-green-400 space-y-0.5">
+                        {docxTemplateAnalysis.captionStyles?.figureCaption?.exists && (
+                          <li className="text-xs">• Figure Caption</li>
+                        )}
+                        {docxTemplateAnalysis.captionStyles?.tableCaption?.exists && (
+                          <li className="text-xs">• Table Caption</li>
+                        )}
+                        {markdownGuidance?.pandocStyles?.codeStyle && (
+                          <li className="text-xs">• Code Style</li>
+                        )}
+                        {markdownGuidance?.pandocStyles?.quoteStyle && (
+                          <li className="text-xs">• Quote Style</li>
+                        )}
+                        {markdownGuidance?.pandocStyles?.noteStyle && (
+                          <li className="text-xs">• Note Style</li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Status Summary */}
+                  <div className="text-xs text-green-700 dark:text-green-400 pt-2 border-t border-green-200 dark:border-green-700">
+                    ✓ {docxTemplateAnalysis.headingStyles?.length || 0} heading levels •
+                    ✓ {docxTemplateAnalysis.specialStyles?.otherStyles?.length || 0} special styles •
+                    ✓ Template ready for export
+                  </div>
                 </div>
               )}
 

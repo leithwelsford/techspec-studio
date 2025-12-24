@@ -233,30 +233,120 @@ function BlockDiagramPreview({ diagram, maxWidth = 800 }: { diagram: BlockDiagra
 }
 
 /**
+ * Find the rightmost extent of actual content in a Gantt chart
+ * This looks for task bars (rect elements) to determine where content ends
+ * Ignores thin lines (gridlines, markers) by checking both width AND height
+ */
+function findGanttContentWidth(svgElement: SVGSVGElement): number | null {
+  try {
+    // Look for Gantt-specific elements: task bars are rect elements with significant width AND height
+    const rects = svgElement.querySelectorAll('rect');
+
+    let maxX = 0;
+    let foundTaskBars = false;
+
+    // Check rect elements - only count those that look like task bars
+    // Task bars have significant width AND height (not thin lines)
+    rects.forEach(rect => {
+      const x = parseFloat(rect.getAttribute('x') || '0');
+      const width = parseFloat(rect.getAttribute('width') || '0');
+      const height = parseFloat(rect.getAttribute('height') || '0');
+      const rightEdge = x + width;
+
+      // Task bars: width > 10 AND height > 10 (excludes thin gridlines and markers)
+      // Also check if it has a fill (task bars typically have fill colors)
+      const fill = rect.getAttribute('fill') || '';
+      const hasVisibleFill = fill && fill !== 'none' && fill !== 'transparent' && !fill.startsWith('url(');
+
+      if (width > 10 && height > 10 && hasVisibleFill) {
+        if (rightEdge > maxX) {
+          maxX = rightEdge;
+          foundTaskBars = true;
+        }
+      }
+    });
+
+    // Only use text bounds if we didn't find any task bars
+    // (text like dates on timeline can extend far right)
+    if (!foundTaskBars) {
+      const texts = svgElement.querySelectorAll('text');
+      texts.forEach(text => {
+        try {
+          const textBBox = (text as SVGTextElement).getBBox();
+          const rightEdge = textBBox.x + textBBox.width;
+          if (rightEdge > maxX) {
+            maxX = rightEdge;
+          }
+        } catch {
+          // Some text elements may not have valid bbox
+        }
+      });
+    }
+
+    console.log('[Mermaid Crop] findGanttContentWidth: maxX =', maxX, ', foundTaskBars =', foundTaskBars);
+    return maxX > 0 ? maxX : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Post-process Mermaid SVG to crop to actual content bounds
  * This removes excessive whitespace that Mermaid often adds
+ * Returns the final width for container sizing
+ *
+ * @param svgElement - The SVG element to crop
+ * @param styleMaxWidth - Optional max-width extracted from Mermaid's style (important for Gantt charts)
  */
-function cropMermaidSvgToContent(svgElement: SVGSVGElement): void {
+function cropMermaidSvgToContent(svgElement: SVGSVGElement, styleMaxWidth: number | null): number | null {
   try {
+    // First, remove ALL width/height/style attributes that Mermaid may have set
+    svgElement.removeAttribute('style');
+    svgElement.style.cssText = '';
+
     // Get the bounding box of all content
     const bbox = svgElement.getBBox();
+    console.log('[Mermaid Crop] getBBox:', bbox, 'styleMaxWidth:', styleMaxWidth);
 
     if (bbox.width > 0 && bbox.height > 0) {
-      // Add small padding around content
-      const padding = 20;
-      const newViewBox = `${bbox.x - padding} ${bbox.y - padding} ${bbox.width + padding * 2} ${bbox.height + padding * 2}`;
+      // Add padding around content to prevent clipping
+      const paddingX = 24;
+      const paddingY = 16;
 
+      // For charts where styleMaxWidth is much smaller than bbox (like Gantt charts),
+      // try to find the actual content extent by examining elements
+      let effectiveWidth = bbox.width;
+
+      if (styleMaxWidth && bbox.width > styleMaxWidth * 2) {
+        // This looks like a Gantt/timeline chart - try to find actual content bounds
+        const contentWidth = findGanttContentWidth(svgElement);
+        console.log('[Mermaid Crop] Gantt content width:', contentWidth);
+
+        if (contentWidth && contentWidth > 0) {
+          // Use the content width plus a small buffer
+          effectiveWidth = Math.min(contentWidth + 50, styleMaxWidth);
+        } else {
+          // Fall back to styleMaxWidth
+          effectiveWidth = styleMaxWidth;
+        }
+      }
+
+      console.log('[Mermaid Crop] effectiveWidth:', effectiveWidth, '(bbox:', bbox.width, ', styleMaxWidth:', styleMaxWidth, ')');
+
+      const contentWidth = effectiveWidth + paddingX * 2;
+      const contentHeight = bbox.height + paddingY * 2;
+
+      // Set viewBox to exactly match the content bounds (with padding)
+      const newViewBox = `${bbox.x - paddingX} ${bbox.y - paddingY} ${contentWidth} ${contentHeight}`;
       svgElement.setAttribute('viewBox', newViewBox);
 
-      // Set dimensions based on actual content size
-      // Use reasonable max dimensions to prevent oversized diagrams
+      // Apply max dimension constraints while preserving aspect ratio
       const maxWidth = 1200;
       const maxHeight = 800;
 
-      let finalWidth = bbox.width + padding * 2;
-      let finalHeight = bbox.height + padding * 2;
+      let finalWidth = contentWidth;
+      let finalHeight = contentHeight;
 
-      // Scale down proportionally if too large
       if (finalWidth > maxWidth) {
         const scale = maxWidth / finalWidth;
         finalWidth = maxWidth;
@@ -268,21 +358,78 @@ function cropMermaidSvgToContent(svgElement: SVGSVGElement): void {
         finalWidth *= scale;
       }
 
-      svgElement.setAttribute('width', `${finalWidth}px`);
-      svgElement.setAttribute('height', `${finalHeight}px`);
-      svgElement.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      const roundedWidth = Math.ceil(finalWidth);
+      const roundedHeight = Math.ceil(finalHeight);
+
+      console.log('[Mermaid Crop] Final dimensions:', roundedWidth, 'x', roundedHeight);
+
+      // Set explicit pixel dimensions
+      svgElement.setAttribute('width', String(roundedWidth));
+      svgElement.setAttribute('height', String(roundedHeight));
+      svgElement.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+
+      // Set CSS to match
+      svgElement.style.width = `${roundedWidth}px`;
+      svgElement.style.height = `${roundedHeight}px`;
+      svgElement.style.maxWidth = '100%';
+      svgElement.style.display = 'block';
+
+      return roundedWidth;
     }
   } catch (e) {
-    // getBBox can fail if SVG isn't in DOM - ignore
     console.warn('Could not crop SVG:', e);
   }
+  return null;
+}
+
+/**
+ * Pre-process SVG string to remove Mermaid's width/height attributes
+ * but preserve max-width from style (important for Gantt charts)
+ */
+function preprocessMermaidSvg(svgString: string): { svg: string; maxWidth: number | null } {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgString, 'image/svg+xml');
+  const svgEl = doc.querySelector('svg');
+  let maxWidth: number | null = null;
+
+  if (svgEl) {
+    // Extract max-width from style before removing
+    const style = svgEl.getAttribute('style') || '';
+    const maxWidthMatch = style.match(/max-width:\s*([\d.]+)px/i);
+    if (maxWidthMatch) {
+      maxWidth = parseFloat(maxWidthMatch[1]);
+      console.log('[Mermaid Preprocess] Found max-width in style:', maxWidth);
+    }
+
+    // Remove width, height, and style
+    svgEl.removeAttribute('width');
+    svgEl.removeAttribute('height');
+    svgEl.removeAttribute('style');
+
+    return { svg: new XMLSerializer().serializeToString(doc), maxWidth };
+  }
+
+  // Fallback: regex-based
+  const maxWidthMatch = svgString.match(/max-width:\s*([\d.]+)px/i);
+  if (maxWidthMatch) {
+    maxWidth = parseFloat(maxWidthMatch[1]);
+  }
+
+  const svg = svgString
+    .replace(/(<svg[^>]*)\s+width="[^"]*"/gi, '$1')
+    .replace(/(<svg[^>]*)\s+height="[^"]*"/gi, '$1')
+    .replace(/(<svg[^>]*)\s+style="[^"]*"/gi, '$1');
+
+  return { svg, maxWidth };
 }
 
 // Render a Mermaid diagram
-// Uses useLayoutEffect to crop SVG to actual content after rendering
+// Crops SVG to actual content and sets container width to match
 function MermaidDiagramPreview({ diagram }: { diagram: MermaidDiagram; maxWidth?: number }) {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+  const [styleMaxWidth, setStyleMaxWidth] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -297,7 +444,11 @@ function MermaidDiagramPreview({ diagram }: { diagram: MermaidDiagram; maxWidth?
         setError('');
         const uniqueId = `inline-mermaid-${diagram.id}-${Date.now()}`;
         const { svg: renderedSvg } = await mermaid.render(uniqueId, diagram.mermaidCode);
-        setSvg(renderedSvg);
+        // Pre-process SVG to remove width/height, but extract max-width first
+        const { svg: processedSvg, maxWidth: extractedMaxWidth } = preprocessMermaidSvg(renderedSvg);
+        setSvg(processedSvg);
+        setStyleMaxWidth(extractedMaxWidth);
+        setContainerWidth(null); // Reset width when new SVG is rendered
       } catch (err) {
         console.error('Mermaid render error:', err);
         setError(err instanceof Error ? err.message : 'Failed to render diagram');
@@ -308,18 +459,22 @@ function MermaidDiagramPreview({ diagram }: { diagram: MermaidDiagram; maxWidth?
     renderDiagram();
   }, [diagram.id, diagram.mermaidCode]);
 
-  // After SVG is inserted into DOM, crop it to actual content
+  // After SVG is inserted into DOM, crop it and set container width
   useEffect(() => {
     if (svg && containerRef.current) {
       const svgElement = containerRef.current.querySelector('svg');
       if (svgElement) {
-        // Use requestAnimationFrame to ensure SVG is fully rendered
-        requestAnimationFrame(() => {
-          cropMermaidSvgToContent(svgElement as SVGSVGElement);
-        });
+        // Need to wait for SVG to be laid out before getBBox() works correctly
+        const timerId = setTimeout(() => {
+          const width = cropMermaidSvgToContent(svgElement as SVGSVGElement, styleMaxWidth);
+          if (width) {
+            setContainerWidth(width);
+          }
+        }, 50);
+        return () => clearTimeout(timerId);
       }
     }
-  }, [svg]);
+  }, [svg, styleMaxWidth]);
 
   if (error) {
     return (
@@ -343,8 +498,9 @@ function MermaidDiagramPreview({ diagram }: { diagram: MermaidDiagram; maxWidth?
       ref={containerRef}
       className="inline-diagram-mermaid"
       style={{
-        overflowX: 'auto',
-        overflowY: 'auto',
+        display: 'block',
+        width: containerWidth ? `${containerWidth}px` : 'auto',
+        maxWidth: '100%',
       }}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
@@ -565,8 +721,16 @@ export default function InlineDiagramPreview({
 
   // Inline view with floating controls
   return (
-    <figure className="my-6 inline-diagram-figure" id={`diagram-${diagramId}`}>
-      <div className="relative bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg overflow-hidden group">
+    <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+      <figure
+        className="my-6 inline-diagram-figure"
+        id={`diagram-${diagramId}`}
+        style={{ display: 'inline-block', maxWidth: '100%' }}
+      >
+        <div
+          className="relative bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg overflow-hidden group"
+          style={{ display: 'inline-block' }}
+        >
         {/* Floating controls - appear on hover */}
         <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
           <button
@@ -592,7 +756,7 @@ export default function InlineDiagramPreview({
         </div>
         {/* Diagram content - clickable to expand */}
         <div
-          className="p-4 overflow-auto cursor-pointer"
+          className="p-4 cursor-pointer"
           onClick={() => setIsExpanded(true)}
           title="Click to expand"
         >
@@ -609,5 +773,6 @@ export default function InlineDiagramPreview({
         </figcaption>
       )}
     </figure>
+    </div>
   );
 }

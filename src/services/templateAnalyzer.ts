@@ -420,19 +420,30 @@ export class TemplateAnalyzer {
     const tocLevels = new Set<number>();
 
     // Notable style names to capture in otherStyles
+    // Extended patterns to capture code, quote, note, warning, and other useful styles
     const notableStylePatterns = [
       /^caption$/i,
-      /^quote$/i,
+      /quote/i,              // Quote, BlockQuote, PullQuote
       /^footnote/i,
       /^header$/i,
       /^footer$/i,
-      /^code$/i,
+      /code/i,               // Code, SourceCode, InlineCode
+      /^source/i,            // Source, SourceCode
+      /^listing/i,           // Listing, CodeListing
+      /^preformat/i,         // Preformatted
+      /^mono/i,              // Monospace
       /^list/i,
       /^note$/i,
+      /^info$/i,             // Info style
+      /^tip$/i,              // Tip style
       /^warning$/i,
+      /^caution$/i,          // Caution style
+      /^important$/i,        // Important style
+      /^alert$/i,            // Alert style
       /^figure/i,
       /^table\s*caption/i,
-      /^block\s*text/i,
+      /block\s*text/i,       // Block Text, BlockText
+      /^excerpt/i,           // Excerpt style
     ];
 
     styleElements.forEach((styleEl) => {
@@ -1004,20 +1015,65 @@ export class TemplateAnalyzer {
       pandocStyles.appendixHeading = appendixStyle.styleId;
     }
 
-    // Look for note/warning styles
-    const noteStyle = specialStyles?.otherStyles.find(s =>
-      /note|warning|important|tip/i.test(s.name)
+    // Look for note style (specific patterns for notes)
+    const noteStyleFromSpecial = specialStyles?.otherStyles.find(s =>
+      /^note$/i.test(s.name) || /^note$/i.test(s.styleId) ||
+      /^info$/i.test(s.name) || /^tip$/i.test(s.name)
     );
-    if (noteStyle) {
-      pandocStyles.noteStyle = noteStyle.styleId;
+    const noteStyleFromParagraph = paragraphStyles?.find(s =>
+      /^note$/i.test(s.name) || /^note$/i.test(s.styleId) ||
+      /^info$/i.test(s.name) || /^tip$/i.test(s.name)
+    );
+    const noteStyleName = noteStyleFromSpecial?.name || noteStyleFromParagraph?.name;
+    if (noteStyleName) {
+      pandocStyles.noteStyle = noteStyleName;
+      console.log(`[Template Analyzer] Found note style: ${noteStyleName}`);
+    }
+
+    // Look for warning style (specific patterns for warnings/caution)
+    const warningStyleFromSpecial = specialStyles?.otherStyles.find(s =>
+      /^warning$/i.test(s.name) || /^warning$/i.test(s.styleId) ||
+      /^caution$/i.test(s.name) || /^important$/i.test(s.name) ||
+      /^alert$/i.test(s.name)
+    );
+    const warningStyleFromParagraph = paragraphStyles?.find(s =>
+      /^warning$/i.test(s.name) || /^warning$/i.test(s.styleId) ||
+      /^caution$/i.test(s.name) || /^important$/i.test(s.name)
+    );
+    const warningStyleName = warningStyleFromSpecial?.name || warningStyleFromParagraph?.name;
+    if (warningStyleName) {
+      pandocStyles.warningStyle = warningStyleName;
+      console.log(`[Template Analyzer] Found warning style: ${warningStyleName}`);
+    }
+
+    // Look for quote/blockquote style
+    const quoteStyleFromSpecial = specialStyles?.otherStyles.find(s =>
+      /quote|block\s*text|blockquote|pullquote|excerpt/i.test(s.name) ||
+      /quote|block\s*text|blockquote|pullquote|excerpt/i.test(s.styleId)
+    );
+    const quoteStyleFromParagraph = paragraphStyles?.find(s =>
+      /quote|block\s*text|blockquote|pullquote|excerpt/i.test(s.name) ||
+      /quote|block\s*text|blockquote|pullquote|excerpt/i.test(s.styleId)
+    );
+    const quoteStyleName = quoteStyleFromSpecial?.name || quoteStyleFromParagraph?.name;
+    if (quoteStyleName) {
+      pandocStyles.quoteStyle = quoteStyleName;
+      console.log(`[Template Analyzer] Found quote style: ${quoteStyleName}`);
     }
 
     // Look for code style
-    const codeStyle = specialStyles?.otherStyles.find(s =>
-      /code|source|listing/i.test(s.name)
+    const codeStyleFromSpecial = specialStyles?.otherStyles.find(s =>
+      /code|source|listing|mono|preformat/i.test(s.name) ||
+      /code|source|listing|mono|preformat/i.test(s.styleId)
     );
-    if (codeStyle) {
-      pandocStyles.codeStyle = codeStyle.styleId;
+    const codeStyleFromParagraph = paragraphStyles?.find(s =>
+      /code|source|listing|mono|preformat/i.test(s.name) ||
+      /code|source|listing|mono|preformat/i.test(s.styleId)
+    );
+    const codeStyleName = codeStyleFromSpecial?.name || codeStyleFromParagraph?.name;
+    if (codeStyleName) {
+      pandocStyles.codeStyle = codeStyleName;
+      console.log(`[Template Analyzer] Found code style: ${codeStyleName}`);
     }
 
     // Collect other notable styles that might be useful

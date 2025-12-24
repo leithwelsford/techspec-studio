@@ -1000,8 +1000,10 @@ export interface MarkdownGenerationGuidance {
     figureCaption?: string; // Style name for figure captions (e.g., "Caption", "FigureCaption")
     tableCaption?: string; // Style name for table captions (e.g., "TableCaption")
     appendixHeading?: string; // Style name for appendix headings (e.g., "AppendixHeading")
-    noteStyle?: string; // Style name for notes/warnings (e.g., "Note")
-    codeStyle?: string; // Style name for code blocks (e.g., "Code")
+    noteStyle?: string; // Style name for notes (e.g., "Note", "Info")
+    warningStyle?: string; // Style name for warnings/important (e.g., "Warning", "Caution")
+    quoteStyle?: string; // Style name for blockquotes (e.g., "Quote", "Block Text")
+    codeStyle?: string; // Style name for code blocks (e.g., "Code", "Source Code")
     otherStyles?: Record<string, string>; // Map of content type → style name
   };
 }

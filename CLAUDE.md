@@ -17,6 +17,7 @@ npm run lint         # Check for TypeScript/ESLint errors (run before commits)
 **Notes**:
 - No test suite exists. Verify changes manually by running the app.
 - Lint uses `--max-warnings 0` - any ESLint warning fails the check.
+- ESLint v9 with default config discovery (no explicit config file in repo).
 - React Strict Mode is enabled (components render twice in dev for detecting side effects).
 
 **Pandoc Backend** (optional, for DOCX export with Word templates, requires Node ≥18):
@@ -68,7 +69,7 @@ cd server && npm run dev                    # With --watch hot reload
 
 5. **Check types before creating new ones** - All types in `src/types/index.ts`
 
-6. **TypeScript strict mode** - No implicit any, unused vars/params disallowed. Prefix unused params with underscore: `(_event: Event) => {}`
+6. **TypeScript strict mode** - `noUnusedLocals` and `noUnusedParameters` enforced in tsconfig.json. Prefix unused params with underscore: `(_event: Event) => {}`
 
 7. **Never re-initialize Mermaid** - Mermaid is initialized once in `main.tsx`. Components should use `mermaid.render()` directly, never call `mermaid.initialize()`:
    ```typescript
@@ -195,7 +196,9 @@ Documents use `{{fig:diagram-id}}` and `{{ref:3gpp-ts-23-203}}` syntax:
 - [src/utils/linkResolver.ts](src/utils/linkResolver.ts) - Core resolution logic and pattern matching
 - [src/utils/remarkLinkResolver.ts](src/utils/remarkLinkResolver.ts) - Remark plugin for markdown preview
 - [src/utils/figureNumbering.ts](src/utils/figureNumbering.ts) - Figure number calculation (e.g., section 5, position 1 → "5-1")
-- [src/components/InlineDiagramPreview.tsx](src/components/InlineDiagramPreview.tsx) - Renders diagrams inline in markdown
+- [src/components/InlineDiagramPreview.tsx](src/components/InlineDiagramPreview.tsx) - Renders diagrams inline in markdown preview with export buttons (SVG/PNG)
+
+**Inline Diagram Embedding**: Diagrams referenced via `{{fig:...}}` are rendered directly in the markdown preview. Both block diagrams (custom SVG) and Mermaid diagrams render inline with captions and figure numbers. Each inline diagram includes export buttons for SVG and PNG formats.
 
 **Diagram Matching Strategies** (in order of precedence):
 1. Direct ID/UUID match
