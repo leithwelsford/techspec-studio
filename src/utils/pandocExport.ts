@@ -27,6 +27,9 @@ export interface PandocExportOptions {
   company?: string;
   // Template-derived style mappings
   pandocStyles?: MarkdownGenerationGuidance['pandocStyles'];
+  // Numbering mode: 'template' strips manual numbers (use template's auto-numbering),
+  // 'markdown' keeps manual numbers (requires template without auto-numbering)
+  numberingMode?: 'template' | 'markdown';
 }
 
 // ========== Markdown Transformation for Pandoc Custom Styles ==========
@@ -399,9 +402,55 @@ export async function exportWithPandoc(
     );
   }
 
-  // Strip manual numbering from headings (e.g., "# 1. Introduction" → "# Introduction")
-  // This prevents double-numbering when Pandoc's --number-sections is enabled
-  resolvedMarkdown = resolvedMarkdown.replace(/^(#{1,6})\s+\d+(\.\d+)*\.?\s+/gm, '$1 ');
+  // Handle heading numbering based on numberingMode
+  // Default to 'template' mode which strips manual numbers (most templates have auto-numbering)
+  const numberingMode = options.numberingMode ?? 'template';
+  console.log('[Pandoc Export] Numbering mode:', numberingMode);
+
+  // Extract first few headings for debugging
+  const headingLines = resolvedMarkdown.split('\n').filter(l => /^#{1,6}[\s]/.test(l)).slice(0, 10);
+  console.log('[Pandoc Export] Sample headings BEFORE stripping:');
+  headingLines.forEach((h, i) => console.log(`  [${i}] "${h}"`));
+
+  if (numberingMode === 'template') {
+    // Strip manual numbering from headings (e.g., "# 1 Introduction" → "# Introduction")
+    // This prevents double-numbering when the template has automatic heading numbering
+    // Patterns matched (more flexible regex):
+    // - "# 1 Introduction" (number space)
+    // - "# 1. Introduction" (number dot space)
+    // - "# 1.1 Sub-section" (multi-level)
+    // - "# 1.1. Sub-section" (multi-level with trailing dot)
+    // - "#  1 Introduction" (multiple spaces)
+    // - "# 1  Introduction" (multiple spaces after number)
+    const beforeStrip = resolvedMarkdown;
+
+    // More flexible regex: captures #s, then any whitespace, then number pattern, then whitespace
+    // The number pattern is: digits optionally followed by (.digits)* and optional trailing dot
+    resolvedMarkdown = resolvedMarkdown.replace(
+      /^(#{1,6})[ \t]+(\d+(?:\.\d+)*\.?)[ \t]+/gm,
+      '$1 '
+    );
+
+    const headingLinesAfter = resolvedMarkdown.split('\n').filter(l => /^#{1,6}[\s]/.test(l)).slice(0, 10);
+    console.log('[Pandoc Export] Sample headings AFTER stripping:');
+    headingLinesAfter.forEach((h, i) => console.log(`  [${i}] "${h}"`));
+
+    if (beforeStrip !== resolvedMarkdown) {
+      const strippedCount = (beforeStrip.match(/^#{1,6}[ \t]+\d+(?:\.\d+)*\.?[ \t]+/gm) || []).length;
+      console.log(`[Pandoc Export] ✓ Stripped manual heading numbers from ${strippedCount} headings (numberingMode: template)`);
+    } else {
+      console.log('[Pandoc Export] ⚠ No heading numbers found to strip - headings may not have manual numbers');
+      // Log first heading char codes for debugging
+      if (headingLines.length > 0) {
+        const firstHeading = headingLines[0];
+        console.log('[Pandoc Export] First heading char analysis:',
+          firstHeading.substring(0, 30).split('').map((c, i) => `[${i}]'${c}'(${c.charCodeAt(0)})`).join(' ')
+        );
+      }
+    }
+  } else {
+    console.log('[Pandoc Export] Keeping manual heading numbers (numberingMode: markdown)');
+  }
 
   // Apply Pandoc custom-style wrappers for lists and captions
   // This uses the template-derived style names from pandocStyles
@@ -424,12 +473,50 @@ abstract: |
 `;
 
   // Build front matter sections (TOC, LoF, LoT)
+  // Use styled paragraphs instead of headings to avoid template's auto-numbering
+  // The {-} attribute doesn't work because Word's heading styles apply their own numbering
   let frontMatterSections = '';
 
-  // List of Figures - raw OOXML field code
+  // Table of Contents - generate our own with Word TOC field code
+  // Using styled paragraph instead of heading to avoid numbering
+  if (options.includeTOC) {
+    frontMatterSections += `
+::: {custom-style="TOC Heading"}
+**Table of Contents**
+:::
+
+\`\`\`{=openxml}
+<w:p>
+  <w:r>
+    <w:fldChar w:fldCharType="begin"/>
+  </w:r>
+  <w:r>
+    <w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText>
+  </w:r>
+  <w:r>
+    <w:fldChar w:fldCharType="separate"/>
+  </w:r>
+  <w:r>
+    <w:rPr><w:i/></w:rPr>
+    <w:t>Right-click and select "Update Field" to populate</w:t>
+  </w:r>
+  <w:r>
+    <w:fldChar w:fldCharType="end"/>
+  </w:r>
+</w:p>
+\`\`\`
+
+\\newpage
+
+`;
+  }
+
+  // List of Figures - raw OOXML field code (using styled paragraph)
   if (options.includeFigureList) {
     frontMatterSections += `
-## List of Figures
+::: {custom-style="TOC Heading"}
+**List of Figures**
+:::
 
 \`\`\`{=openxml}
 <w:p>
@@ -457,10 +544,12 @@ abstract: |
 `;
   }
 
-  // List of Tables - raw OOXML field code
+  // List of Tables - raw OOXML field code (using styled paragraph)
   if (options.includeTableList) {
     frontMatterSections += `
-## List of Tables
+::: {custom-style="TOC Heading"}
+**List of Tables**
+:::
 
 \`\`\`{=openxml}
 <w:p>
@@ -492,6 +581,15 @@ abstract: |
 
   console.log('[Pandoc Export] Markdown resolved:', markdownWithMetadata.length, 'characters');
 
+  // Debug: Log the first heading in the final markdown to verify stripping persisted
+  const finalHeadingMatch = markdownWithMetadata.match(/^#[^#\n][^\n]*/m);
+  console.log('[Pandoc Export] First H1 in final markdown:', finalHeadingMatch?.[0] || 'NOT FOUND');
+
+  // Also check the actual content being sent (first 500 chars after YAML)
+  const contentAfterYaml = markdownWithMetadata.split('---\n\n')[1] || '';
+  const firstContentLines = contentAfterYaml.split('\n').slice(0, 20).join('\n');
+  console.log('[Pandoc Export] First 20 lines of content:\n' + firstContentLines);
+
   // Create form data for multipart upload
   const formData = new FormData();
 
@@ -511,9 +609,23 @@ abstract: |
   }
 
   // Add export options
+  // When using 'template' numbering mode:
+  //   - We strip manual numbers from markdown
+  //   - The Word template's built-in heading numbering handles everything
+  //   - We do NOT use Pandoc's --number-sections (would cause double numbering)
+  // When using 'markdown' numbering mode:
+  //   - We keep manual numbers in markdown
+  //   - We do NOT use Pandoc's --number-sections (manual numbers already there)
+  // Only use --number-sections if explicitly requested AND not using template numbering
+  const shouldNumberSections = numberingMode !== 'template' && options.includeNumberSections;
+  console.log('[Pandoc Export] Pandoc --number-sections:', shouldNumberSections, '(mode:', numberingMode, ')',
+    numberingMode === 'template' ? '(disabled - template has its own numbering)' : '');
+
   const exportOptions = {
-    includeTOC: options.includeTOC,
-    includeNumberSections: options.includeNumberSections,
+    // Don't use Pandoc's --toc flag - we generate our own TOC with unnumbered heading
+    // This prevents the TOC title from consuming numbering (e.g., "1 Contents")
+    includeTOC: false,
+    includeNumberSections: shouldNumberSections,
     embedDiagrams: options.embedDiagrams,
     metadata: {
       title: project.specification.title || 'Technical Specification',

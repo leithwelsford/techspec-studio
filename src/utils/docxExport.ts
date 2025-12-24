@@ -39,6 +39,9 @@ export interface ExportOptions {
   embedDiagrams: boolean;
   author?: string;
   company?: string;
+  // Numbering mode: 'template' strips manual numbers (use template's auto-numbering),
+  // 'markdown' keeps manual numbers (requires template without auto-numbering)
+  numberingMode?: 'template' | 'markdown';
 }
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {

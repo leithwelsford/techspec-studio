@@ -316,6 +316,7 @@ function cropMermaidSvgToContent(svgElement: SVGSVGElement, styleMaxWidth: numbe
       // For charts where styleMaxWidth is much smaller than bbox (like Gantt charts),
       // try to find the actual content extent by examining elements
       let effectiveWidth = bbox.width;
+      let needsClipping = false;
 
       if (styleMaxWidth && bbox.width > styleMaxWidth * 2) {
         // This looks like a Gantt/timeline chart - try to find actual content bounds
@@ -329,23 +330,74 @@ function cropMermaidSvgToContent(svgElement: SVGSVGElement, styleMaxWidth: numbe
           // Fall back to styleMaxWidth
           effectiveWidth = styleMaxWidth;
         }
+        // Mark that we need clipping since bbox is larger than our effective width
+        needsClipping = true;
       }
 
-      console.log('[Mermaid Crop] effectiveWidth:', effectiveWidth, '(bbox:', bbox.width, ', styleMaxWidth:', styleMaxWidth, ')');
+      console.log('[Mermaid Crop] effectiveWidth:', effectiveWidth, '(bbox:', bbox.width, ', styleMaxWidth:', styleMaxWidth, ', needsClipping:', needsClipping, ')');
 
-      const contentWidth = effectiveWidth + paddingX * 2;
-      const contentHeight = bbox.height + paddingY * 2;
+      const viewBoxWidth = effectiveWidth + paddingX * 2;
+      const viewBoxHeight = bbox.height + paddingY * 2;
+      const viewBoxX = bbox.x - paddingX;
+      const viewBoxY = bbox.y - paddingY;
 
       // Set viewBox to exactly match the content bounds (with padding)
-      const newViewBox = `${bbox.x - paddingX} ${bbox.y - paddingY} ${contentWidth} ${contentHeight}`;
+      const newViewBox = `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`;
       svgElement.setAttribute('viewBox', newViewBox);
+
+      // Add clipping to prevent elements outside viewBox from rendering
+      // This is crucial for Gantt charts where timeline markers extend beyond content
+      if (needsClipping) {
+        // Create or update the clip path
+        const clipId = `crop-clip-${Date.now()}`;
+        let defs = svgElement.querySelector('defs');
+        if (!defs) {
+          defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+          svgElement.insertBefore(defs, svgElement.firstChild);
+        }
+
+        // Create clip path matching the viewBox
+        const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+        clipPath.setAttribute('id', clipId);
+        const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        clipRect.setAttribute('x', String(viewBoxX));
+        clipRect.setAttribute('y', String(viewBoxY));
+        clipRect.setAttribute('width', String(viewBoxWidth));
+        clipRect.setAttribute('height', String(viewBoxHeight));
+        clipPath.appendChild(clipRect);
+        defs.appendChild(clipPath);
+
+        // Wrap all content in a group with the clip path
+        // First, collect all non-defs children
+        const children: Node[] = [];
+        svgElement.childNodes.forEach(child => {
+          if (child.nodeName !== 'defs' && child.nodeType === Node.ELEMENT_NODE) {
+            children.push(child);
+          }
+        });
+
+        if (children.length > 0) {
+          // Create wrapper group with clip
+          const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          wrapper.setAttribute('clip-path', `url(#${clipId})`);
+
+          // Move children into wrapper
+          children.forEach(child => {
+            wrapper.appendChild(child);
+          });
+
+          svgElement.appendChild(wrapper);
+        }
+
+        console.log('[Mermaid Crop] Added clip path for Gantt chart');
+      }
 
       // Apply max dimension constraints while preserving aspect ratio
       const maxWidth = 1200;
       const maxHeight = 800;
 
-      let finalWidth = contentWidth;
-      let finalHeight = contentHeight;
+      let finalWidth = viewBoxWidth;
+      let finalHeight = viewBoxHeight;
 
       if (finalWidth > maxWidth) {
         const scale = maxWidth / finalWidth;
