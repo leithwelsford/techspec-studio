@@ -16,7 +16,7 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState<AIModel>('anthropic/claude-sonnet-4.6');
   const [pdfVisionModel, setPdfVisionModel] = useState<AIModel>('google/gemini-2.5-flash');
-  const [temperature, setTemperature] = useState(0.7);
+  const [temperature, setTemperature] = useState(0.3);
   const [maxTokens, setMaxTokens] = useState(64000);
   const [enableStreaming, setEnableStreaming] = useState(true);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -39,7 +39,7 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
           provider: 'openrouter',
           apiKey: apiKey,
           model: 'anthropic/claude-sonnet-4.6', // Temporary
-          temperature: 0.7,
+          temperature: 0.3,
           maxTokens: 64000,
           enableStreaming: true,
         });
@@ -90,7 +90,7 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
       // Load other settings from stored config, with env var fallback for each
       setModel(aiConfig.model || (getEnvModel() as AIModel) || 'anthropic/claude-sonnet-4.6');
       setPdfVisionModel(aiConfig.pdfVisionModel || 'google/gemini-2.5-flash');
-      setTemperature(aiConfig.temperature ?? getEnvTemperature() ?? 0.7);
+      setTemperature(aiConfig.temperature ?? getEnvTemperature() ?? 0.3);
       setMaxTokens(aiConfig.maxTokens ?? getEnvMaxTokens() ?? 64000);
       setEnableStreaming(aiConfig.enableStreaming ?? getEnvEnableStreaming() ?? true);
 

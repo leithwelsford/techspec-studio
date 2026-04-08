@@ -252,7 +252,7 @@ const createDefaultAIConfig = (): AIConfig | null => {
     apiKey: envApiKey, // Store unencrypted - AIConfigPanel will handle encryption on save
     model: (getEnvModel() as any) || 'anthropic/claude-sonnet-4.6',
     pdfVisionModel: 'google/gemini-2.5-flash',
-    temperature: getEnvTemperature() ?? 0.7,
+    temperature: getEnvTemperature() ?? 0.3,
     maxTokens: getEnvMaxTokens() ?? 64000,
     enableStreaming: getEnvEnableStreaming() ?? true,
   };
