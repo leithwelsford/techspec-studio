@@ -127,7 +127,7 @@ export class OpenRouterProvider {
       model,
       messages: cachedMessages,
       temperature: config.temperature ?? 0.7,
-      max_tokens: config.maxTokens || 4096,
+      max_tokens: config.maxTokens || 64000,
       stream: false,
     };
 
@@ -226,7 +226,7 @@ export class OpenRouterProvider {
         model,
         messages: cachedMessages,
         temperature: config.temperature ?? 0.7,
-        max_tokens: config.maxTokens || 4096,
+        max_tokens: config.maxTokens || 64000,
         stream: true,
       }),
     });
@@ -511,7 +511,7 @@ export class OpenRouterProvider {
         content: msg.content,
       })),
       temperature: config.temperature ?? 0.7,
-      max_tokens: config.maxTokens || 4096,
+      max_tokens: config.maxTokens || 64000,
       stream: false,
     };
 
@@ -607,7 +607,7 @@ export class OpenRouterProvider {
         content: msg.content,
       })),
       temperature: config.temperature ?? 0.7,
-      max_tokens: config.maxTokens || 4096,
+      max_tokens: config.maxTokens || 64000,
       stream: true,
     };
 

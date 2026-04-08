@@ -17,7 +17,7 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
   const [model, setModel] = useState<AIModel>('anthropic/claude-sonnet-4.6');
   const [pdfVisionModel, setPdfVisionModel] = useState<AIModel>('google/gemini-2.5-flash');
   const [temperature, setTemperature] = useState(0.7);
-  const [maxTokens, setMaxTokens] = useState(4096);
+  const [maxTokens, setMaxTokens] = useState(64000);
   const [enableStreaming, setEnableStreaming] = useState(true);
   const [showApiKey, setShowApiKey] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -40,7 +40,7 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
           apiKey: apiKey,
           model: 'anthropic/claude-sonnet-4.6', // Temporary
           temperature: 0.7,
-          maxTokens: 4096,
+          maxTokens: 64000,
           enableStreaming: true,
         });
 
@@ -91,7 +91,7 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
       setModel(aiConfig.model || (getEnvModel() as AIModel) || 'anthropic/claude-sonnet-4.6');
       setPdfVisionModel(aiConfig.pdfVisionModel || 'google/gemini-2.5-flash');
       setTemperature(aiConfig.temperature ?? getEnvTemperature() ?? 0.7);
-      setMaxTokens(aiConfig.maxTokens ?? getEnvMaxTokens() ?? 4096);
+      setMaxTokens(aiConfig.maxTokens ?? getEnvMaxTokens() ?? 64000);
       setEnableStreaming(aiConfig.enableStreaming ?? getEnvEnableStreaming() ?? true);
 
       // Log when env vars are used
@@ -416,7 +416,7 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
               onChange={(e) => setModel(e.target.value as AIModel)}
               disabled={loadingModels}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-              size={availableModels.length > 20 ? 10 : undefined}
+              size={1}
             >
               {sortBy === 'provider' ? (
                 // Grouped by provider
@@ -499,10 +499,12 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
               onChange={(e) => setMaxTokens(parseInt(e.target.value))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value={1024}>1,024 (Short responses)</option>
-              <option value={2048}>2,048 (Medium responses)</option>
-              <option value={4096}>4,096 (Long responses)</option>
-              <option value={8192}>8,192 (Very long responses)</option>
+              <option value={4096}>4,096 (Short responses)</option>
+              <option value={8192}>8,192 (Medium responses)</option>
+              <option value={16384}>16,384 (Long responses)</option>
+              <option value={32000}>32,000 (Very long responses)</option>
+              <option value={64000}>64,000 (Maximum — Sonnet 4.6)</option>
+              <option value={128000}>128,000 (Maximum — Opus 4.6)</option>
             </select>
           </div>
 

@@ -252,7 +252,7 @@ const createDefaultAIConfig = (): AIConfig | null => {
     model: (getEnvModel() as any) || 'anthropic/claude-sonnet-4.6',
     pdfVisionModel: 'google/gemini-2.5-flash',
     temperature: getEnvTemperature() ?? 0.7,
-    maxTokens: getEnvMaxTokens() ?? 4096,
+    maxTokens: getEnvMaxTokens() ?? 64000,
     enableStreaming: getEnvEnableStreaming() ?? true,
   };
 };

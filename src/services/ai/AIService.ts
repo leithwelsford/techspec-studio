@@ -2051,6 +2051,34 @@ Generate the complete Section 4 now in markdown format.`;
     // Step 3: Import template prompt system
     const { buildSectionPrompt } = await import('./prompts/templatePrompts');
 
+    // Step 3.5: Build stable context for prompt caching
+    // This system message stays identical across all section generation calls,
+    // so Anthropic's prompt caching will cache it on the first call (~1.25x write)
+    // and reuse at 0.1x cost for all subsequent sections (~85% savings).
+    const { buildSystemPrompt } = await import('./prompts/systemPrompts');
+    const baseSystemPrompt = buildSystemPrompt((context as any)?.domainConfig);
+
+    // Build stable reference context (same for all sections)
+    let stableContext = `# Specification: ${specTitle}\n\n`;
+    stableContext += `## Template: ${template.name}\n`;
+    if (template.formatGuidance) {
+      stableContext += `\n### Formatting Guidance\n${template.formatGuidance}\n`;
+    }
+    stableContext += `\n## BRS Document: ${brsDocument.title}\n\n${brsDocument.markdown}\n`;
+    if (brsAnalysis && brsAnalysis.rawAnalysis !== undefined) {
+      stableContext += `\n## BRS Analysis\n\n${typeof brsAnalysis === 'string' ? brsAnalysis : JSON.stringify(brsAnalysis, null, 2)}\n`;
+    } else if (brsAnalysis) {
+      stableContext += `\n## BRS Analysis\n\n${JSON.stringify(brsAnalysis, null, 2)}\n`;
+    }
+    if (config.customGuidance) {
+      stableContext += `\n## User Guidance\n\n${config.customGuidance}\n`;
+    }
+    if (context?.markdownGuidance) {
+      stableContext += `\n## Markdown Formatting Guidance\n\n${context.markdownGuidance}\n`;
+    }
+
+    console.log(`💾 Built stable context for caching: ~${Math.round(stableContext.length / 4)} tokens (cached across ${enabledSections.length} section calls)`);
+
     // Step 4: Generate each section sequentially with progress reporting
     for (let i = 0; i < enabledSections.length; i++) {
       const section = enabledSections[i];
@@ -2076,7 +2104,7 @@ Generate the complete Section 4 now in markdown format.`;
         markdownGuidance: context?.markdownGuidance
       };
 
-      // Generate section prompt
+      // Generate section prompt (used as user message — changes per section)
       const sectionPrompt = buildSectionPrompt(section, promptContext);
 
       // Configure token limits based on model type
@@ -2128,9 +2156,13 @@ Generate the complete Section 4 now in markdown format.`;
 
         sectionResult = await this.provider.generateMultimodal(multimodalMessages, { ...sectionConfig, model: this.getPdfVisionModel() });
       } else {
-        // Standard text-only generation
+        // Use structured messages: stable system context (cached) + section-specific user prompt
         sectionResult = await this.provider.generate(
-          [{ role: 'user', content: sectionPrompt }],
+          [
+            { role: 'system', content: baseSystemPrompt },
+            { role: 'system', content: stableContext },
+            { role: 'user', content: sectionPrompt }
+          ],
           sectionConfig
         );
       }
