@@ -40,6 +40,9 @@ export default function SectionCard({
   const [editContentGuidance, setEditContentGuidance] = useState(
     section.contentGuidance || ''
   );
+  const [editDepth, setEditDepth] = useState<'detailed' | 'standard' | 'brief'>(
+    section.depth || 'detailed'
+  );
 
   // DnD Kit sortable
   const {
@@ -62,6 +65,7 @@ export default function SectionCard({
     setEditDescription(section.description);
     setEditSubsections(section.suggestedSubsections?.join(', ') || '');
     setEditContentGuidance(section.contentGuidance || '');
+    setEditDepth(section.depth || 'detailed');
   }, [section]);
 
   /**
@@ -75,6 +79,7 @@ export default function SectionCard({
         ? editSubsections.split(',').map((s) => s.trim()).filter(Boolean)
         : undefined,
       contentGuidance: editContentGuidance.trim() || undefined,
+      depth: editDepth,
     });
   };
 
@@ -86,6 +91,7 @@ export default function SectionCard({
     setEditDescription(section.description);
     setEditSubsections(section.suggestedSubsections?.join(', ') || '');
     setEditContentGuidance(section.contentGuidance || '');
+    setEditDepth(section.depth || 'detailed');
     onCancelEdit();
   };
 
@@ -285,6 +291,32 @@ export default function SectionCard({
               </p>
             ) : (
               <p className="text-sm text-gray-400 dark:text-gray-500 italic">None specified</p>
+            )}
+          </div>
+
+          {/* Section Depth */}
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+              Section Depth
+            </label>
+            {isEditing ? (
+              <select
+                value={editDepth}
+                onChange={(e) => setEditDepth(e.target.value as 'detailed' | 'standard' | 'brief')}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              >
+                <option value="detailed">Detailed — Full normative text, tables, flows</option>
+                <option value="standard">Standard — Restate requirements, moderate detail</option>
+                <option value="brief">Brief — Summarise and reference, 1-2 pages</option>
+              </select>
+            ) : (
+              <span className={`text-sm font-medium ${
+                section.depth === 'brief' ? 'text-yellow-600 dark:text-yellow-400' :
+                section.depth === 'standard' ? 'text-blue-600 dark:text-blue-400' :
+                'text-green-600 dark:text-green-400'
+              }`}>
+                {section.depth === 'brief' ? 'Brief' : section.depth === 'standard' ? 'Standard' : 'Detailed'}
+              </span>
             )}
           </div>
 

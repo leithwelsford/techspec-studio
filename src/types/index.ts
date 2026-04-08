@@ -1035,11 +1035,11 @@ export interface ProposedSection {
   rationale: string;               // Why AI proposed this section
   suggestedSubsections?: string[]; // Optional subsection hints
   contentGuidance?: string;        // User's SPECIFIC requirements (e.g., "Keep brief")
+  depth?: SectionDepth;            // Controls output detail level (default: 'detailed')
   includeDiagrams?: boolean;       // Whether to include diagram placeholders (default: true)
   order: number;                   // Position in document
   confidence: number;              // 0-1: AI's confidence in this recommendation
   sourceHints?: string[];          // BRS sections/references that informed this
-  includeDiagrams?: boolean;       // Whether to include diagram placeholders (default: true)
   enableRequirementNumbering?: boolean;  // Whether to generate requirement IDs (default: true)
 }
 
