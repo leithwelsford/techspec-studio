@@ -597,6 +597,14 @@ export interface DomainConfig {
  * Flexible section definition
  * User-editable section that adapts to any domain
  */
+/**
+ * Section depth controls how much detail the AI generates.
+ * - 'detailed': Full treatment — complete normative text, tables, signalling flows (e.g., Architecture, PCC)
+ * - 'standard': Moderate treatment — restate requirements, define scope, no protocol-level detail (e.g., BRS, Scope)
+ * - 'brief': Reference only — summarise and cite standards, do NOT reproduce procedures (e.g., EAP auth, 802.1X)
+ */
+export type SectionDepth = 'detailed' | 'standard' | 'brief';
+
 export interface FlexibleSection {
   id: string;                              // Unique ID: "scope", "architecture", "custom-1"
   title: string;                           // Editable: "Scope", "System Architecture"
@@ -604,9 +612,9 @@ export interface FlexibleSection {
   isRequired: boolean;                     // Suggestion only, user can override
   suggestedSubsections?: string[];         // Optional hints: ["Purpose", "Applicability", "Assumptions"]
   contentGuidance?: string;                // User's custom guidance for THIS section
+  depth?: SectionDepth;                    // Controls output detail level (default: 'detailed')
   includeDiagrams?: boolean;               // Whether to include diagram placeholders (default: true)
   order: number;                           // Position in document (for reordering)
-  includeDiagrams?: boolean;               // Whether to include diagram placeholders (default: true)
   enableRequirementNumbering?: boolean;    // Whether to generate requirement IDs (default: true)
 }
 

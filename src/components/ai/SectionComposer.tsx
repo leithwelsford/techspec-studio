@@ -81,6 +81,7 @@ const FlexibleSectionItem: React.FC<FlexibleSectionItemProps> = ({
   const [editedTitle, setEditedTitle] = useState(section.title);
   const [editedDescription, setEditedDescription] = useState(section.description);
   const [editedGuidance, setEditedGuidance] = useState(section.contentGuidance || '');
+  const [editedDepth, setEditedDepth] = useState<'detailed' | 'standard' | 'brief'>(section.depth || 'detailed');
   const [showFullDescription, setShowFullDescription] = useState(false);
 
   const {
@@ -104,6 +105,7 @@ const FlexibleSectionItem: React.FC<FlexibleSectionItemProps> = ({
       title: editedTitle,
       description: editedDescription,
       contentGuidance: editedGuidance || undefined,
+      depth: editedDepth,
     });
   };
 
@@ -111,6 +113,7 @@ const FlexibleSectionItem: React.FC<FlexibleSectionItemProps> = ({
     setEditedTitle(section.title);
     setEditedDescription(section.description);
     setEditedGuidance(section.contentGuidance || '');
+    setEditedDepth(section.depth || 'detailed');
     onCancelEdit();
   };
 
@@ -168,6 +171,23 @@ const FlexibleSectionItem: React.FC<FlexibleSectionItemProps> = ({
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 placeholder="E.g., 'Focus on security aspects', 'Include performance metrics table', 'Reference ISO 27001 standards'..."
               />
+            </div>
+
+            {/* Section Depth */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Section Depth
+                <span className="font-normal text-gray-500 ml-2">(Controls output detail level)</span>
+              </label>
+              <select
+                value={editedDepth}
+                onChange={(e) => setEditedDepth(e.target.value as 'detailed' | 'standard' | 'brief')}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="detailed">Detailed — Full normative text, tables, signalling flows</option>
+                <option value="standard">Standard — Restate requirements, define scope, moderate detail</option>
+                <option value="brief">Brief — Summarise and reference standards, 1-2 pages max</option>
+              </select>
             </div>
 
             {/* Action Buttons */}
@@ -247,6 +267,18 @@ const FlexibleSectionItem: React.FC<FlexibleSectionItemProps> = ({
                   title="Has custom guidance"
                 >
                   Customized
+                </span>
+              )}
+              {section.depth && section.depth !== 'detailed' && (
+                <span
+                  className={`text-xs px-2 py-0.5 rounded ${
+                    section.depth === 'brief'
+                      ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200'
+                      : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+                  }`}
+                  title={`Depth: ${section.depth}`}
+                >
+                  {section.depth === 'brief' ? 'Brief' : 'Standard'}
                 </span>
               )}
             </div>

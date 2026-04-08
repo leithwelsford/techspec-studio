@@ -1107,12 +1107,38 @@ export function buildFlexibleSectionPrompt(
     ? `${headingPrefix} ${sectionNumber} ${section.title}`
     : `## ${section.title}`;
 
+  // Determine section depth
+  const depth = section.depth || 'detailed';
+  const depthDirective = depth === 'brief'
+    ? `**DEPTH: BRIEF** — This section requires BRIEF treatment only.
+- Summarise the topic in 1-2 pages maximum
+- Reference the applicable standards (RFC, 3GPP TS, IEEE) — do NOT reproduce their procedures
+- State what method/protocol is used and why, then cite the standard for details
+- Do NOT include step-by-step signalling flows or protocol exchanges
+- Reserve requirement IDs for spec-specific decisions only, not for restating standards
+- Example: "Authentication SHALL use EAP-AKA per RFC 4187" — NOT a 20-step EAP exchange`
+    : depth === 'standard'
+    ? `**DEPTH: STANDARD** — This section requires STANDARD treatment.
+- Moderate detail: 2-5 pages typical
+- Restate business requirements as normative statements with requirement IDs
+- Define scope boundaries and applicability clearly
+- Do NOT elaborate on protocol internals — cross-reference the Architecture or Signalling sections
+- Keep tables concise — one row per requirement, not one paragraph per requirement`
+    : `**DEPTH: DETAILED** — This section requires DETAILED treatment.
+- Full normative text with complete technical detail
+- Include tables, signalling flows, AVP definitions, and parameter values
+- This is a primary section — provide implementation-ready content`;
+
   // Compose the prompt
   let prompt = `# Generate Section: ${section.title}
 
 ${buildDomainExpertise(domainConfig)}
 
 ${buildNormativeLanguageGuidance(domainConfig)}
+
+---
+
+${depthDirective}
 
 ---
 
@@ -1159,8 +1185,19 @@ Do not use \`{{fig:...}}\` syntax or include any TODO comments for diagrams.
 
   // Add requirement numbering guidance
   // Check both context-level and section-level settings (default to enabled)
+  // For brief sections, reduce requirement density
   const enableReqNumbering = enableRequirementNumbering !== false && section.enableRequirementNumbering !== false;
   prompt += buildRequirementNumberingSection(enableReqNumbering, requirementCounters);
+
+  if (depth === 'brief' && enableReqNumbering) {
+    prompt += `
+**REQUIREMENT ID DENSITY — BRIEF SECTION:**
+This is a brief section. Use requirement IDs sparingly — only for decisions specific to THIS specification.
+Do NOT assign requirement IDs to statements that merely reference a standard (e.g., "EAP-AKA per RFC 4187").
+Only assign IDs to testable, implementation-specific requirements unique to this project.
+
+`;
+  }
 
   // Add context sections
   prompt += `
@@ -1170,10 +1207,9 @@ Do not use \`{{fig:...}}\` syntax or include any TODO comments for diagrams.
 
 `;
 
-  // BRS content
+  // BRS content — scale based on section depth
   if (brsContent) {
-    // Include more content for single section generation
-    const maxBrsChars = 5000;
+    const maxBrsChars = depth === 'brief' ? 2000 : depth === 'standard' ? 5000 : 10000;
     const truncatedBrs = brsContent.length > maxBrsChars
       ? brsContent.slice(0, maxBrsChars) + '\n\n[... truncated for length ...]'
       : brsContent;
@@ -1185,14 +1221,20 @@ ${truncatedBrs}
 `;
   }
 
-  // Previous sections for consistency
+  // Previous sections — increased context for cross-reference awareness
   if (previousSections) {
-    const maxPrevChars = 3000;
+    // Provide enough context so the AI knows what's already been said
+    const maxPrevChars = depth === 'brief' ? 5000 : 15000;
     const truncatedPrev = previousSections.length > maxPrevChars
       ? '...' + previousSections.slice(-maxPrevChars)
       : previousSections;
 
-    prompt += `### Previous Sections (for consistency)
+    prompt += `### Previous Sections (DO NOT REPEAT)
+
+The following sections have already been generated. You MUST cross-reference them instead of restating their content.
+- If a requirement, definition, or procedure was already defined, write "as defined in Section X.Y" instead of repeating it.
+- If an interface or protocol was already described, do NOT reproduce the description — reference the section.
+- If a table already defines parameters, do NOT create a similar table — reference it.
 
 ${truncatedPrev}
 
