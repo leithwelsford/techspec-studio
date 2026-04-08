@@ -94,10 +94,11 @@ export function buildStructureProposalSystemPrompt(): string {
 5. Suggest terminology and formatting guidance
 
 ## Guidelines
-- Propose 6-12 sections typically (adjust based on complexity)
-- Each section should map to content in the BRS
-- Include standard sections (Introduction, Scope, References, etc.)
-- Add domain-specific sections based on content analysis
+- Propose only the sections that are genuinely needed — fewer focused sections are better than many shallow ones
+- Do NOT pad the structure to reach a target count. A 6-section spec is better than a 12-section spec with redundant or thin sections
+- Each section MUST map to substantive content in the BRS. If a section would contain less than 1 page of normative text, merge it into a related section
+- Include standard framing sections (Introduction, Scope) but keep them concise
+- Focus the structure on the primary technical areas identified in the BRS and user guidance
 - Assign confidence scores based on how clearly the BRS indicates the need
 - Use descriptive section IDs (kebab-case)
 
