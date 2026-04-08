@@ -249,7 +249,8 @@ const createDefaultAIConfig = (): AIConfig | null => {
   return {
     provider: 'openrouter',
     apiKey: envApiKey, // Store unencrypted - AIConfigPanel will handle encryption on save
-    model: (getEnvModel() as any) || 'anthropic/claude-3.5-sonnet',
+    model: (getEnvModel() as any) || 'anthropic/claude-sonnet-4.6',
+    pdfVisionModel: 'google/gemini-2.5-flash',
     temperature: getEnvTemperature() ?? 0.7,
     maxTokens: getEnvMaxTokens() ?? 4096,
     enableStreaming: getEnvEnableStreaming() ?? true,

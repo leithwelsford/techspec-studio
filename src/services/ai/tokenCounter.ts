@@ -145,28 +145,22 @@ function getModelContextLimitFromLookup(modelId: string): number {
   // Priority 2: Fall back to static lookup table
   const modelLimits: Record<string, number> = {
     // Claude models (Anthropic)
-    'anthropic/claude-3.5-sonnet': 200000,
-    'anthropic/claude-3-sonnet': 200000,
-    'anthropic/claude-3-opus': 200000,
-    'anthropic/claude-3-haiku': 200000,
-    'anthropic/claude-2': 100000,
+    'anthropic/claude-sonnet-4.6': 1000000,
+    'anthropic/claude-opus-4.6': 1000000,
+    'anthropic/claude-haiku-4.5': 200000,
 
-    // OpenAI models - GPT-4 series
-    'openai/gpt-4-turbo': 128000,
-    'openai/gpt-4o': 128000,
-    'openai/gpt-4o-mini': 128000,
-    'openai/gpt-4': 8192,
-    'openai/gpt-4-32k': 32768,
-    'openai/gpt-3.5-turbo': 16385,
-    'openai/gpt-3.5-turbo-16k': 16385,
-
-    // OpenAI models - GPT-4.1/5 series
+    // OpenAI GPT-5.4 family (latest)
+    'openai/gpt-5.4': 1050000,
+    'openai/gpt-5.4-mini': 400000,
+    'openai/gpt-5.4-nano': 400000,
+    // OpenAI GPT-5 family
+    'openai/gpt-5': 400000,
+    'openai/gpt-5-mini': 400000,
+    'openai/gpt-5-nano': 400000,
+    // OpenAI older
     'openai/gpt-4.1': 1000000,
     'openai/gpt-4.1-mini': 1000000,
     'openai/gpt-4.1-nano': 1000000,
-    'openai/gpt-5': 400000,
-    'openai/gpt-5.1': 400000,
-    'openai/gpt-5.2': 400000,
 
     // OpenAI reasoning models (o1, o3 series)
     'openai/o1': 200000,
@@ -176,12 +170,11 @@ function getModelContextLimitFromLookup(modelId: string): number {
     'openai/o3-mini': 200000,
 
     // Google models
-    'google/gemini-pro': 32000,
-    'google/gemini-pro-1.5': 1000000,
+    'google/gemini-2.5-flash': 1000000,
+    'google/gemini-2.5-pro': 1000000,
+    'google/gemini-2.0-flash': 1000000,
     'google/gemini-1.5-pro': 1000000,
     'google/gemini-1.5-flash': 1000000,
-    'google/gemini-2.0-flash': 1000000,
-    'google/gemini-2.0-flash-exp': 1000000,
 
     // Perplexity (online models)
     'perplexity/llama-3.1-sonar-large-128k-online': 128000,

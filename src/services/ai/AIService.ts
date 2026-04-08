@@ -131,6 +131,15 @@ export class AIService {
   }
 
   /**
+   * Get the model to use for PDF/vision processing.
+   * Uses pdfVisionModel if configured (e.g., Gemini Flash for cheaper PDF processing),
+   * otherwise falls back to the primary model.
+   */
+  private getPdfVisionModel(): string {
+    return this.config?.pdfVisionModel || this.config?.model || 'anthropic/claude-sonnet-4.6';
+  }
+
+  /**
    * Test if the AI service is properly configured and connected
    */
   async testConnection(): Promise<boolean> {
@@ -368,7 +377,7 @@ export class AIService {
     });
 
     const result = await this.provider.generateMultimodal(multimodalMessages, {
-      model: this.config.model,
+      model: this.getPdfVisionModel(),
       temperature: options?.temperature ?? this.config.temperature,
       maxTokens: options?.maxTokens ?? this.config.maxTokens
     });
@@ -1516,7 +1525,7 @@ export class AIService {
 
     // Check if current model is a reasoning model - they need much higher token limits
     const { isReasoningModel } = await import('../../utils/aiModels');
-    const currentModel = this.config.model || 'anthropic/claude-3.5-sonnet';
+    const currentModel = this.config.model || 'anthropic/claude-sonnet-4.6';
     const isReasoning = isReasoningModel(currentModel);
 
     // Reasoning models use internal reasoning before generating output
@@ -1913,7 +1922,7 @@ Generate the complete Section 4 now in markdown format.`;
     const analysisPrompt = buildBRSAnalysisPrompt(brsDocument.markdown, config.customGuidance);
 
     const { isReasoningModel } = await import('../../utils/aiModels');
-    const currentModel = this.config.model || 'anthropic/claude-3.5-sonnet';
+    const currentModel = this.config.model || 'anthropic/claude-sonnet-4.6';
     const isReasoning = isReasoningModel(currentModel);
     const analysisMaxTokens = isReasoning ? 32000 : 4000;
 
@@ -1955,7 +1964,7 @@ Generate the complete Section 4 now in markdown format.`;
         { role: 'user', content: multimodalContent }
       ];
 
-      analysisResult = await this.provider.generateMultimodal(multimodalMessages, analysisConfig);
+      analysisResult = await this.provider.generateMultimodal(multimodalMessages, { ...analysisConfig, model: this.getPdfVisionModel() });
     } else {
       // Standard text-only generation
       analysisResult = await this.provider.generate(
@@ -2117,7 +2126,7 @@ Generate the complete Section 4 now in markdown format.`;
           { role: 'user', content: multimodalContent }
         ];
 
-        sectionResult = await this.provider.generateMultimodal(multimodalMessages, sectionConfig);
+        sectionResult = await this.provider.generateMultimodal(multimodalMessages, { ...sectionConfig, model: this.getPdfVisionModel() });
       } else {
         // Standard text-only generation
         sectionResult = await this.provider.generate(

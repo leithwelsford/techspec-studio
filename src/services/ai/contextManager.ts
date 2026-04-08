@@ -28,7 +28,7 @@ import type {
  * Default configuration for context management
  */
 const DEFAULT_CONFIG: ContextManagerConfig = {
-  maxTotalTokens: 100000,  // Default context budget (overridden by model limit)
+  maxTotalTokens: 500000,  // Default context budget for 1M-context models (overridden by model limit)
   reserveForOutput: 4000,  // Reserve for AI response
   priorities: {
     brs: 1.0,           // BRS is highest priority

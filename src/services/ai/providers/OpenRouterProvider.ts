@@ -25,6 +25,9 @@ export interface OpenRouterResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    // Prompt caching token counts (Anthropic via OpenRouter)
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
     // Reasoning models may have additional token counts
     completion_tokens_details?: {
       reasoning_tokens?: number;
@@ -58,6 +61,54 @@ export class OpenRouterProvider {
   }
 
   /**
+   * Apply prompt caching to messages for Anthropic models via OpenRouter.
+   * Marks system messages and large content blocks with cache_control
+   * so they're cached on first request and reused at 0.1x cost on subsequent calls.
+   */
+  private applyCacheControl(
+    messages: Array<{ role: string; content: any }>,
+    model: string
+  ): Array<{ role: string; content: any }> {
+    // Only apply cache_control for Anthropic models (OpenRouter passes it through)
+    if (!model.startsWith('anthropic/')) return messages;
+
+    return messages.map((msg, index) => {
+      // Cache system messages (stable prompts, BRS, reference docs)
+      if (msg.role === 'system') {
+        // If content is a string, wrap in content block with cache_control
+        if (typeof msg.content === 'string') {
+          return {
+            ...msg,
+            content: [
+              { type: 'text', text: msg.content, cache_control: { type: 'ephemeral' } }
+            ],
+          };
+        }
+        // If content is already an array of blocks, add cache_control to last block
+        if (Array.isArray(msg.content)) {
+          const blocks = [...msg.content];
+          const lastIdx = blocks.length - 1;
+          blocks[lastIdx] = { ...blocks[lastIdx], cache_control: { type: 'ephemeral' } };
+          return { ...msg, content: blocks };
+        }
+      }
+
+      // Cache the first user message if it's large (likely contains BRS/reference context)
+      // Only cache the first user message to avoid invalidating cache on conversation turns
+      if (msg.role === 'user' && index <= 2 && typeof msg.content === 'string' && msg.content.length > 8000) {
+        return {
+          ...msg,
+          content: [
+            { type: 'text', text: msg.content, cache_control: { type: 'ephemeral' } }
+          ],
+        };
+      }
+
+      return msg;
+    });
+  }
+
+  /**
    * Generate completion (non-streaming)
    */
   async generate(
@@ -68,10 +119,13 @@ export class OpenRouterProvider {
     tokens: { prompt: number; completion: number; total: number };
     cost: number;
   }> {
+    const model = config.model || 'anthropic/claude-sonnet-4.6';
+    const cachedMessages = this.applyCacheControl(messages, model);
+
     // Build request body with optional reasoning parameter
     const requestBody: any = {
-      model: config.model || 'anthropic/claude-3.5-sonnet',
-      messages,
+      model,
+      messages: cachedMessages,
       temperature: config.temperature ?? 0.7,
       max_tokens: config.maxTokens || 4096,
       stream: false,
@@ -130,8 +184,19 @@ export class OpenRouterProvider {
       total: data.usage.total_tokens,
     };
 
-    // Estimate cost based on model (OpenRouter provides this in headers but we'll estimate)
-    const cost = this.estimateCost(config.model || 'anthropic/claude-3.5-sonnet', tokens);
+    // Log cache performance if available
+    const cacheRead = data.usage.cache_read_input_tokens || 0;
+    const cacheCreation = data.usage.cache_creation_input_tokens || 0;
+    if (cacheRead > 0 || cacheCreation > 0) {
+      console.log('💾 Prompt cache:', { cacheRead, cacheCreation, normalInput: tokens.prompt - cacheRead - cacheCreation });
+    }
+
+    // Estimate cost with cache-aware pricing
+    const cost = this.estimateCost(config.model || 'anthropic/claude-sonnet-4.6', {
+      ...tokens,
+      cacheRead,
+      cacheCreation,
+    });
 
     // Include finish_reason for debugging truncated output
     const finishReason = data.choices[0]?.finish_reason || data.choices[0]?.native_finish_reason || 'unknown';
@@ -146,6 +211,9 @@ export class OpenRouterProvider {
     messages: Array<{ role: string; content: string }>,
     config: Partial<AIConfig> = {}
   ): AsyncGenerator<StreamChunk, void, unknown> {
+    const model = config.model || 'anthropic/claude-sonnet-4.6';
+    const cachedMessages = this.applyCacheControl(messages, model);
+
     const response = await fetch(`${this.baseURL}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -155,8 +223,8 @@ export class OpenRouterProvider {
         'X-Title': 'TechSpec AI Authoring',
       },
       body: JSON.stringify({
-        model: config.model || 'anthropic/claude-3.5-sonnet',
-        messages,
+        model,
+        messages: cachedMessages,
         temperature: config.temperature ?? 0.7,
         max_tokens: config.maxTokens || 4096,
         stream: true,
@@ -207,26 +275,41 @@ export class OpenRouterProvider {
 
   /**
    * Estimate cost based on model and tokens
-   * Prices from OpenRouter as of 2024
+   * Prices from OpenRouter as of April 2026
    */
-  private estimateCost(model: string, tokens: { prompt: number; completion: number }): number {
+  private estimateCost(model: string, tokens: { prompt: number; completion: number; cacheRead?: number; cacheCreation?: number }): number {
     const pricing: Record<string, { prompt: number; completion: number }> = {
-      'anthropic/claude-3.5-sonnet': { prompt: 3, completion: 15 }, // per 1M tokens
-      'anthropic/claude-3-opus': { prompt: 15, completion: 75 },
-      'anthropic/claude-3-haiku': { prompt: 0.25, completion: 1.25 },
-      'openai/gpt-4-turbo': { prompt: 10, completion: 30 },
-      'openai/gpt-4': { prompt: 30, completion: 60 },
-      'openai/gpt-3.5-turbo': { prompt: 0.5, completion: 1.5 },
-      'google/gemini-pro': { prompt: 0.5, completion: 1.5 },
-      'meta-llama/llama-3-70b-instruct': { prompt: 0.9, completion: 0.9 },
+      // Anthropic Claude (per 1M tokens)
+      'anthropic/claude-sonnet-4.6': { prompt: 3, completion: 15 },
+      'anthropic/claude-opus-4.6': { prompt: 5, completion: 25 },
+      'anthropic/claude-haiku-4.5': { prompt: 1, completion: 5 },
+      // Google Gemini
+      'google/gemini-2.5-flash': { prompt: 0.3, completion: 2.5 },
+      'google/gemini-2.5-pro': { prompt: 1.25, completion: 10 },
+      // OpenAI GPT-5.4 family (March 2026)
+      'openai/gpt-5.4': { prompt: 2.5, completion: 15 },
+      'openai/gpt-5.4-mini': { prompt: 0.75, completion: 4.5 },
+      'openai/gpt-5.4-nano': { prompt: 0.2, completion: 1.25 },
+      // OpenAI GPT-5 family
+      'openai/gpt-5': { prompt: 1.25, completion: 10 },
+      'openai/gpt-5-mini': { prompt: 0.25, completion: 2 },
+      'openai/gpt-5-nano': { prompt: 0.05, completion: 0.4 },
+      // OpenAI older
+      'openai/gpt-4.1': { prompt: 2, completion: 8 },
     };
 
     const prices = pricing[model] || { prompt: 1, completion: 2 }; // Default fallback
 
-    const promptCost = (tokens.prompt / 1_000_000) * prices.prompt;
+    // Calculate base cost
+    const normalInputTokens = tokens.prompt - (tokens.cacheRead || 0) - (tokens.cacheCreation || 0);
+    const promptCost = (Math.max(0, normalInputTokens) / 1_000_000) * prices.prompt;
     const completionCost = (tokens.completion / 1_000_000) * prices.completion;
 
-    return promptCost + completionCost;
+    // Cache pricing: writes at 1.25x, reads at 0.1x base input price
+    const cacheWriteCost = ((tokens.cacheCreation || 0) / 1_000_000) * prices.prompt * 1.25;
+    const cacheReadCost = ((tokens.cacheRead || 0) / 1_000_000) * prices.prompt * 0.1;
+
+    return promptCost + completionCost + cacheWriteCost + cacheReadCost;
   }
 
   /**
@@ -323,17 +406,16 @@ export class OpenRouterProvider {
    */
   private getDefaultModels() {
     return [
-      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', context_length: 200000 },
-      { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', context_length: 200000 },
-      { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku', context_length: 200000 },
-      { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', context_length: 128000 },
-      { id: 'openai/gpt-4o', name: 'GPT-4o', context_length: 128000 },
-      { id: 'openai/gpt-4', name: 'GPT-4', context_length: 8192 },
-      { id: 'openai/gpt-5.1', name: 'GPT-5.1', context_length: 400000 },
-      { id: 'openai/gpt-3.5-turbo', name: 'GPT-3.5 Turbo', context_length: 16385 },
-      { id: 'google/gemini-pro', name: 'Gemini Pro', context_length: 32760 },
-      { id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro', context_length: 1000000 },
-      { id: 'meta-llama/llama-3-70b-instruct', name: 'Llama 3 70B', context_length: 8192 },
+      { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', context_length: 1000000 },
+      { id: 'anthropic/claude-opus-4.6', name: 'Claude Opus 4.6', context_length: 1000000 },
+      { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', context_length: 200000 },
+      { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', context_length: 1000000 },
+      { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', context_length: 1000000 },
+      { id: 'openai/gpt-5.4', name: 'GPT-5.4', context_length: 1050000 },
+      { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', context_length: 400000 },
+      { id: 'openai/gpt-5.4-nano', name: 'GPT-5.4 Nano', context_length: 400000 },
+      { id: 'openai/gpt-5', name: 'GPT-5', context_length: 400000 },
+      { id: 'openai/gpt-4.1', name: 'GPT-4.1', context_length: 1000000 },
     ];
   }
 
@@ -359,28 +441,29 @@ export class OpenRouterProvider {
    * These models can directly process PDFs and images
    */
   private static readonly VISION_MODELS = [
-    // Google Gemini (excellent PDF support)
+    // Google Gemini (excellent PDF support, cheapest for vision)
+    'google/gemini-2.5-flash',
+    'google/gemini-2.5-pro',
     'google/gemini-2.0-flash',
-    'google/gemini-2.0-flash-exp',
     'google/gemini-1.5-pro',
     'google/gemini-1.5-flash',
-    'google/gemini-pro-vision',
-    // Anthropic Claude 3+ (native PDF support)
-    'anthropic/claude-3.5-sonnet',
-    'anthropic/claude-3.5-sonnet-20241022',
-    'anthropic/claude-3-opus',
-    'anthropic/claude-3-sonnet',
-    'anthropic/claude-3-haiku',
-    // OpenAI GPT-4 Vision
+    // Anthropic Claude (native PDF support)
+    'anthropic/claude-sonnet-4.6',
+    'anthropic/claude-opus-4.6',
+    'anthropic/claude-haiku-4.5',
+    // OpenAI (vision-capable)
+    'openai/gpt-5.4',
+    'openai/gpt-5.4-mini',
+    'openai/gpt-5.4-nano',
+    'openai/gpt-5',
+    'openai/gpt-5-mini',
+    'openai/gpt-4.1',
     'openai/gpt-4o',
-    'openai/gpt-4o-mini',
-    'openai/gpt-4-turbo',
-    'openai/gpt-4-vision-preview',
   ];
 
   /**
    * Check if a model supports vision/multimodal input
-   * @param modelId The model identifier (e.g., "anthropic/claude-3.5-sonnet")
+   * @param modelId The model identifier (e.g., "anthropic/claude-sonnet-4.6")
    * @returns true if the model can process PDFs and images natively
    */
   isVisionModel(modelId: string): boolean {
@@ -408,7 +491,7 @@ export class OpenRouterProvider {
     tokens: { prompt: number; completion: number; total: number };
     cost: number;
   }> {
-    const model = config.model || 'anthropic/claude-3.5-sonnet';
+    const model = config.model || 'anthropic/claude-sonnet-4.6';
 
     // Validate that model supports multimodal if we have file content
     const hasFileContent = messages.some(msg =>
@@ -514,7 +597,7 @@ export class OpenRouterProvider {
     config: Partial<AIConfig> = {},
     options: { pdfEngine?: PDFEngine } = {}
   ): AsyncGenerator<StreamChunk, void, unknown> {
-    const model = config.model || 'anthropic/claude-3.5-sonnet';
+    const model = config.model || 'anthropic/claude-sonnet-4.6';
 
     // Build request body
     const requestBody: any = {
