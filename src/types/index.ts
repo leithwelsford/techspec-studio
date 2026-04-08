@@ -177,6 +177,7 @@ export interface ReferenceDocument {
   extractedText?: string;         // Fallback text extraction for non-vision models
   tokenEstimate?: number;         // Estimated token usage
   pageCount?: number;             // PDF page count for token estimation
+  diagramDescriptions?: string;   // AI-extracted descriptions of diagrams/figures in the document
 }
 
 // ========== Multimodal Content Types ==========

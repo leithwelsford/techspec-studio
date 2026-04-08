@@ -140,6 +140,16 @@ export class AIService {
   }
 
   /**
+   * Get the underlying provider instance (for direct calls like diagram extraction)
+   */
+  getProvider() {
+    if (!this.provider) {
+      throw new Error('AI service not initialized');
+    }
+    return this.provider;
+  }
+
+  /**
    * Test if the AI service is properly configured and connected
    */
   async testConnection(): Promise<boolean> {
@@ -2075,6 +2085,21 @@ Generate the complete Section 4 now in markdown format.`;
     }
     if (context?.markdownGuidance) {
       stableContext += `\n## Markdown Formatting Guidance\n\n${context.markdownGuidance}\n`;
+    }
+
+    // Include diagram descriptions extracted from reference documents
+    // These are pre-extracted via vision model and stored as text, so they're
+    // available for all section generation calls without re-processing PDFs
+    const project = (await import('../../store/projectStore')).useProjectStore.getState().project;
+    if (project?.references) {
+      const diagramContextParts = project.references
+        .filter(ref => ref.diagramDescriptions && ref.diagramDescriptions.trim())
+        .map(ref => ref.diagramDescriptions!);
+
+      if (diagramContextParts.length > 0) {
+        stableContext += `\n## Diagrams from Reference Documents\n\nThe following diagrams were found in the reference documents. Use these descriptions to inform architecture, procedures, and design sections:\n\n${diagramContextParts.join('\n\n')}\n`;
+        console.log(`📊 Added ${diagramContextParts.length} diagram description(s) to context`);
+      }
     }
 
     console.log(`💾 Built stable context for caching: ~${Math.round(stableContext.length / 4)} tokens (cached across ${enabledSections.length} section calls)`);

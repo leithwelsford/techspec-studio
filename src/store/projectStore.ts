@@ -104,6 +104,7 @@ export interface ProjectState {
   // Actions - PDF Reference Documents (Multimodal Support)
   addPDFReference: (file: File) => Promise<string>;
   removePDFReference: (id: string) => Promise<void>;
+  updateReference: (id: string, updates: Partial<import('../types').ReferenceDocument>) => void;
   clearPDFReferences: () => Promise<void>;
   getPDFReferencesForGeneration: (options?: { extractTextFallback?: boolean }) => Promise<ReferenceDocumentContent[]>;
   getPDFReferenceCount: () => number;
@@ -663,6 +664,21 @@ export const useProjectStore = create<ProjectState>()(
         });
 
         console.log('🗑️ Removed PDF reference:', id);
+      },
+
+      updateReference: (id: string, updates: Partial<import('../types').ReferenceDocument>) => {
+        set((state) => {
+          if (!state.project) return state;
+          return {
+            project: {
+              ...state.project,
+              references: state.project.references.map(r =>
+                r.id === id ? { ...r, ...updates } : r
+              ),
+              updatedAt: new Date(),
+            },
+          };
+        });
       },
 
       clearPDFReferences: async () => {
