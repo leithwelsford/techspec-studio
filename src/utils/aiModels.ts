@@ -28,8 +28,8 @@ export function getStructuredOutputFallback(currentModel: string): string {
     return currentModel;
   }
 
-  // Prefer Claude 3.5 Sonnet for telecom/technical specs
-  return 'anthropic/claude-3.5-sonnet';
+  // Prefer Claude Sonnet 4.6 for telecom/technical specs
+  return 'anthropic/claude-sonnet-4.6';
 }
 
 /**

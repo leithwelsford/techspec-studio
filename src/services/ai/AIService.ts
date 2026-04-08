@@ -131,6 +131,25 @@ export class AIService {
   }
 
   /**
+   * Get the model to use for PDF/vision processing.
+   * Uses pdfVisionModel if configured (e.g., Gemini Flash for cheaper PDF processing),
+   * otherwise falls back to the primary model.
+   */
+  private getPdfVisionModel(): string {
+    return this.config?.pdfVisionModel || this.config?.model || 'anthropic/claude-sonnet-4.6';
+  }
+
+  /**
+   * Get the underlying provider instance (for direct calls like diagram extraction)
+   */
+  getProvider() {
+    if (!this.provider) {
+      throw new Error('AI service not initialized');
+    }
+    return this.provider;
+  }
+
+  /**
    * Test if the AI service is properly configured and connected
    */
   async testConnection(): Promise<boolean> {
@@ -368,7 +387,7 @@ export class AIService {
     });
 
     const result = await this.provider.generateMultimodal(multimodalMessages, {
-      model: this.config.model,
+      model: this.getPdfVisionModel(),
       temperature: options?.temperature ?? this.config.temperature,
       maxTokens: options?.maxTokens ?? this.config.maxTokens
     });
@@ -1516,7 +1535,7 @@ export class AIService {
 
     // Check if current model is a reasoning model - they need much higher token limits
     const { isReasoningModel } = await import('../../utils/aiModels');
-    const currentModel = this.config.model || 'anthropic/claude-3.5-sonnet';
+    const currentModel = this.config.model || 'anthropic/claude-sonnet-4.6';
     const isReasoning = isReasoningModel(currentModel);
 
     // Reasoning models use internal reasoning before generating output
@@ -1913,7 +1932,7 @@ Generate the complete Section 4 now in markdown format.`;
     const analysisPrompt = buildBRSAnalysisPrompt(brsDocument.markdown, config.customGuidance);
 
     const { isReasoningModel } = await import('../../utils/aiModels');
-    const currentModel = this.config.model || 'anthropic/claude-3.5-sonnet';
+    const currentModel = this.config.model || 'anthropic/claude-sonnet-4.6';
     const isReasoning = isReasoningModel(currentModel);
     const analysisMaxTokens = isReasoning ? 32000 : 4000;
 
@@ -1955,7 +1974,7 @@ Generate the complete Section 4 now in markdown format.`;
         { role: 'user', content: multimodalContent }
       ];
 
-      analysisResult = await this.provider.generateMultimodal(multimodalMessages, analysisConfig);
+      analysisResult = await this.provider.generateMultimodal(multimodalMessages, { ...analysisConfig, model: this.getPdfVisionModel() });
     } else {
       // Standard text-only generation
       analysisResult = await this.provider.generate(
@@ -2042,6 +2061,49 @@ Generate the complete Section 4 now in markdown format.`;
     // Step 3: Import template prompt system
     const { buildSectionPrompt } = await import('./prompts/templatePrompts');
 
+    // Step 3.5: Build stable context for prompt caching
+    // This system message stays identical across all section generation calls,
+    // so Anthropic's prompt caching will cache it on the first call (~1.25x write)
+    // and reuse at 0.1x cost for all subsequent sections (~85% savings).
+    const { buildSystemPrompt } = await import('./prompts/systemPrompts');
+    const baseSystemPrompt = buildSystemPrompt((context as any)?.domainConfig);
+
+    // Build stable reference context (same for all sections)
+    let stableContext = `# Specification: ${specTitle}\n\n`;
+    stableContext += `## Template: ${template.name}\n`;
+    if (template.formatGuidance) {
+      stableContext += `\n### Formatting Guidance\n${template.formatGuidance}\n`;
+    }
+    stableContext += `\n## BRS Document: ${brsDocument.title}\n\n${brsDocument.markdown}\n`;
+    if (brsAnalysis && brsAnalysis.rawAnalysis !== undefined) {
+      stableContext += `\n## BRS Analysis\n\n${typeof brsAnalysis === 'string' ? brsAnalysis : JSON.stringify(brsAnalysis, null, 2)}\n`;
+    } else if (brsAnalysis) {
+      stableContext += `\n## BRS Analysis\n\n${JSON.stringify(brsAnalysis, null, 2)}\n`;
+    }
+    if (config.customGuidance) {
+      stableContext += `\n## User Guidance\n\n${config.customGuidance}\n`;
+    }
+    if (context?.markdownGuidance) {
+      stableContext += `\n## Markdown Formatting Guidance\n\n${context.markdownGuidance}\n`;
+    }
+
+    // Include diagram descriptions extracted from reference documents
+    // These are pre-extracted via vision model and stored as text, so they're
+    // available for all section generation calls without re-processing PDFs
+    const project = (await import('../../store/projectStore')).useProjectStore.getState().project;
+    if (project?.references) {
+      const diagramContextParts = project.references
+        .filter(ref => ref.diagramDescriptions && ref.diagramDescriptions.trim())
+        .map(ref => ref.diagramDescriptions!);
+
+      if (diagramContextParts.length > 0) {
+        stableContext += `\n## Diagrams from Reference Documents\n\nThe following diagrams were found in the reference documents. Use these descriptions to inform architecture, procedures, and design sections:\n\n${diagramContextParts.join('\n\n')}\n`;
+        console.log(`📊 Added ${diagramContextParts.length} diagram description(s) to context`);
+      }
+    }
+
+    console.log(`💾 Built stable context for caching: ~${Math.round(stableContext.length / 4)} tokens (cached across ${enabledSections.length} section calls)`);
+
     // Step 4: Generate each section sequentially with progress reporting
     for (let i = 0; i < enabledSections.length; i++) {
       const section = enabledSections[i];
@@ -2067,7 +2129,7 @@ Generate the complete Section 4 now in markdown format.`;
         markdownGuidance: context?.markdownGuidance
       };
 
-      // Generate section prompt
+      // Generate section prompt (used as user message — changes per section)
       const sectionPrompt = buildSectionPrompt(section, promptContext);
 
       // Configure token limits based on model type
@@ -2117,11 +2179,15 @@ Generate the complete Section 4 now in markdown format.`;
           { role: 'user', content: multimodalContent }
         ];
 
-        sectionResult = await this.provider.generateMultimodal(multimodalMessages, sectionConfig);
+        sectionResult = await this.provider.generateMultimodal(multimodalMessages, { ...sectionConfig, model: this.getPdfVisionModel() });
       } else {
-        // Standard text-only generation
+        // Use structured messages: stable system context (cached) + section-specific user prompt
         sectionResult = await this.provider.generate(
-          [{ role: 'user', content: sectionPrompt }],
+          [
+            { role: 'system', content: baseSystemPrompt },
+            { role: 'system', content: stableContext },
+            { role: 'user', content: sectionPrompt }
+          ],
           sectionConfig
         );
       }

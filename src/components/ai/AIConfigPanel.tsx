@@ -14,9 +14,10 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
   const setAIConfig = useProjectStore((state) => state.setAIConfig);
 
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState<AIModel>('anthropic/claude-3.5-sonnet');
-  const [temperature, setTemperature] = useState(0.7);
-  const [maxTokens, setMaxTokens] = useState(4096);
+  const [model, setModel] = useState<AIModel>('anthropic/claude-sonnet-4.6');
+  const [pdfVisionModel, setPdfVisionModel] = useState<AIModel>('google/gemini-2.5-flash');
+  const [temperature, setTemperature] = useState(0.3);
+  const [maxTokens, setMaxTokens] = useState(64000);
   const [enableStreaming, setEnableStreaming] = useState(true);
   const [showApiKey, setShowApiKey] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -37,9 +38,9 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
         await aiService.initialize({
           provider: 'openrouter',
           apiKey: apiKey,
-          model: 'anthropic/claude-3.5-sonnet', // Temporary
-          temperature: 0.7,
-          maxTokens: 4096,
+          model: 'anthropic/claude-sonnet-4.6', // Temporary
+          temperature: 0.3,
+          maxTokens: 64000,
           enableStreaming: true,
         });
 
@@ -87,9 +88,10 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
       }
 
       // Load other settings from stored config, with env var fallback for each
-      setModel(aiConfig.model || (getEnvModel() as AIModel) || 'anthropic/claude-3.5-sonnet');
-      setTemperature(aiConfig.temperature ?? getEnvTemperature() ?? 0.7);
-      setMaxTokens(aiConfig.maxTokens ?? getEnvMaxTokens() ?? 4096);
+      setModel(aiConfig.model || (getEnvModel() as AIModel) || 'anthropic/claude-sonnet-4.6');
+      setPdfVisionModel(aiConfig.pdfVisionModel || 'google/gemini-2.5-flash');
+      setTemperature(aiConfig.temperature ?? getEnvTemperature() ?? 0.3);
+      setMaxTokens(aiConfig.maxTokens ?? getEnvMaxTokens() ?? 64000);
       setEnableStreaming(aiConfig.enableStreaming ?? getEnvEnableStreaming() ?? true);
 
       // Log when env vars are used
@@ -163,6 +165,7 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
       provider: 'openrouter' as const,
       apiKey: encryptedKey,
       model,
+      pdfVisionModel,
       temperature,
       maxTokens,
       enableStreaming,
@@ -228,11 +231,16 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
 
   // Fallback models if API call fails or no key entered yet
   const fallbackModels = [
-    { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', context_length: 200000 },
-    { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', context_length: 200000 },
-    { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku', context_length: 200000 },
-    { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', context_length: 128000 },
-    { id: 'openai/gpt-4', name: 'GPT-4', context_length: 8192 },
+    { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', context_length: 1000000 },
+    { id: 'anthropic/claude-opus-4.6', name: 'Claude Opus 4.6', context_length: 1000000 },
+    { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', context_length: 200000 },
+    { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', context_length: 1000000 },
+    { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', context_length: 1000000 },
+    { id: 'openai/gpt-5.4', name: 'GPT-5.4', context_length: 1050000 },
+    { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', context_length: 400000 },
+    { id: 'openai/gpt-5.4-nano', name: 'GPT-5.4 Nano', context_length: 400000 },
+    { id: 'openai/gpt-5', name: 'GPT-5', context_length: 400000 },
+    { id: 'openai/gpt-4.1', name: 'GPT-4.1', context_length: 1000000 },
   ];
 
   const rawModels = availableModels.length > 0 ? availableModels : fallbackModels;
@@ -408,7 +416,7 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
               onChange={(e) => setModel(e.target.value as AIModel)}
               disabled={loadingModels}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-              size={availableModels.length > 20 ? 10 : undefined}
+              size={1}
             >
               {sortBy === 'provider' ? (
                 // Grouped by provider
@@ -435,6 +443,28 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
               {availableModels.length > 0
                 ? `Showing ${filteredAndSortedModels.length} of ${availableModels.length} models`
                 : 'Enter API key to load all available models'}
+            </p>
+          </div>
+
+          {/* PDF Vision Model */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              PDF Reference Model
+              <span className="ml-1 text-xs font-normal text-gray-400">(for processing PDF documents)</span>
+            </label>
+            <select
+              value={pdfVisionModel}
+              onChange={(e) => setPdfVisionModel(e.target.value as AIModel)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash — $0.30/MTok (cheapest)</option>
+              <option value="google/gemini-2.5-pro">Gemini 2.5 Pro — $1.25/MTok</option>
+              <option value="anthropic/claude-haiku-4.5">Claude Haiku 4.5 — $1/MTok</option>
+              <option value="anthropic/claude-sonnet-4.6">Claude Sonnet 4.6 — $3/MTok</option>
+              <option value="anthropic/claude-opus-4.6">Claude Opus 4.6 — $5/MTok</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Gemini 2.5 Flash is ~60x cheaper than Claude for PDF vision processing
             </p>
           </div>
 
@@ -469,10 +499,12 @@ export default function AIConfigPanel({ onClose }: AIConfigPanelProps) {
               onChange={(e) => setMaxTokens(parseInt(e.target.value))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value={1024}>1,024 (Short responses)</option>
-              <option value={2048}>2,048 (Medium responses)</option>
-              <option value={4096}>4,096 (Long responses)</option>
-              <option value={8192}>8,192 (Very long responses)</option>
+              <option value={4096}>4,096 (Short responses)</option>
+              <option value={8192}>8,192 (Medium responses)</option>
+              <option value={16384}>16,384 (Long responses)</option>
+              <option value={32000}>32,000 (Very long responses)</option>
+              <option value={64000}>64,000 (Maximum — Sonnet 4.6)</option>
+              <option value={128000}>128,000 (Maximum — Opus 4.6)</option>
             </select>
           </div>
 

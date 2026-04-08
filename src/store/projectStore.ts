@@ -104,6 +104,7 @@ export interface ProjectState {
   // Actions - PDF Reference Documents (Multimodal Support)
   addPDFReference: (file: File) => Promise<string>;
   removePDFReference: (id: string) => Promise<void>;
+  updateReference: (id: string, updates: Partial<import('../types').ReferenceDocument>) => void;
   clearPDFReferences: () => Promise<void>;
   getPDFReferencesForGeneration: (options?: { extractTextFallback?: boolean }) => Promise<ReferenceDocumentContent[]>;
   getPDFReferenceCount: () => number;
@@ -249,9 +250,10 @@ const createDefaultAIConfig = (): AIConfig | null => {
   return {
     provider: 'openrouter',
     apiKey: envApiKey, // Store unencrypted - AIConfigPanel will handle encryption on save
-    model: (getEnvModel() as any) || 'anthropic/claude-3.5-sonnet',
-    temperature: getEnvTemperature() ?? 0.7,
-    maxTokens: getEnvMaxTokens() ?? 4096,
+    model: (getEnvModel() as any) || 'anthropic/claude-sonnet-4.6',
+    pdfVisionModel: 'google/gemini-2.5-flash',
+    temperature: getEnvTemperature() ?? 0.3,
+    maxTokens: getEnvMaxTokens() ?? 64000,
     enableStreaming: getEnvEnableStreaming() ?? true,
   };
 };
@@ -662,6 +664,21 @@ export const useProjectStore = create<ProjectState>()(
         });
 
         console.log('🗑️ Removed PDF reference:', id);
+      },
+
+      updateReference: (id: string, updates: Partial<import('../types').ReferenceDocument>) => {
+        set((state) => {
+          if (!state.project) return state;
+          return {
+            project: {
+              ...state.project,
+              references: state.project.references.map(r =>
+                r.id === id ? { ...r, ...updates } : r
+              ),
+              updatedAt: new Date(),
+            },
+          };
+        });
       },
 
       clearPDFReferences: async () => {

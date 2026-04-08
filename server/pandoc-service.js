@@ -143,6 +143,16 @@ app.post('/api/export-pandoc', upload.fields([
     await fs.copyFile(markdownFile.path, inputMd);
     await fs.copyFile(templateFile.path, templateDocx);
 
+    // Debug: Log the first H1 heading from the received markdown
+    const markdownContent = await fs.readFile(inputMd, 'utf-8');
+    const h1Match = markdownContent.match(/^#[^#\n][^\n]*/m);
+    console.log(`[${sessionId}] First H1 in received markdown:`, h1Match?.[0] || 'NOT FOUND');
+
+    // Log first few lines after YAML front matter
+    const afterYaml = markdownContent.split('---\n\n')[1] || '';
+    const firstLines = afterYaml.split('\n').slice(0, 10).join('\n');
+    console.log(`[${sessionId}] First 10 lines of content:\n${firstLines}`);
+
     // Copy images to working directory if provided
     const imageFiles = req.files.images || [];
     if (imageFiles.length > 0) {

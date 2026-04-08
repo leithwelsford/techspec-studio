@@ -43,6 +43,9 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
 
   // DOCX options
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
+  // Numbering mode: 'template' strips manual numbers (for templates with auto-numbering),
+  // 'markdown' keeps manual numbers (for templates without auto-numbering)
+  const [numberingMode, setNumberingMode] = useState<'template' | 'markdown'>('template');
 
   // Check Pandoc availability on mount
   useEffect(() => {
@@ -116,7 +119,9 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
 
     setExporting(true);
     try {
-      const exportOpts: ExportOptions = { ...options };
+      // Include numberingMode in export options for all export paths
+      const exportOpts: ExportOptions = { ...options, numberingMode };
+      console.log('[Export] Export options:', exportOpts);
       let blob: Blob;
       const filename = project.specification.title || 'technical-specification';
 
@@ -149,8 +154,10 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         const pandocExportOpts = {
           ...exportOpts,
           pandocStyles: markdownGuidance?.pandocStyles,
+          numberingMode,
         };
         console.log('[Export] Pandoc styles:', markdownGuidance?.pandocStyles);
+        console.log('[Export] Numbering mode:', numberingMode);
 
         blob = await exportWithPandoc(project, templateFileForPandoc, pandocExportOpts);
         downloadPandocDocx(blob, filename);
@@ -587,6 +594,49 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                             )}
                           </span>
                         </label>
+                      )}
+
+                      {/* Numbering Mode - only show when template is uploaded */}
+                      {docxTemplateAnalysis && (
+                        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Heading Numbers
+                          </label>
+                          <div className="space-y-1">
+                            <label className="flex items-start">
+                              <input
+                                type="radio"
+                                name="numberingMode"
+                                value="template"
+                                checked={numberingMode === 'template'}
+                                onChange={() => setNumberingMode('template')}
+                                className="mt-0.5 mr-2"
+                              />
+                              <div>
+                                <span className="text-sm text-gray-700 dark:text-gray-300">Use template numbering</span>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  Strips manual numbers from markdown; template's auto-numbering applies
+                                </p>
+                              </div>
+                            </label>
+                            <label className="flex items-start">
+                              <input
+                                type="radio"
+                                name="numberingMode"
+                                value="markdown"
+                                checked={numberingMode === 'markdown'}
+                                onChange={() => setNumberingMode('markdown')}
+                                className="mt-0.5 mr-2"
+                              />
+                              <div>
+                                <span className="text-sm text-gray-700 dark:text-gray-300">Use markdown numbering</span>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  Keeps manual numbers; requires template without auto-numbering
+                                </p>
+                              </div>
+                            </label>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>

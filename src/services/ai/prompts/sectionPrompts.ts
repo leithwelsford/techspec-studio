@@ -1247,6 +1247,14 @@ Generate the complete section content in markdown format.
 - Maintain consistency with previous sections (if provided)
 - Output ONLY the section content - no explanations or meta-commentary
 
+**CONCISENESS:**
+- Write implementation-ready normative text, not explanatory prose
+- State each requirement once — do not rephrase or restate in different words
+- Prefer tables for interface definitions, parameters, error codes, and mappings
+- Prefer numbered lists for procedures and signalling flows
+- Omit introductory paragraphs that merely summarise what the section will cover
+- Do not repeat context, definitions, or constraints already stated in earlier sections — cross-reference them instead
+
 **DO NOT:**
 - Include placeholder text like "[Content to be added]"
 - Add sections beyond what was requested

@@ -420,9 +420,30 @@ export async function exportWithTemplate(
     // Extract styles from template
     const externalStyles = extractStylesFromTemplate(templateBase64);
 
+    // Handle heading numbering - strip manual numbers if using template numbering
+    const numberingMode = options.numberingMode ?? 'template';
+    console.log('[Template Export] Numbering mode:', numberingMode);
+
+    let processedMarkdown = project.specification.markdown;
+
+    if (numberingMode === 'template') {
+      // Strip manual numbering from headings (e.g., "# 1 Introduction" → "# Introduction")
+      const beforeStrip = processedMarkdown;
+      processedMarkdown = processedMarkdown.replace(
+        /^(#{1,6})\s+(\d+(?:\.\d+)*\.?)\s+/gm,
+        '$1 '
+      );
+
+      if (beforeStrip !== processedMarkdown) {
+        console.log('[Template Export] ✓ Stripped manual heading numbers');
+      } else {
+        console.log('[Template Export] ⚠ No heading numbers found to strip');
+      }
+    }
+
     // Convert markdown to DOCX elements
     const contentElements = await markdownToDocxElements(
-      project.specification.markdown,
+      processedMarkdown,
       project,
       options,
       templateAnalysis,

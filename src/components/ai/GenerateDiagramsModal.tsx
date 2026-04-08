@@ -89,7 +89,7 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
 
       // Check if current model is a reasoning model
       const { isReasoningModel, formatModelName } = await import('../../utils/aiModels');
-      const currentModel = aiConfig.model || 'anthropic/claude-3.5-sonnet';
+      const currentModel = aiConfig.model || 'anthropic/claude-sonnet-4.6';
       const isReasoning = isReasoningModel(currentModel);
 
       if (isReasoning) {

@@ -236,6 +236,46 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
             tokenEstimate: r.tokenEstimate
           }))
         );
+
+        // Extract diagram descriptions from references that don't have them yet
+        // Uses vision model (Gemini Flash) to describe diagrams — one-time cost per document
+        const refsNeedingDiagramExtraction = (project?.references || []).filter(
+          ref => ref.dataRef && !ref.diagramDescriptions && (ref.type === 'PDF' || ref.type === 'DOCX' || ref.type === 'TXT' || ref.type === 'MD')
+        );
+
+        if (refsNeedingDiagramExtraction.length > 0) {
+          setProgress({ current: 0, total: enabledCount + 1, section: 'Extracting diagrams from references...' });
+          console.log(`📊 Extracting diagram context from ${refsNeedingDiagramExtraction.length} reference(s)...`);
+
+          const { extractDiagramContext } = await import('../../services/ai/diagramContextExtractor');
+          const { getDocumentAsBase64 } = await import('../../services/storage/documentStorage');
+
+          for (const ref of refsNeedingDiagramExtraction) {
+            try {
+              const base64 = ref.dataRef ? await getDocumentAsBase64(ref.dataRef) : undefined;
+              const pdfVisionModel = aiConfig.pdfVisionModel || 'google/gemini-2.5-flash';
+
+              const extraction = await extractDiagramContext(
+                ref.type as 'PDF' | 'DOCX' | 'TXT' | 'MD',
+                base64 || undefined,
+                ref.extractedText || ref.content,
+                ref.filename || ref.title,
+                aiService.getProvider(),
+                { model: pdfVisionModel }
+              );
+
+              if (extraction.contextSummary) {
+                // Store diagram descriptions on the reference for future use
+                useProjectStore.getState().updateReference(ref.id, {
+                  diagramDescriptions: extraction.contextSummary,
+                });
+                console.log(`✅ Extracted ${extraction.diagrams.length} diagram(s) from ${ref.title}`);
+              }
+            } catch (err) {
+              console.warn(`⚠️ Diagram extraction failed for ${ref.title}:`, err);
+            }
+          }
+        }
       }
 
       // Build context
