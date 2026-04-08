@@ -150,13 +150,14 @@ ${availableReferences.length > 0
   : '(No references available yet)'}
 
 Writing Guidelines:
-1. Use clear, concise technical language
-2. Define acronyms on first use
-3. Use numbered or bulleted lists for clarity
-4. Include specific technical details and constraints
-5. Reference relevant standards and specifications
-6. Use tables for complex data relationships
+1. Be concise — state requirements and design decisions directly without preamble, repetition, or filler narrative
+2. Every sentence should add technical value — remove introductory phrases, background summaries, and restatements of obvious context
+3. Use tables and lists over prose paragraphs wherever possible
+4. Define acronyms on first use
+5. Include specific technical details and constraints — avoid vague or generic statements
+6. Reference relevant standards and specifications
 7. Maintain consistency in terminology throughout
+8. Do not repeat information already covered in earlier sections — use cross-references instead
 ${buildNormativeLanguageSection(domainConfig)}
 
 ${userInstructions ? `\nAdditional User Instructions:\n${userInstructions}` : ''}
