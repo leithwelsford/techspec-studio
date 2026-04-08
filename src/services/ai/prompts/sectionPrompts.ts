@@ -1221,12 +1221,13 @@ ${truncatedBrs}
 `;
   }
 
-  // Previous sections — increased context for cross-reference awareness
+  // Previous sections — two-tier context for cross-reference awareness
+  // The content now contains compact summaries of older sections + full text of recent ones,
+  // built by templatePrompts.ts. Allow generous budget since this prevents duplication.
   if (previousSections) {
-    // Provide enough context so the AI knows what's already been said
-    const maxPrevChars = depth === 'brief' ? 5000 : 15000;
+    const maxPrevChars = depth === 'brief' ? 8000 : 30000;
     const truncatedPrev = previousSections.length > maxPrevChars
-      ? '...' + previousSections.slice(-maxPrevChars)
+      ? previousSections.slice(0, maxPrevChars) + '\n\n[... earlier sections truncated — see section headings above for cross-reference ...]'
       : previousSections;
 
     prompt += `### Previous Sections (DO NOT REPEAT)
@@ -1235,6 +1236,7 @@ The following sections have already been generated. You MUST cross-reference the
 - If a requirement, definition, or procedure was already defined, write "as defined in Section X.Y" instead of repeating it.
 - If an interface or protocol was already described, do NOT reproduce the description — reference the section.
 - If a table already defines parameters, do NOT create a similar table — reference it.
+- Earlier sections are shown as summaries (headings + requirement IDs). Recent sections include full text.
 
 ${truncatedPrev}
 

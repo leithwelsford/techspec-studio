@@ -109,10 +109,39 @@ const promptBuilders: Record<string, PromptBuilder> = {
         }
       : undefined;
 
-    // Build previous sections context as string
-    const previousContent = context.previousSections.length > 0
-      ? context.previousSections.map(s => `# ${s.title}\n\n${s.content}`).join('\n\n---\n\n')
-      : undefined;
+    // Build previous sections context with two tiers:
+    // 1. Compact summary (headings + requirement IDs) for ALL preceding sections
+    // 2. Full text for the most recent 2-3 sections
+    // This ensures the AI knows what every section covered without blowing the token budget
+    let previousContent: string | undefined;
+    if (context.previousSections.length > 0) {
+      const sections = context.previousSections;
+      const RECENT_FULL_COUNT = 3; // Full text for last 3 sections
+      const recentStart = Math.max(0, sections.length - RECENT_FULL_COUNT);
+
+      // Compact summary for older sections (headings + requirement IDs only)
+      const olderSections = sections.slice(0, recentStart);
+      let compactSummary = '';
+      if (olderSections.length > 0) {
+        compactSummary = '#### Earlier Sections (summary — cross-reference these, do NOT repeat)\n\n';
+        for (const s of olderSections) {
+          // Extract headings
+          const headings = s.content.match(/^#{1,4}\s+.+$/gm) || [];
+          // Extract requirement IDs
+          const reqIds = s.content.match(/\*\*[A-Z]+-[A-Z]+-[A-Z]+-\d{5}\*\*/g) || [];
+          compactSummary += `**${s.title}**\n`;
+          if (headings.length > 0) compactSummary += `  Subsections: ${headings.slice(0, 10).map(h => h.replace(/^#+\s+/, '')).join(', ')}\n`;
+          if (reqIds.length > 0) compactSummary += `  Requirement IDs: ${reqIds.slice(0, 15).join(', ')}${reqIds.length > 15 ? ` (+${reqIds.length - 15} more)` : ''}\n`;
+          compactSummary += '\n';
+        }
+      }
+
+      // Full text for recent sections
+      const recentSections = sections.slice(recentStart);
+      const recentContent = recentSections.map(s => `# ${s.title}\n\n${s.content}`).join('\n\n---\n\n');
+
+      previousContent = compactSummary + (recentContent ? '\n#### Recent Sections (full text)\n\n' + recentContent : '');
+    }
 
     return flexiblePromptBuilder(flexibleSection, {
       brsContent: context.brsDocument.markdown,
