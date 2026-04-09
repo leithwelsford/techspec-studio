@@ -330,27 +330,53 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
       // Update usage stats
       updateUsageStats(result.totalTokens, result.totalCost);
 
+      // Log review results if available
+      const reviewReport = (result as any).reviewReport;
+      if (reviewReport && reviewReport.totalIssues > 0) {
+        console.log(`📋 Specification review: ${reviewReport.errors} errors, ${reviewReport.warnings} warnings, ${reviewReport.info} info`);
+        for (const issue of reviewReport.issues) {
+          console.log(`  [${issue.severity.toUpperCase()}] Section ${issue.sectionNumber}: ${issue.description}`);
+        }
+      }
+
       console.log('✅ Specification generation complete:', {
         sections: result.sections.length,
         tokens: result.totalTokens,
         cost: `$${result.totalCost.toFixed(4)}`,
-        length: result.markdown.length
+        length: result.markdown.length,
+        reviewIssues: reviewReport?.totalIssues || 0
       });
 
+      // Build review summary to append to the generated content for user visibility
+      let reviewSummary = '';
+      if (reviewReport && reviewReport.totalIssues > 0) {
+        reviewSummary = '\n\n---\n\n# Specification Review Report\n\n';
+        reviewSummary += `**${reviewReport.errors} errors, ${reviewReport.warnings} warnings, ${reviewReport.info} informational items**\n\n`;
+        reviewSummary += '| # | Severity | Section | Category | Issue | Suggestion |\n';
+        reviewSummary += '|---|---|---|---|---|---|\n';
+        reviewReport.issues.forEach((issue: any, idx: number) => {
+          reviewSummary += `| ${idx + 1} | ${issue.severity} | ${issue.sectionNumber} ${issue.sectionTitle} | ${issue.category} | ${issue.description} | ${issue.suggestion} |\n`;
+        });
+        reviewSummary += '\n> **Note:** This review report is appended for editorial reference. Remove this section before finalising the specification.\n';
+      }
+
       if (requireApproval) {
-        // Create approval for user review
+        // Create approval for user review — includes review report if issues found
         const approvalId = createApproval({
           taskId: `generate-spec-${Date.now()}`,
           type: 'document',
           status: 'pending',
           originalContent: project?.specification?.markdown || '',
-          generatedContent: result.markdown
+          generatedContent: result.markdown + reviewSummary
         });
 
         console.log('📋 Created approval for review:', approvalId);
 
-        // Show success message
-        setProgress({ current: enabledCount + 1, total: enabledCount + 1, section: 'Complete! Review in Review Panel.' });
+        // Show success message with review count
+        const reviewMsg = reviewReport?.totalIssues > 0
+          ? ` Review found ${reviewReport.totalIssues} issue(s).`
+          : '';
+        setProgress({ current: enabledCount + 1, total: enabledCount + 1, section: `Complete! Review in Review Panel.${reviewMsg}` });
       } else {
         // Apply directly without approval
         updateSpecification(result.markdown);

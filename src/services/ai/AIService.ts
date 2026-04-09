@@ -1918,6 +1918,7 @@ Generate the complete Section 4 now in markdown format.`;
     totalTokens: number;
     totalCost: number;
     brsAnalysis: any;
+    reviewReport?: any;
   }> {
     if (!this.provider || !this.config) {
       throw new Error('AI service not initialized');
@@ -2239,11 +2240,47 @@ ${enabledSections.map((s, i) => {
 
     const fullMarkdown = documentHeader + sections.map(s => s.content).join('\n\n---\n\n');
 
+    // Step 6: Post-generation review pass
+    // Check depth compliance, content duplication, cross-references, and consistency
+    console.log('🔍 Running post-generation specification review...');
+    if (onProgress) {
+      onProgress(enabledSections.length, enabledSections.length, 'Reviewing specification...');
+    }
+
+    let reviewReport = null;
+    try {
+      const { reviewSpecification } = await import('./specReviewer');
+      // Build section depth map from enabled sections
+      const sectionDepthMap: Record<string, any> = {};
+      for (const s of enabledSections) {
+        sectionDepthMap[s.title] = (s as any).depth || 'detailed';
+        sectionDepthMap[s.number] = (s as any).depth || 'detailed';
+      }
+
+      reviewReport = await reviewSpecification(
+        fullMarkdown,
+        sectionDepthMap,
+        this.provider,
+        { model: currentModel, temperature: 0.2 }
+      );
+
+      totalTokens += reviewReport.tokensUsed;
+      totalCost += reviewReport.cost;
+
+      console.log(`📋 Review complete: ${reviewReport.errors} errors, ${reviewReport.warnings} warnings, ${reviewReport.info} info`);
+      if (reviewReport.issues.length > 0) {
+        console.log('📋 Review issues:', reviewReport.issues.map(i => `[${i.severity}] ${i.category}: ${i.description}`));
+      }
+    } catch (error) {
+      console.warn('⚠️ Specification review failed (non-blocking):', error);
+    }
+
     console.log('✅ Full specification generation complete:', {
       totalSections: sections.length,
       totalTokens,
       totalCost: `$${totalCost.toFixed(4)}`,
-      totalLength: fullMarkdown.length
+      totalLength: fullMarkdown.length,
+      reviewIssues: reviewReport?.totalIssues || 0
     });
 
     return {
@@ -2251,7 +2288,8 @@ ${enabledSections.map((s, i) => {
       sections,
       totalTokens,
       totalCost,
-      brsAnalysis
+      brsAnalysis,
+      reviewReport
     };
   }
 

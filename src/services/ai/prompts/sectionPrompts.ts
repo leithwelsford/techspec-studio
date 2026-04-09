@@ -1110,42 +1110,20 @@ export function buildFlexibleSectionPrompt(
   // Determine section depth
   const depth = section.depth || 'detailed';
   const depthDirective = depth === 'brief'
-    ? `**DEPTH: BRIEF — HARD LIMIT: 800 WORDS MAXIMUM (approximately 1-2 A4 pages)**
-
-This section MUST be brief. You are writing a summary, not a detailed specification.
-
-MANDATORY CONSTRAINTS:
-- MAXIMUM 800 words of output for this entire section including all subsections
-- MAXIMUM 10 requirement IDs for this entire section
-- Do NOT include RADIUS attribute tables — reference the section that defines them
-- Do NOT include Diameter AVP tables — reference the section that defines them
-- Do NOT include step-by-step numbered procedures — reference the Signalling Flows section
-- Do NOT include key derivation formulas or algorithms — cite the RFC section number
-- Do NOT include protocol state machines or message sequence descriptions
-- Do NOT define configurable parameters or timer values — those belong in detailed sections
-
-WHAT TO INCLUDE:
-- State which protocols/methods are used (one sentence each)
-- State which standards define them (cite RFC/TS number and section)
-- State any spec-specific design decisions that differ from the standard
-- Cross-reference other sections for detail: "The complete signalling flow is defined in Section X"
-- Use a single summary table if needed (max 5 rows)
-
-EXAMPLE of correct brief output for an Authentication section:
-"The ET Wi-Fi Offloading service uses SIM-based authentication via EAP-SIM (RFC 4186) and EAP-AKA (RFC 4187) over IEEE 802.1X. The WLAN AC acts as the 802.1X Authenticator and relays EAP messages to the AAA Server via RADIUS (RFC 3579). The AAA Server retrieves authentication vectors from the HLR/HSS. Method selection is automatic based on the NAI prefix digit (0=EAP-AKA, 1=EAP-SIM). The complete authentication signalling flows are defined in Section 7. RADIUS attribute mappings are defined in Section 3."
-
-That example is approximately the RIGHT length for a brief section. Do NOT exceed it significantly.`
+    ? `**DEPTH: BRIEF** — This section requires BRIEF treatment only.
+- Summarise the topic in 1-2 pages maximum
+- Reference the applicable standards (RFC, 3GPP TS, IEEE) — do NOT reproduce their procedures
+- State what method/protocol is used and why, then cite the standard for details
+- Do NOT include step-by-step signalling flows or protocol exchanges
+- Reserve requirement IDs for spec-specific decisions only, not for restating standards
+- Example: "Authentication SHALL use EAP-AKA per RFC 4187" — NOT a 20-step EAP exchange`
     : depth === 'standard'
-    ? `**DEPTH: STANDARD — TARGET: 2000-3000 WORDS (approximately 3-5 A4 pages)**
-
-MANDATORY CONSTRAINTS:
-- TARGET 2000-3000 words for this entire section including all subsections
-- MAXIMUM 30 requirement IDs for this entire section
-- Restate business requirements as normative statements — one requirement ID per distinct testable requirement
-- Do NOT reproduce protocol internals, AVP definitions, or message formats — cross-reference detailed sections
-- Tables SHOULD have no more than 10 rows each
-- Do NOT include signalling flows — cross-reference the Signalling Flows section
-- Do NOT add explanatory prose around tables — the table IS the content`
+    ? `**DEPTH: STANDARD** — This section requires STANDARD treatment.
+- Moderate detail: 2-5 pages typical
+- Restate business requirements as normative statements with requirement IDs
+- Define scope boundaries and applicability clearly
+- Do NOT elaborate on protocol internals — cross-reference the Architecture or Signalling sections
+- Keep tables concise — one row per requirement, not one paragraph per requirement`
     : `**DEPTH: DETAILED** — This section requires DETAILED treatment.
 - Full normative text with complete technical detail
 - Include tables, signalling flows, AVP definitions, and parameter values
