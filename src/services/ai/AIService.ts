@@ -2974,12 +2974,36 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     let previousContent = '';
     let requirementCounters: RequirementCounterState = { counters: {} };
 
+    // Build stable system context ONCE outside the loop for prompt caching
+    const { buildSystemPrompt } = await import('./prompts/systemPrompts');
+    const { buildFlexibleSectionPrompt } = await import('./prompts/sectionPrompts');
+    const baseSystemPrompt = buildSystemPrompt({ domainConfig: structure.domainConfig });
+
+    let stableContext = `# Specification Context\n\n`;
+    stableContext += `## BRS Content\n\n${brsContent}\n`;
+    if (combinedGuidance) {
+      stableContext += `\n## Generation Guidance\n\n${combinedGuidance}\n`;
+    }
+
+    // Include diagram descriptions from reference documents if available
+    try {
+      const project = (await import('../../store/projectStore')).useProjectStore.getState().project;
+      if (project?.references) {
+        const diagramContextParts = project.references
+          .filter((ref: any) => ref.diagramDescriptions && ref.diagramDescriptions.trim())
+          .map((ref: any) => ref.diagramDescriptions!);
+        if (diagramContextParts.length > 0) {
+          stableContext += `\n## Diagrams from Reference Documents\n\n${diagramContextParts.join('\n\n')}\n`;
+          console.log(`📊 Added ${diagramContextParts.length} diagram description(s) to context`);
+        }
+      }
+    } catch { /* non-blocking */ }
+
+    console.log(`💾 Built stable context for caching: ~${Math.round(stableContext.length / 4)} tokens (cached across ${sections.length} section calls)`);
+
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i];
       onProgress?.(i + 1, sections.length, section.title, 'generating');
-
-      // Import the flexible section prompt builder
-      const { buildFlexibleSectionPrompt } = await import('./prompts/sectionPrompts');
 
       const prompt = buildFlexibleSectionPrompt(
         {
@@ -3007,16 +3031,6 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       );
 
       try {
-        // Build stable system context for prompt caching (same across all section calls)
-        const { buildSystemPrompt } = await import('./prompts/systemPrompts');
-        const baseSystemPrompt = buildSystemPrompt(structure.domainConfig);
-
-        let stableContext = `# Specification Context\n\n`;
-        stableContext += `## BRS Content\n\n${brsContent}\n`;
-        if (combinedGuidance) {
-          stableContext += `\n## Generation Guidance\n\n${combinedGuidance}\n`;
-        }
-
         let result = await this.provider.generate(
           [
             { role: 'system', content: baseSystemPrompt },

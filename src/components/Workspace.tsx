@@ -89,13 +89,27 @@ export default function Workspace() {
       // Update usage stats
       updateUsageStats(result.totalTokens, result.totalCost);
 
-      // Create pending approval for the generated content
+      // Build review summary if review report is available
+      let reviewSummary = '';
+      const reviewReport = (result as any).reviewReport;
+      if (reviewReport && reviewReport.totalIssues > 0) {
+        reviewSummary = '\n\n---\n\n# Specification Review Report\n\n';
+        reviewSummary += `**${reviewReport.errors} errors, ${reviewReport.warnings} warnings, ${reviewReport.info} informational items**\n\n`;
+        reviewSummary += '| # | Severity | Section | Category | Issue | Suggestion |\n';
+        reviewSummary += '|---|---|---|---|---|---|\n';
+        reviewReport.issues.forEach((issue: any, idx: number) => {
+          reviewSummary += `| ${idx + 1} | ${issue.severity} | ${issue.sectionNumber} ${issue.sectionTitle} | ${issue.category} | ${issue.description} | ${issue.suggestion} |\n`;
+        });
+        reviewSummary += '\n> **Note:** This review report is appended for editorial reference. Remove this section before finalising the specification.\n';
+      }
+
+      // Create pending approval for the generated content (with review report appended)
       createApproval({
         taskId: `structure-gen-${Date.now()}`,
         type: 'document',
         status: 'pending',
         originalContent: project?.specification?.markdown || '',
-        generatedContent: result.markdown,
+        generatedContent: result.markdown + reviewSummary,
       });
 
       // Show the review panel
@@ -103,6 +117,9 @@ export default function Workspace() {
 
       // Build result message
       let message = `✅ Generated ${result.sections.length} sections.`;
+      if (reviewReport && reviewReport.totalIssues > 0) {
+        message += `\n\n📋 Review found ${reviewReport.totalIssues} issue(s) (${reviewReport.errors} errors, ${reviewReport.warnings} warnings). See the review report at the end of the generated document.`;
+      }
       if (result.truncatedSections.length > 0) {
         message += `\n\n⚠️ Warning: ${result.truncatedSections.length} section(s) were truncated:\n• ${result.truncatedSections.join('\n• ')}\n\nThese sections may be incomplete. Consider regenerating them individually.`;
       }
