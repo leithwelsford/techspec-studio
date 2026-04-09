@@ -30,9 +30,10 @@ You MUST respond with valid JSON in the following format:
       {
         "id": "unique-section-id",
         "title": "Section Title",
-        "description": "Brief description (1-2 sentences max)",
+        "description": "What this section covers AND what it explicitly excludes (1-2 sentences)",
         "rationale": "Brief rationale (1 sentence)",
         "suggestedSubsections": ["Subsection 1", "Subsection 2"],
+        "depth": "detailed|standard|brief",
         "order": 1,
         "confidence": 0.95,
         "sourceHints": ["BRS section reference"]
@@ -101,6 +102,23 @@ export function buildStructureProposalSystemPrompt(): string {
 - Focus the structure on the primary technical areas identified in the BRS and user guidance
 - Assign confidence scores based on how clearly the BRS indicates the need
 - Use descriptive section IDs (kebab-case)
+
+## CRITICAL: Mutual Exclusivity and Anti-Duplication Rules
+
+**Each topic MUST appear in exactly ONE section.** If a topic could belong to multiple sections, assign it to the most specific section and explicitly exclude it from all others.
+
+Specific rules:
+1. **Failure handling**: If a dedicated "Failure Handling" section exists, do NOT include failure scenarios as subsections of other sections (e.g., do NOT add "7.5 Failure Scenarios" to Signalling Flows AND a separate Section 8 for Failure Handling). Pick ONE location.
+2. **Authentication procedures vs Signalling Flows**: If signalling flows include EAP authentication end-to-end, the Authentication section should only define the method, identity format, and key derivation — NOT reproduce the step-by-step flow. The flow belongs in Signalling Flows only.
+3. **Session binding vs Architecture**: If session binding has its own section, the Architecture section should only reference the binding model — NOT redefine it.
+4. **Commercial behaviour vs Charging**: If a Commercial/Service section defines charging precedence, the PCC/Charging section should reference those rules — NOT restate them.
+5. **Scope vs Introduction**: Do NOT create separate Introduction and Scope sections that repeat the same boundaries. Combine them or make one reference the other.
+
+In the section description field, explicitly state what is EXCLUDED from that section:
+- Example: "Defines PCC rule provisioning and QoS enforcement. Failure handling for Gx/Gy/Gz is defined in Section X, not here."
+- Example: "Covers end-to-end signalling flows including authentication. Section Y defines authentication methods but does NOT include step-by-step flows."
+
+**suggestedSubsections** MUST NOT overlap with other sections. Before suggesting a subsection, verify it is not the primary topic of another proposed section.
 
 ${STRUCTURE_OUTPUT_FORMAT}`;
 }
@@ -211,8 +229,8 @@ Consider these technical aspects when deciding which sections to include (e.g., 
 Based on the BRS content above:
 
 1. **Infer the Domain**: Identify the primary domain, industry, and any referenced standards
-2. **Propose Document Structure**: Create a logical section hierarchy that covers all requirements
-3. **Provide Rationale**: Explain why each section is needed
+2. **Propose Document Structure**: Create a logical section hierarchy where each topic has exactly one home
+3. **Provide Rationale**: Explain why each section is needed AND what it explicitly excludes
 4. **Suggest Formatting**: Recommend normative language style and key terminology
 
 Consider:
@@ -221,6 +239,8 @@ Consider:
 - What procedures or workflows are mentioned?
 - What standards or specifications are referenced?
 - What domain-specific terminology is used?
+
+**Before finalising**: Review every pair of proposed sections. If two sections could generate overlapping content, merge them or explicitly assign the overlapping topic to exactly one section and exclude it from the other in the description field.
 
 Respond with the JSON structure as specified.`;
 
