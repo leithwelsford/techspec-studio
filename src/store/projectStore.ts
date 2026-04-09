@@ -38,6 +38,7 @@ import type {
 import * as documentStorage from '../services/storage/documentStorage';
 import { getEnvApiKey, getEnvModel, getEnvTemperature, getEnvMaxTokens, getEnvEnableStreaming } from '../utils/envConfig';
 import { assignFigureNumbers } from '../utils/figureNumbering';
+import { DEFAULT_PDF_VISION_MODEL } from '../utils/aiModels';
 
 export interface ProjectState {
   // Current project
@@ -250,7 +251,7 @@ const createDefaultAIConfig = (): AIConfig | null => {
     provider: 'openrouter',
     apiKey: envApiKey, // Store unencrypted - AIConfigPanel will handle encryption on save
     model: (getEnvModel() as any) || 'anthropic/claude-sonnet-4.6',
-    pdfVisionModel: 'google/gemini-2.5-flash',
+    pdfVisionModel: DEFAULT_PDF_VISION_MODEL,
     temperature: getEnvTemperature() ?? 0.3,
     maxTokens: getEnvMaxTokens() ?? 64000,
     enableStreaming: getEnvEnableStreaming() ?? true,
@@ -584,11 +585,13 @@ export const useProjectStore = create<ProjectState>()(
 
           // Add timeout to prevent hanging on large/complex PDFs (30 seconds)
           const extractionPromise = documentStorage.extractTextFromStoredDocument(stored.id);
-          const timeoutPromise = new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error('Text extraction timed out after 30s')), 30000)
-          );
+          let timeoutId: ReturnType<typeof setTimeout>;
+          const timeoutPromise = new Promise<null>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('Text extraction timed out after 30s')), 30000);
+          });
 
-          const extraction = await Promise.race([extractionPromise, timeoutPromise]);
+          const extraction = await Promise.race([extractionPromise, timeoutPromise])
+            .finally(() => clearTimeout(timeoutId));
           if (extraction) {
             extractedText = extraction.text;
             tokenEstimate = extraction.tokenEstimate;

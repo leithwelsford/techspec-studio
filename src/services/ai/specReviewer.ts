@@ -460,8 +460,17 @@ ${markdown.length > 80000 ? '\n\n[... specification truncated for review ...]' :
           });
         }
       }
-    } catch {
-      console.warn('Failed to parse AI review response as JSON');
+    } catch (parseError) {
+      console.warn('Failed to parse AI review response as JSON:', parseError);
+      issues.push({
+        id: 'ai-parse-failure',
+        severity: 'warning',
+        category: 'consistency',
+        sectionTitle: '',
+        sectionNumber: '',
+        description: 'AI review completed but returned unparseable results. The review may need to be re-run.',
+        suggestion: 'Re-generate the specification or manually review for consistency issues.',
+      });
     }
 
     return {

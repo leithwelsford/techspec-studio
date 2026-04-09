@@ -16,6 +16,7 @@ import { TemplateSelectionModal } from './TemplateSelectionModal';
 import { SectionComposer } from './SectionComposer';
 import { ReferenceDocumentUpload } from '../documents/ReferenceDocumentUpload';
 import { OpenRouterProvider } from '../../services/ai/providers/OpenRouterProvider';
+import { DEFAULT_PDF_VISION_MODEL } from '../../utils/aiModels';
 import {
   estimateContextTokens,
   checkContextFits,
@@ -201,7 +202,7 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
         decryptedKey = decrypt(aiConfig.apiKey);
         // If decryption returns empty string or the result doesn't look like an API key,
         // it likely failed due to device fingerprint change
-        if (!decryptedKey || (!decryptedKey.startsWith('sk-') && decryptedKey.length < 20)) {
+        if (!decryptedKey || !decryptedKey.startsWith('sk-') || decryptedKey.trim().length < 20) {
           console.error('API key decryption failed. Key may have been encrypted on a different device/browser.');
           throw new Error('Failed to decrypt API key. This can happen if you changed browsers or cleared browser data. Please re-enter your API key in AI Settings.');
         }
@@ -253,7 +254,7 @@ export const GenerateSpecModal: React.FC<GenerateSpecModalProps> = ({ isOpen, on
           for (const ref of refsNeedingDiagramExtraction) {
             try {
               const base64 = ref.dataRef ? await getDocumentAsBase64(ref.dataRef) : undefined;
-              const pdfVisionModel = aiConfig.pdfVisionModel || 'google/gemini-2.5-flash';
+              const pdfVisionModel = aiConfig.pdfVisionModel || DEFAULT_PDF_VISION_MODEL;
 
               const extraction = await extractDiagramContext(
                 ref.type as 'PDF' | 'DOCX' | 'TXT' | 'MD',

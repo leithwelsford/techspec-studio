@@ -65,6 +65,26 @@ export function getModelCapabilities(modelId: string): {
 }
 
 /**
+ * Check if a generation result was truncated due to output token limits.
+ * Centralised check to ensure consistent truncation detection across all code paths.
+ */
+export function wasOutputTruncated(result: { finishReason?: string; nativeFinishReason?: string } | any): boolean {
+  const finish = result?.finishReason || '';
+  const nativeFinish = result?.nativeFinishReason || '';
+  return finish === 'length' ||
+    finish === 'max_tokens' ||
+    finish === 'max_output_tokens' ||
+    nativeFinish === 'max_output_tokens' ||
+    nativeFinish === 'length';
+}
+
+/** Default PDF vision model for reference document processing */
+export const DEFAULT_PDF_VISION_MODEL = 'google/gemini-2.5-flash';
+
+/** Default section depth when not specified */
+export const DEFAULT_SECTION_DEPTH = 'detailed' as const;
+
+/**
  * Format model display name
  */
 export function formatModelName(modelId: string): string {

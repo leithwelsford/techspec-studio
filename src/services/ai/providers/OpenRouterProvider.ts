@@ -122,6 +122,7 @@ export class OpenRouterProvider {
     content: string;
     tokens: { prompt: number; completion: number; total: number };
     cost: number;
+    finishReason: string;
   }> {
     const model = config.model || 'anthropic/claude-sonnet-4.6';
     const cachedMessages = this.applyCacheControl(messages, model);
@@ -205,7 +206,7 @@ export class OpenRouterProvider {
     // Include finish_reason for debugging truncated output
     const finishReason = data.choices[0]?.finish_reason || data.choices[0]?.native_finish_reason || 'unknown';
 
-    return { content, tokens, cost, finishReason } as any;
+    return { content, tokens, cost, finishReason };
   }
 
   /**

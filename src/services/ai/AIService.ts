@@ -20,6 +20,7 @@ import type {
 } from '../../types';
 
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
+import { wasOutputTruncated } from '../../utils/aiModels';
 import { buildSystemPrompt, buildRefinementPrompt, buildReviewPrompt } from './prompts/systemPrompts';
 import {
   buildDocumentGenerationPrompt,
@@ -477,7 +478,7 @@ export class AIService {
     console.log('📄 Full Generated Content:', result.content);
 
     // Warn if output was truncated
-    if (finishReason === 'length' || finishReason === 'max_output_tokens') {
+    if (wasOutputTruncated({ finishReason })) {
       console.error('❌ CRITICAL: Refinement output was TRUNCATED due to token limit!');
       console.error(`   Generated only ${result.content.length} chars (${result.content.split('\n').length} lines)`);
       console.error(`   Original was ${originalContent.length} chars (${originalContent.split('\n').length} lines)`);
@@ -1754,7 +1755,7 @@ Generate the complete Section 4 now in markdown format.`;
       console.log(`📝 Section ${i + 1} content preview (first 300 chars):`, sectionResult.content.substring(0, 300));
 
       // Warn if section was truncated due to token limit
-      if ((sectionResult as any).finishReason === 'length' || (sectionResult as any).finishReason === 'max_output_tokens') {
+      if (wasOutputTruncated(sectionResult)) {
         console.warn(`⚠️ WARNING: Section ${i + 1} "${title}" was TRUNCATED due to token limit!`);
         console.warn(`   Content length: ${sectionResult.content.length} chars, Lines: ${sectionResult.content.split('\n').length}`);
         console.warn(`   This section is INCOMPLETE. Consider increasing maxTokens or using a different model.`);
@@ -2208,7 +2209,7 @@ Generate the complete Section 4 now in markdown format.`;
       });
 
       // Warn if truncated
-      if ((sectionResult as any).finishReason === 'length' || (sectionResult as any).finishReason === 'max_output_tokens') {
+      if (wasOutputTruncated(sectionResult)) {
         console.warn(`⚠️ WARNING: Section "${sectionTitle}" was TRUNCATED due to token limit!`);
       }
 
@@ -2710,9 +2711,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       });
 
       // Check for truncation (response cut off due to max tokens)
-      const wasTruncated = result.finishReason === 'length' ||
-                           result.finishReason === 'max_tokens' ||
-                           (result as { nativeFinishReason?: string }).nativeFinishReason === 'max_output_tokens';
+      const wasTruncated = wasOutputTruncated(result);
 
       if (wasTruncated) {
         console.warn('⚠️ Structure proposal response was truncated due to token limit');
@@ -3057,11 +3056,11 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
         );
 
         // Check for truncation
-        let wasTruncated = result.finishReason === 'length' ||
-                           result.finishReason === 'max_tokens' ||
-                           (result as { nativeFinishReason?: string }).nativeFinishReason === 'max_output_tokens';
+        let wasTruncated = wasOutputTruncated(result);
 
         let finalContent = result.content;
+        let sectionTotalTokens = result.tokens?.total || 0;
+        let sectionTotalCost = result.cost || 0;
         let retryCount = 0;
 
         // Auto-retry truncated sections with continuation
@@ -3093,13 +3092,11 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
 
           // Append continuation to original content
           finalContent = finalContent + '\n\n' + continuationResult.content;
-          totalTokens += continuationResult.tokens?.total || 0;
-          totalCost += continuationResult.cost || 0;
+          sectionTotalTokens += continuationResult.tokens?.total || 0;
+          sectionTotalCost += continuationResult.cost || 0;
 
           // Check if continuation was also truncated
-          wasTruncated = continuationResult.finishReason === 'length' ||
-                         continuationResult.finishReason === 'max_tokens' ||
-                         (continuationResult as { nativeFinishReason?: string }).nativeFinishReason === 'max_output_tokens';
+          wasTruncated = wasOutputTruncated(continuationResult);
 
           if (!wasTruncated) {
             console.log(`  ✓ Continuation successful for "${section.title}"`);
@@ -3119,13 +3116,13 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
         generatedSections.push({
           title: section.title,
           content: finalContent,
-          tokensUsed: result.tokens?.total || 0,
+          tokensUsed: sectionTotalTokens,
           wasTruncated,
         });
 
         previousContent += '\n\n' + finalContent;
-        totalTokens += result.tokens?.total || 0;
-        totalCost += result.cost || 0;
+        totalTokens += sectionTotalTokens;
+        totalCost += sectionTotalCost;
 
         // Update requirement counters from generated content
         requirementCounters = updateRequirementCounters(requirementCounters, finalContent);

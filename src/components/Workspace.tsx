@@ -8,6 +8,7 @@ import StructureDiscoveryModal from './ai/StructureDiscoveryModal';
 import MarkdownEditor from './editors/MarkdownEditor';
 import { BRSUpload } from './BRSUpload';
 import DiagramViewer from './DiagramViewer';
+import { DEFAULT_PDF_VISION_MODEL } from '../utils/aiModels';
 import ExportModal from './ExportModal';
 import { aiService } from '../services/ai/AIService';
 import { decrypt } from '../utils/encryption';
@@ -89,7 +90,7 @@ export default function Workspace() {
           for (const ref of refsNeedingDiagramExtraction) {
             try {
               const base64 = ref.dataRef ? await getDocumentAsBase64(ref.dataRef) : undefined;
-              const pdfVisionModel = aiConfig.pdfVisionModel || 'google/gemini-2.5-flash';
+              const pdfVisionModel = aiConfig.pdfVisionModel || DEFAULT_PDF_VISION_MODEL;
 
               const extraction = await extractDiagramContext(
                 ref.type as 'PDF' | 'DOCX' | 'TXT' | 'MD',
