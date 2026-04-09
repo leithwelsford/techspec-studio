@@ -93,9 +93,13 @@ export class OpenRouterProvider {
         }
       }
 
-      // Cache the first user message if it's large (likely contains BRS/reference context)
-      // Only cache the first user message to avoid invalidating cache on conversation turns
-      if (msg.role === 'user' && index <= 2 && typeof msg.content === 'string' && msg.content.length > 8000) {
+      // Cache the first user message ONLY if there are no system messages
+      // (single-message pattern, e.g., structure planning).
+      // When system messages exist (section generation), the stable context is
+      // already cached via the system messages — caching the changing user message
+      // would waste 1.25x on a cache entry that never gets a read hit.
+      const hasSystemMessages = messages.some(m => m.role === 'system');
+      if (!hasSystemMessages && msg.role === 'user' && index === 0 && typeof msg.content === 'string' && msg.content.length > 8000) {
         return {
           ...msg,
           content: [
