@@ -126,12 +126,14 @@ export async function extractDiagramsFromDOCX(
     const fileContent = file.asUint8Array();
     if (fileContent.length < 5000) continue;
 
-    // Convert to base64
-    let binary = '';
-    for (let j = 0; j < fileContent.length; j++) {
-      binary += String.fromCharCode(fileContent[j]);
+    // Convert to base64 — use chunked approach to avoid O(n²) string concat
+    const chunkSize = 8192;
+    const chunks: string[] = [];
+    for (let j = 0; j < fileContent.length; j += chunkSize) {
+      const slice = fileContent.subarray(j, Math.min(j + chunkSize, fileContent.length));
+      chunks.push(String.fromCharCode.apply(null, Array.from(slice)));
     }
-    const b64 = btoa(binary);
+    const b64 = btoa(chunks.join(''));
 
     imageFiles.push({ name: filePath.replace('word/media/', ''), base64: b64, mimeType });
   }

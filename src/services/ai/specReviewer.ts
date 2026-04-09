@@ -233,7 +233,7 @@ function checkRequirementIdDuplication(
         severity: 'error',
         category: 'requirement-id',
         sectionTitle: sectionList[0],
-        sectionNumber: sectionList[0].split(' ')[0],
+        sectionNumber: (sectionList[0] || '').split(' ')[0] || 'unknown',
         description: `Requirement ID ${reqId} appears in ${sectionList.length} sections: ${sectionList.join(', ')}.`,
         suggestion: `Each requirement ID must be unique. Keep the ID in the primary section and remove or renumber duplicates.`,
         relatedSection: sectionList[1],

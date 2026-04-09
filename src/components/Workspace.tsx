@@ -179,7 +179,7 @@ export default function Workspace() {
       setIsGeneratingFromStructure(false);
       setGenerationProgress(null);
     }
-  }, [aiConfig, brsDocument, updateUsageStats, createApproval, project?.specification?.markdown]);
+  }, [aiConfig, brsDocument, updateUsageStats, createApproval, project]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">

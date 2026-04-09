@@ -173,6 +173,10 @@ export class OpenRouterProvider {
 
     const data: OpenRouterResponse = await response.json();
 
+    if (!data.choices || data.choices.length === 0) {
+      throw new Error('OpenRouter API returned no choices in response');
+    }
+
     console.log('🔧 OpenRouter raw response:', {
       model: data.model,
       finish_reason: data.choices[0]?.finish_reason,
