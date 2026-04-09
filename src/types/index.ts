@@ -748,6 +748,7 @@ export interface CustomSection {
   title: string;                 // User-defined title
   description: string;           // User-defined AI guidance
   isCustom: true;                // Discriminator for type narrowing
+  depth?: SectionDepth;          // Controls output detail level (default: 'detailed')
 }
 
 /**

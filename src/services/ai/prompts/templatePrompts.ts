@@ -98,6 +98,7 @@ const promptBuilders: Record<string, PromptBuilder> = {
       // Allow subsections hint can be used to suggest subsections
       suggestedSubsections: section.allowSubsections ? [] : undefined,
       contentGuidance: context.userGuidance,
+      depth: (section as any).depth || 'detailed',
       order: 0,  // Not used in prompt generation
     };
 

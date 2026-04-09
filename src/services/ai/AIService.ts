@@ -2044,6 +2044,7 @@ Generate the complete Section 4 now in markdown format.`;
           isRequired: section.isRequired,
           suggestedSubsections: section.suggestedSubsections,
           contentGuidance: section.contentGuidance,
+          depth: (section as any).depth || 'detailed',
           // Dynamic number based on position
           number: String(dynamicNumber),
           order: dynamicNumber,
