@@ -2989,26 +2989,38 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
           isRequired: true,
           suggestedSubsections: section.suggestedSubsections,
           contentGuidance: section.contentGuidance,
+          depth: (section as any).depth || 'detailed',
           includeDiagrams: section.includeDiagrams,
           order: section.order,
           enableRequirementNumbering: section.enableRequirementNumbering,
         },
         {
           brsContent: brsContent.slice(0, 8000), // Truncate BRS for context
-          previousSections: previousContent.slice(-4000), // Last 4k chars for continuity
+          previousSections: previousContent.slice(-15000), // Increased for cross-reference awareness
           domainConfig: structure.domainConfig,
           userGuidance: combinedGuidance,
           sectionNumber: String(section.order),
-          includeDiagrams: section.includeDiagrams, // Pass through diagram preference
+          includeDiagrams: section.includeDiagrams,
           enableRequirementNumbering: section.enableRequirementNumbering,
           requirementCounters,
         }
       );
 
       try {
+        // Build stable system context for prompt caching (same across all section calls)
+        const { buildSystemPrompt } = await import('./prompts/systemPrompts');
+        const baseSystemPrompt = buildSystemPrompt(structure.domainConfig);
+
+        let stableContext = `# Specification Context\n\n`;
+        stableContext += `## BRS Content\n\n${brsContent}\n`;
+        if (combinedGuidance) {
+          stableContext += `\n## Generation Guidance\n\n${combinedGuidance}\n`;
+        }
+
         let result = await this.provider.generate(
           [
-            { role: 'system', content: 'You are a technical specification writer. Generate only the requested section content in markdown format.' },
+            { role: 'system', content: baseSystemPrompt },
+            { role: 'system', content: stableContext },
             { role: 'user', content: prompt }
           ],
           {
