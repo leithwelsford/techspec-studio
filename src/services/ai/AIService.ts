@@ -2932,6 +2932,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     totalCost: number;
     truncatedSections: string[]; // List of section titles that were truncated
     warnings: string[]; // Warnings to display to user
+    reviewReport?: any; // Post-generation review results
   }> {
     if (!this.provider || !this.config) {
       throw new Error('AI service not initialized');
@@ -3110,12 +3111,42 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
     // Combine all sections into final markdown
     const markdown = generatedSections.map(s => s.content).join('\n\n---\n\n');
 
+    // Post-generation review pass
+    console.log('🔍 Running post-generation specification review...');
+    let reviewReport: any = null;
+    try {
+      const { reviewSpecification } = await import('./specReviewer');
+      const sectionDepthMap: Record<string, any> = {};
+      for (const s of sections) {
+        sectionDepthMap[s.title] = (s as any).depth || 'detailed';
+        sectionDepthMap[String(s.order)] = (s as any).depth || 'detailed';
+      }
+
+      reviewReport = await reviewSpecification(
+        markdown,
+        sectionDepthMap,
+        this.provider,
+        { model: this.config.model, temperature: 0.2 }
+      );
+
+      totalTokens += reviewReport.tokensUsed;
+      totalCost += reviewReport.cost;
+
+      console.log(`📋 Review complete: ${reviewReport.errors} errors, ${reviewReport.warnings} warnings, ${reviewReport.info} info`);
+      if (reviewReport.issues.length > 0) {
+        console.log('📋 Review issues:', reviewReport.issues.map((i: any) => `[${i.severity}] ${i.category}: ${i.description}`));
+      }
+    } catch (error) {
+      console.warn('⚠️ Specification review failed (non-blocking):', error);
+    }
+
     // Summary logging
     console.log('✅ Specification generation complete:', {
       sections: generatedSections.length,
       truncatedSections: truncatedSections.length,
       totalTokens,
       totalCost: `$${totalCost.toFixed(4)}`,
+      reviewIssues: reviewReport?.totalIssues || 0,
     });
 
     if (truncatedSections.length > 0) {
@@ -3129,6 +3160,7 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
       totalCost,
       truncatedSections,
       warnings,
+      reviewReport,
     };
   }
 }
