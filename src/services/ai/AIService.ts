@@ -2068,7 +2068,7 @@ Generate the complete Section 4 now in markdown format.`;
     // so Anthropic's prompt caching will cache it on the first call (~1.25x write)
     // and reuse at 0.1x cost for all subsequent sections (~85% savings).
     const { buildSystemPrompt } = await import('./prompts/systemPrompts');
-    const baseSystemPrompt = buildSystemPrompt((context as any)?.domainConfig);
+    const baseSystemPrompt = buildSystemPrompt({ domainConfig: (context as any)?.domainConfig });
 
     // Build stable reference context (same for all sections)
     let stableContext = `# Specification: ${specTitle}\n\n`;
@@ -2092,17 +2092,19 @@ Generate the complete Section 4 now in markdown format.`;
     // Include diagram descriptions extracted from reference documents
     // These are pre-extracted via vision model and stored as text, so they're
     // available for all section generation calls without re-processing PDFs
-    const project = (await import('../../store/projectStore')).useProjectStore.getState().project;
-    if (project?.references) {
-      const diagramContextParts = project.references
-        .filter(ref => ref.diagramDescriptions && ref.diagramDescriptions.trim())
-        .map(ref => ref.diagramDescriptions!);
+    try {
+      const project = (await import('../../store/projectStore')).useProjectStore.getState().project;
+      if (project?.references) {
+        const diagramContextParts = project.references
+          .filter((ref: any) => ref.diagramDescriptions && ref.diagramDescriptions.trim())
+          .map((ref: any) => ref.diagramDescriptions!);
 
-      if (diagramContextParts.length > 0) {
-        stableContext += `\n## Diagrams from Reference Documents\n\nThe following diagrams were found in the reference documents. Use these descriptions to inform architecture, procedures, and design sections:\n\n${diagramContextParts.join('\n\n')}\n`;
-        console.log(`📊 Added ${diagramContextParts.length} diagram description(s) to context`);
+        if (diagramContextParts.length > 0) {
+          stableContext += `\n## Diagrams from Reference Documents\n\nThe following diagrams were found in the reference documents. Use these descriptions to inform architecture, procedures, and design sections:\n\n${diagramContextParts.join('\n\n')}\n`;
+          console.log(`📊 Added ${diagramContextParts.length} diagram description(s) to context`);
+        }
       }
-    }
+    } catch { /* non-blocking — diagram context is supplementary */ }
 
     console.log(`💾 Built stable context for caching: ~${Math.round(stableContext.length / 4)} tokens (cached across ${enabledSections.length} section calls)`);
 
@@ -2960,11 +2962,11 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       console.log(`📋 Using generation guidance: ${generationGuidance.slice(0, 100)}...`);
     }
 
-    // Determine maxTokens based on model type
-    const isReasoningModel = this.config.model.toLowerCase().includes('o1') ||
-                             this.config.model.toLowerCase().includes('gpt-5');
-    const sectionMaxTokens = isReasoningModel ? 64000 : (this.config.maxTokens || 8000);
-    console.log(`🎯 Using maxTokens: ${sectionMaxTokens} (reasoning model: ${isReasoningModel})`);
+    // Determine maxTokens based on model type (using shared utility for consistency)
+    const { isReasoningModel: checkIsReasoning } = await import('../../utils/aiModels');
+    const isReasoning = checkIsReasoning(this.config.model || '');
+    const sectionMaxTokens = isReasoning ? 64000 : (this.config.maxTokens || 8000);
+    console.log(`🎯 Using maxTokens: ${sectionMaxTokens} (reasoning model: ${isReasoning})`);
 
     const generatedSections: Array<{ title: string; content: string; tokensUsed: number; wasTruncated: boolean }> = [];
     const truncatedSections: string[] = [];
@@ -2980,20 +2982,30 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     const baseSystemPrompt = buildSystemPrompt({ domainConfig: structure.domainConfig });
 
     let stableContext = `# Specification Context\n\n`;
+    if (structure.formatGuidance) {
+      stableContext += `## Formatting Guidance\n${structure.formatGuidance}\n\n`;
+    }
     stableContext += `## BRS Content\n\n${brsContent}\n`;
     if (combinedGuidance) {
       stableContext += `\n## Generation Guidance\n\n${combinedGuidance}\n`;
     }
 
-    // Include diagram descriptions from reference documents if available
+    // Include markdown guidance from template analysis if available
     try {
-      const project = (await import('../../store/projectStore')).useProjectStore.getState().project;
+      const storeState = (await import('../../store/projectStore')).useProjectStore.getState();
+      const markdownGuidance = storeState.markdownGuidance;
+      if (markdownGuidance) {
+        stableContext += `\n## Markdown Formatting Guidance\n\n${typeof markdownGuidance === 'string' ? markdownGuidance : JSON.stringify(markdownGuidance)}\n`;
+      }
+
+      // Include diagram descriptions from reference documents
+      const project = storeState.project;
       if (project?.references) {
         const diagramContextParts = project.references
           .filter((ref: any) => ref.diagramDescriptions && ref.diagramDescriptions.trim())
           .map((ref: any) => ref.diagramDescriptions!);
         if (diagramContextParts.length > 0) {
-          stableContext += `\n## Diagrams from Reference Documents\n\n${diagramContextParts.join('\n\n')}\n`;
+          stableContext += `\n## Diagrams from Reference Documents\n\nThe following diagrams were found in the reference documents. Use these descriptions to inform architecture, procedures, and design sections:\n\n${diagramContextParts.join('\n\n')}\n`;
           console.log(`📊 Added ${diagramContextParts.length} diagram description(s) to context`);
         }
       }

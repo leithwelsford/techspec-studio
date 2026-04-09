@@ -364,6 +364,13 @@ function buildGenericSectionPrompt(
   section: TemplateSectionDefinition,
   context: PromptBuilderContext
 ): string {
+  const depth = (section as any).depth || 'detailed';
+  const depthInstruction = depth === 'brief'
+    ? '\n\n**DEPTH: BRIEF** — Summarise in 1-2 pages. Reference standards, do not reproduce procedures.\n'
+    : depth === 'standard'
+    ? '\n\n**DEPTH: STANDARD** — Moderate detail, 3-5 pages. Restate requirements concisely.\n'
+    : '';
+
   const previousContent = context.previousSections.length > 0
     ? `\n\n### Previously Generated Sections:\n\n${context.previousSections.map(s => `**${s.title}**\n${s.content.substring(0, 500)}...\n`).join('\n')}`
     : '';
@@ -372,6 +379,7 @@ function buildGenericSectionPrompt(
   const formattingInstructions = buildTemplateFormattingInstructions(context.markdownGuidance || null);
 
   return `Generate section "${section.number} ${section.title}" for a technical specification document.
+${depthInstruction}
 
 **Template**: ${context.template.name}
 **Document Title**: ${context.specTitle}

@@ -73,6 +73,48 @@ export default function Workspace() {
       const decryptedKey = decrypt(aiConfig.apiKey);
       aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
 
+      // Extract diagram descriptions from reference documents that don't have them yet
+      const refsNeedingDiagramExtraction = (project?.references || []).filter(
+        (ref: any) => ref.dataRef && !ref.diagramDescriptions && (ref.type === 'PDF' || ref.type === 'DOCX' || ref.type === 'TXT' || ref.type === 'MD')
+      );
+
+      if (refsNeedingDiagramExtraction.length > 0) {
+        setGenerationProgress({ current: 0, total: structure.sections.length, sectionTitle: 'Extracting diagrams from references...', status: 'generating' });
+        console.log(`📊 Extracting diagram context from ${refsNeedingDiagramExtraction.length} reference(s)...`);
+
+        try {
+          const { extractDiagramContext } = await import('../services/ai/diagramContextExtractor');
+          const { getDocumentAsBase64 } = await import('../services/storage/documentStorage');
+
+          for (const ref of refsNeedingDiagramExtraction) {
+            try {
+              const base64 = ref.dataRef ? await getDocumentAsBase64(ref.dataRef) : undefined;
+              const pdfVisionModel = aiConfig.pdfVisionModel || 'google/gemini-2.5-flash';
+
+              const extraction = await extractDiagramContext(
+                ref.type as 'PDF' | 'DOCX' | 'TXT' | 'MD',
+                base64 || undefined,
+                ref.extractedText || ref.content,
+                ref.filename || ref.title,
+                aiService.getProvider(),
+                { model: pdfVisionModel }
+              );
+
+              if (extraction.contextSummary) {
+                useProjectStore.getState().updateReference(ref.id, {
+                  diagramDescriptions: extraction.contextSummary,
+                });
+                console.log(`✅ Extracted ${extraction.diagrams.length} diagram(s) from ${ref.title}`);
+              }
+            } catch (err) {
+              console.warn(`⚠️ Diagram extraction failed for ${ref.title}:`, err);
+            }
+          }
+        } catch (err) {
+          console.warn('⚠️ Diagram extraction module load failed (non-blocking):', err);
+        }
+      }
+
       // Generate specification from structure with progress tracking
       const result = await aiService.generateFromApprovedStructure({
         structure,
