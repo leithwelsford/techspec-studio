@@ -632,8 +632,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
 
       console.log('🔄 Re-reviewing specification after fixes...');
 
-      // Strip old review report before re-reviewing
-      const specWithoutReport = spec.replace(/\n---\n\n# Specification Review Report\n[\s\S]*$/, '');
+      // Strip ALL review reports (there may be multiple stacked from previous rounds)
+      const specWithoutReport = spec.replace(/\n*---\n+# Specification Review Report[\s\S]*$/g, '');
 
       const { decrypt: dec } = await import('../../utils/encryption');
       const { aiService } = await import('../../services/ai/AIService');

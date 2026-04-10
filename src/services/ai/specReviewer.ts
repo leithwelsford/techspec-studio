@@ -415,6 +415,10 @@ ${depthSummary}
 1. **Depth Compliance**: Sections marked 'brief' should be ~1-2 pages (under 1000 words). Sections marked 'standard' should be ~3-5 pages (under 3000 words). Flag any that significantly exceed their depth budget.
 
 2. **Content Duplication**: Identify topics, requirements, or procedures that are substantially repeated across sections. For each, state which section should own the content and which should cross-reference.
+   **IMPORTANT EXCLUSIONS — Do NOT flag these as duplication:**
+   - References, abbreviations, terminology, or glossary sections (e.g., Appendices) are EXPECTED to contain terms that also appear in body sections. This is not duplication.
+   - A body section mentioning standard document numbers (TS 23.203, RFC 3748, etc.) that also appear in a References section is normal cross-referencing, NOT duplication.
+   - Cross-reference paragraphs ("See Section X", "As defined in Appendix A") sharing words with the target section is expected.
 
 3. **Cross-Section Consistency**: Check that terminology, acronyms, and interface names are used consistently. Flag contradictions.
 

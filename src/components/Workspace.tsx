@@ -187,10 +187,17 @@ export default function Workspace() {
     const spec = project?.specification?.markdown;
     if (!spec || !aiConfig?.apiKey) return;
 
-    // Parse review issues from the review report table in the specification
-    const reviewSection = spec.match(/# Specification Review Report\n\n([\s\S]*?)(?:\n> \*\*Note:)/);
-    if (!reviewSection) {
+    // Parse review issues from the LAST review report in the specification
+    // (multiple reports may exist if re-review appended without fully stripping the old one)
+    const allReports = spec.match(/# Specification Review Report\n\n[\s\S]*?(?:\n> \*\*Note:[\s\S]*?specification\.)/g);
+    if (!allReports || allReports.length === 0) {
       alert('No review report found in the specification. Generate a specification with review first.');
+      return;
+    }
+    const lastReport = allReports[allReports.length - 1];
+    const reviewSection = lastReport.match(/# Specification Review Report\n\n([\s\S]*?)(?:\n> \*\*Note:)/);
+    if (!reviewSection) {
+      alert('Could not parse the review report.');
       return;
     }
 
