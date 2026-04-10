@@ -203,9 +203,10 @@ export class OpenRouterProvider {
     const cacheCreation = data.usage.cache_creation_input_tokens
       || data.usage.prompt_tokens_details?.cache_write_tokens
       || 0;
+    const normalInput = tokens.prompt - cacheRead - cacheCreation;
     if (cacheRead > 0 || cacheCreation > 0) {
       const savings = cacheRead > 0 ? `~${Math.round((cacheRead / tokens.prompt) * 90)}% savings` : 'cache write';
-      console.log(`💾 Prompt cache: ${cacheRead} read, ${cacheCreation} written (${savings})`, { cacheRead, cacheCreation, normalInput: tokens.prompt - cacheRead - cacheCreation });
+      console.log(`💾 Prompt cache: ${cacheRead} read, ${cacheCreation} written (${savings})`, { cacheRead, cacheCreation, normalInput });
     }
 
     // Estimate cost with cache-aware pricing
@@ -214,6 +215,15 @@ export class OpenRouterProvider {
       cacheRead,
       cacheCreation,
     });
+
+    // Server-side logging (fire-and-forget, non-blocking)
+    try {
+      fetch('/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'cache', cacheRead, cacheCreation, normalInput, savings: cacheRead > 0 ? `~${Math.round((cacheRead / tokens.prompt) * 90)}%` : 'write', cost }),
+      }).catch(() => {});
+    } catch { /* non-blocking */ }
 
     // Include finish_reason for debugging truncated output
     const finishReason = data.choices[0]?.finish_reason || data.choices[0]?.native_finish_reason || 'unknown';

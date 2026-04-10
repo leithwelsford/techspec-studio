@@ -497,15 +497,24 @@ export interface ReviewFix {
 
 /**
  * Generate a fix for a single review issue.
- * Extracts the affected section, sends it to the AI with the issue details,
- * and returns the corrected section content.
+ * For duplication issues, fixes BOTH sections in one call and returns two fixes.
+ * For other issues, fixes the affected section only.
  */
 export async function generateFixForIssue(
   markdown: string,
   issue: ReviewIssue,
   provider: any,
-  config: Partial<AIConfig>
-): Promise<ReviewFix | null> {
+  config: Partial<AIConfig>,
+  stableMarkdown?: string
+): Promise<ReviewFix | ReviewFix[] | null> {
+  // Use frozen spec for system prompt (stable cache key), current markdown for section extraction
+  const specForPrompt = stableMarkdown || markdown;
+
+  // Duplication issues need special handling — fix both sections together
+  if (issue.category === 'duplication' && issue.relatedSection) {
+    return generateDuplicationFix(markdown, issue, provider, config, specForPrompt);
+  }
+
   // Extract the affected section
   const sectionContent = extractSectionByNumber(markdown, issue.sectionNumber);
   if (!sectionContent) {
@@ -513,26 +522,15 @@ export async function generateFixForIssue(
     return null;
   }
 
-  // For duplication issues, also extract the related section
-  let relatedContent = '';
-  if (issue.relatedSection) {
-    const relatedNumber = issue.relatedSection.split(' ')[0];
-    const related = extractSectionByNumber(markdown, relatedNumber);
-    if (related) {
-      relatedContent = `\n\n## Related Section (for cross-reference context)\n\n${related}`;
-    }
-  }
-
   // Stable system context (cached across all fix calls for Anthropic models)
-  // Contains the full spec so the AI can check cross-references and consistency
+  // Uses frozen spec so the cache key stays identical across all requests
   const systemPrompt = `You are a technical specification editor. You fix issues found during review.
 Output ONLY the corrected section content (including its heading). No explanation, no markdown fences.
 
 ## Full Specification (for cross-reference context)
 
-${markdown.substring(0, 100000)}${markdown.length > 100000 ? '\n\n[... specification truncated ...]' : ''}`;
+${specForPrompt.substring(0, 100000)}${specForPrompt.length > 100000 ? '\n\n[... specification truncated ...]' : ''}`;
 
-  // Issue-specific user prompt (changes per fix)
   const userPrompt = `Fix the following issue in Section ${issue.sectionNumber}: ${issue.sectionTitle}.
 
 ## Issue
@@ -541,12 +539,10 @@ ${markdown.substring(0, 100000)}${markdown.length > 100000 ? '\n\n[... specifica
 - **Description:** ${issue.description}
 - **Suggestion:** ${issue.suggestion}
 ${issue.contentSnippet ? `- **Problematic snippet:** "${issue.contentSnippet}"` : ''}
-${issue.relatedSection ? `- **Related section:** ${issue.relatedSection}` : ''}
 
 ## Section to Fix
 
 ${sectionContent}
-${relatedContent}
 
 ## Rules
 
@@ -555,13 +551,9 @@ ${relatedContent}
 3. Preserve the exact heading format (e.g., "# 4 Section Title" or "## 4.1 Subsection").
 4. Preserve all {{fig:...}} and {{ref:...}} placeholders exactly as they are.
 5. Preserve all requirement IDs (e.g., **PCC-CAPTIVE-REQ-00001**) unless the issue specifically asks to change them.
-6. For duplication issues: You are fixing Section ${issue.sectionNumber} ONLY.${issue.relatedSection ? ` The related section is ${issue.relatedSection}.` : ''}
-   - If this section (${issue.sectionNumber}) has a LOWER number than the related section, this is the PRIMARY section — keep the full content here. The related section will be fixed separately.
-   - If this section (${issue.sectionNumber}) has a HIGHER number (or is an Appendix), replace the duplicated content with a cross-reference like "See Section X for details" or "As defined in Section X".
-   - NEVER delete content from both sections. One must keep it, the other must reference it.
-7. For depth-compliance issues: trim verbose content, move detail to cross-references.
-8. For cross-reference issues: fix the section number to point to the correct section.
-9. For consistency issues: align terminology with the rest of the document.
+6. For depth-compliance issues: trim verbose content, move detail to cross-references.
+7. For cross-reference issues: fix the section number to point to the correct section.
+8. For consistency issues: align terminology with the rest of the document.
 
 Respond with ONLY the corrected section content (including the heading).`;
 
@@ -571,30 +563,137 @@ Respond with ONLY the corrected section content (including the heading).`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      {
-        ...config,
-        temperature: 0.2,
-        maxTokens: 16000,
-      }
+      { ...config, temperature: 0.2, maxTokens: 16000 }
     );
-
-    const fixedContent = result.content.trim();
-
-    // Basic validation: the fix should contain the section heading
-    if (!fixedContent.includes(issue.sectionNumber)) {
-      console.warn(`Fix for ${issue.id} may be invalid — doesn't contain section number`);
-    }
 
     return {
       issueId: issue.id,
       sectionNumber: issue.sectionNumber,
       sectionTitle: issue.sectionTitle,
       originalContent: sectionContent,
-      fixedContent,
+      fixedContent: result.content.trim(),
       description: `Fix: ${issue.description}`,
     };
   } catch (error) {
     console.error(`Failed to generate fix for issue ${issue.id}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Fix a duplication issue by analysing both sections together.
+ * The AI decides which section is the natural home for the content
+ * and returns fixes for both: one keeps the content, the other gets a cross-reference.
+ */
+async function generateDuplicationFix(
+  markdown: string,
+  issue: ReviewIssue,
+  provider: any,
+  config: Partial<AIConfig>,
+  specForPrompt?: string
+): Promise<ReviewFix[] | null> {
+  const sectionA = extractSectionByNumber(markdown, issue.sectionNumber);
+  const relatedNumber = (issue.relatedSection || '').split(' ')[0];
+  const relatedTitle = (issue.relatedSection || '').replace(/^\S+\s*/, '');
+  const sectionB = extractSectionByNumber(markdown, relatedNumber);
+
+  if (!sectionA || !sectionB) {
+    console.warn(`Could not extract both sections for duplication fix: ${issue.sectionNumber} / ${relatedNumber}`);
+    return null;
+  }
+
+  const stableSpec = specForPrompt || markdown;
+  const systemPrompt = `You are a technical specification editor. You resolve content duplication between two sections.
+
+## Full Specification (for cross-reference context)
+
+${stableSpec.substring(0, 100000)}${stableSpec.length > 100000 ? '\n\n[... specification truncated ...]' : ''}`;
+
+  const userPrompt = `Resolve the following duplication issue between two sections.
+
+## Issue
+- **Description:** ${issue.description}
+- **Content snippet:** ${issue.contentSnippet || 'N/A'}
+
+## Section A (${issue.sectionNumber}: ${issue.sectionTitle})
+
+${sectionA}
+
+## Section B (${relatedNumber}: ${relatedTitle})
+
+${sectionB}
+
+## Instructions
+
+Determine which section is the NATURAL HOME for the duplicated content:
+- A section whose title/purpose is specifically about that content type is the natural home.
+  Examples: "References" sections own references, "Abbreviations" sections own abbreviations,
+  "Terminology" sections own definitions, Appendices for definitions own glossaries.
+- A "Scope" or "Introduction" section should only briefly mention these and cross-reference.
+- If neither is clearly the natural home, keep content in the more detailed/comprehensive section.
+
+Then produce corrected versions of BOTH sections:
+- The NATURAL HOME section: keeps the full content (may consolidate/improve it).
+- The OTHER section: replaces the duplicated content with a cross-reference like
+  "For references, see Section X" or "Refer to Appendix A for terminology definitions."
+
+## Output Format
+
+Respond with EXACTLY this format (including the separator):
+
+<<<SECTION_A>>>
+(corrected full content of Section ${issue.sectionNumber}, including heading)
+<<<SECTION_B>>>
+(corrected full content of Section ${relatedNumber}, including heading)`;
+
+  try {
+    const result = await provider.generate(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      { ...config, temperature: 0.2, maxTokens: 24000 }
+    );
+
+    const response = result.content.trim();
+
+    // Parse the two sections from the response
+    const splitA = response.indexOf('<<<SECTION_A>>>');
+    const splitB = response.indexOf('<<<SECTION_B>>>');
+
+    if (splitA === -1 || splitB === -1) {
+      console.warn('Duplication fix response did not contain expected separators');
+      return null;
+    }
+
+    const fixedA = response.substring(splitA + '<<<SECTION_A>>>'.length, splitB).trim();
+    const fixedB = response.substring(splitB + '<<<SECTION_B>>>'.length).trim();
+
+    if (!fixedA || !fixedB) {
+      console.warn('Duplication fix produced empty section content');
+      return null;
+    }
+
+    return [
+      {
+        issueId: `${issue.id}-a`,
+        sectionNumber: issue.sectionNumber,
+        sectionTitle: issue.sectionTitle,
+        originalContent: sectionA,
+        fixedContent: fixedA,
+        description: `Duplication fix (Section ${issue.sectionNumber}): ${issue.description}`,
+      },
+      {
+        issueId: `${issue.id}-b`,
+        sectionNumber: relatedNumber,
+        sectionTitle: relatedTitle,
+        originalContent: sectionB,
+        fixedContent: fixedB,
+        description: `Duplication fix (Section ${relatedNumber}): ${issue.description}`,
+      },
+    ];
+  } catch (error) {
+    console.error(`Failed to generate duplication fix for issue ${issue.id}:`, error);
     return null;
   }
 }

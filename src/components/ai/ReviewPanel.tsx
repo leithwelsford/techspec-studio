@@ -937,12 +937,25 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                 />
               ) : (
               <div className="p-6 space-y-4">
+                {/* Review Fix context banner */}
+                {selectedApproval.type === 'review-fix' && selectedApproval.diff && (
+                  <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-orange-900 dark:text-orange-200 mb-1">Review Issue</h4>
+                    <p className="text-sm text-orange-800 dark:text-orange-300">{selectedApproval.diff}</p>
+                    <p className="text-xs text-orange-600 dark:text-orange-400 mt-2">
+                      Section: {selectedApproval.taskId.replace(/^review-fix-\d+-/, '')} | Review the diff below to verify the fix is correct.
+                    </p>
+                  </div>
+                )}
+
                 {/* Approval header */}
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
                       {selectedApproval.type === 'diagram'
                         ? selectedApproval.generatedContent.title || 'Untitled Diagram'
+                        : selectedApproval.type === 'review-fix'
+                        ? `Fix: Section ${selectedApproval.taskId.replace(/^review-fix-\d+-/, '')}`
                         : `${getTypeLabel(selectedApproval.type)} Review`}
                     </h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">

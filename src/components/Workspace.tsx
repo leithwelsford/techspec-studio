@@ -240,7 +240,7 @@ export default function Workspace() {
         }
       );
 
-      // Create an approval for each fix
+      // Create an approval for each fix, with issue context in diff field
       for (const fix of result.fixes) {
         createApproval({
           taskId: `review-fix-${Date.now()}-${fix.sectionNumber}`,
@@ -248,6 +248,7 @@ export default function Workspace() {
           status: 'pending',
           originalContent: fix.originalContent,
           generatedContent: fix.fixedContent,
+          diff: fix.description,
         });
       }
 

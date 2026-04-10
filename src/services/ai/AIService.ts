@@ -3263,6 +3263,11 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
     // Filter to actionable issues (errors and warnings, skip info)
     const actionableIssues = issues.filter(i => i.severity !== 'info');
 
+    // Freeze the original spec for system prompt caching.
+    // The system message stays identical across all calls so the cache key doesn't change.
+    // Section extraction uses the evolving `markdown` so fixes see prior corrections.
+    const originalMarkdown = markdown;
+
     console.log(`🔧 Fixing ${actionableIssues.length} review issues...`);
 
     // Run fixes sequentially to maximize prompt cache hits.
@@ -3272,20 +3277,25 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
       const issue = actionableIssues[i];
       onProgress?.(i + 1, actionableIssues.length, `${issue.sectionNumber} ${issue.sectionTitle}: ${issue.category}`);
       console.log(`🔧 [${i + 1}/${actionableIssues.length}] Fixing ${issue.severity}: ${issue.description}`);
+      try { fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fix-progress', current: i + 1, total: actionableIssues.length, issue: `${issue.sectionNumber} ${issue.sectionTitle}: ${issue.category}` }) }).catch(() => {}); } catch { /* non-blocking */ }
 
       try {
         const fix = await generateFixForIssue(
           markdown,
           issue as any,
           provider,
-          { model: config.model, temperature: 0.2 }
+          { model: config.model, temperature: 0.2 },
+          originalMarkdown
         );
 
         if (fix) {
-          fixes.push(fix);
-          // Apply fix to working copy so subsequent fixes see prior corrections
-          markdown = applySectionFix(markdown, fix.originalContent, fix.fixedContent);
-          console.log(`✅ Fix generated for section ${issue.sectionNumber}`);
+          // Duplication fixes return an array of two fixes (both sections)
+          const fixArray = Array.isArray(fix) ? fix : [fix];
+          for (const f of fixArray) {
+            fixes.push(f);
+            markdown = applySectionFix(markdown, f.originalContent, f.fixedContent);
+          }
+          console.log(`✅ Fix generated for section ${issue.sectionNumber}${Array.isArray(fix) ? ` (+ related section, ${fix.length} fixes)` : ''}`);
         } else {
           errors.push(`Could not generate fix for: ${issue.description}`);
         }
@@ -3296,6 +3306,7 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
     }
 
     console.log(`🔧 Fix generation complete: ${fixes.length} fixes, ${errors.length} errors`);
+    try { fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fix-complete', fixes: fixes.length, errors: errors.length }) }).catch(() => {}); } catch { /* non-blocking */ }
     return { fixes, errors };
   }
 }
