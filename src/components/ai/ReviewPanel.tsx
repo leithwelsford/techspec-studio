@@ -640,11 +640,11 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
       const decryptedKey = dec(aiConfig.apiKey);
       await aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
 
+      // Run LOCAL checks only (no AI call) — deterministic, free, and won't re-introduce
+      // issues the user already fixed. AI review is expensive and non-deterministic;
+      // it can flag new "issues" that create an infinite fix→review→fix loop.
       const { reviewSpecification } = await import('../../services/ai/specReviewer');
-      const report = await reviewSpecification(specWithoutReport, {}, aiService.getProvider(), {
-        model: aiConfig.model,
-        temperature: 0.2,
-      });
+      const report = await reviewSpecification(specWithoutReport, {});
 
       if (report.totalIssues > 0) {
         // Append new review report
