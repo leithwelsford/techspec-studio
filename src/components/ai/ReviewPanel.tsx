@@ -49,10 +49,10 @@ const BlockDiagramRenderer: React.FC<{ diagram: any }> = ({ diagram }) => {
     const w = node.size.width;
     const h = node.size.height;
 
-    // Default colors - white fill with blue border
+    // B&W theme matching React Flow editor style
     const fill = '#ffffff';
-    const stroke = '#3b82f6';
-    const strokeWidth = 2;
+    const stroke = '#000000';
+    const strokeWidth = 1.5;
 
     switch (node.shape) {
       case 'ellipse':
@@ -122,6 +122,12 @@ const BlockDiagramRenderer: React.FC<{ diagram: any }> = ({ diagram }) => {
 
   return (
     <>
+      {/* SVG defs for arrowhead markers */}
+      <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#000000" />
+        </marker>
+      </defs>
       {/* Render edges first (below nodes) */}
       {diagram.edges?.map((edge: { from: string; to: string; label?: string; style?: string }, idx: number) => {
         const fromNode = nodeMap.get(edge.from);
@@ -143,9 +149,10 @@ const BlockDiagramRenderer: React.FC<{ diagram: any }> = ({ diagram }) => {
               y1={fromY}
               x2={toX}
               y2={toY}
-              stroke="#9ca3af"
+              stroke="#000000"
               strokeWidth={lineStrokeWidth}
               strokeDasharray={strokeDasharray}
+              markerEnd="url(#arrowhead)"
             />
             {edge.label && (
               <g>
@@ -155,15 +162,17 @@ const BlockDiagramRenderer: React.FC<{ diagram: any }> = ({ diagram }) => {
                   y={(fromY + toY) / 2 - 9}
                   width={120}
                   height={18}
-                  fill="rgba(17, 24, 39, 0.9)"
-                  rx={3}
+                  fill="#ffffff"
+                  stroke="#000000"
+                  strokeWidth={0.5}
+                  rx={2}
                 />
                 <text
                   x={(fromX + toX) / 2}
                   y={(fromY + toY) / 2}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fill="#e5e7eb"
+                  fill="#000000"
                   fontSize="10"
                   fontWeight="500"
                 >
@@ -1137,7 +1146,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                           Generated Diagram Preview
                         </h4>
                         <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                          Use scroll wheel to zoom, click and drag to pan (or spacebar + drag)
+                          Preview — final layout may differ. Scroll to zoom, drag to pan.
                         </p>
                         {selectedApproval.generatedContent?.sourceSection && (
                           <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 font-medium">
@@ -1145,7 +1154,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                           </p>
                         )}
                       </div>
-                      <div className="bg-gray-100 dark:bg-gray-950" style={{ height: '500px' }}>
+                      <div className="bg-white" style={{ height: '500px' }}>
                         {(() => {
                           const diagram = selectedApproval.generatedContent;
 
