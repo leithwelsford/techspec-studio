@@ -202,8 +202,24 @@ export default function Workspace() {
     }
 
     const issues = tableRows.map((row, idx) => {
+      // Split by | but handle the fixed 6-column format:
+      // | # | Severity | Section | Category | Issue | Suggestion |
+      // Use a regex that captures exactly 6 fields to avoid pipe-in-content issues
+      const match = row.match(/^\|\s*(\d+)\s*\|\s*(\w+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([\s\S]+?)\s*\|\s*([\s\S]+?)\s*\|?\s*$/);
+      if (match) {
+        const sectionParts = match[3].trim().match(/^(\S+)\s+(.*)/);
+        return {
+          id: `review-fix-${idx}`,
+          severity: match[2].trim(),
+          sectionNumber: sectionParts?.[1] || '',
+          sectionTitle: sectionParts?.[2]?.trim() || match[3].trim(),
+          category: match[4].trim(),
+          description: match[5].trim(),
+          suggestion: match[6].trim(),
+        };
+      }
+      // Fallback: simple split
       const cells = row.split('|').map(c => c.trim()).filter(Boolean);
-      // Format: # | Severity | Section | Category | Issue | Suggestion
       const sectionParts = (cells[2] || '').match(/^(\S+)\s+(.*)/);
       return {
         id: `review-fix-${idx}`,
@@ -214,7 +230,9 @@ export default function Workspace() {
         description: cells[4] || '',
         suggestion: cells[5] || '',
       };
-    });
+    }).filter(i => i.sectionNumber);
+
+    console.log(`📋 Parsed ${issues.length} issues from review report:`, issues.map(i => `[${i.severity}] ${i.sectionNumber}: ${i.category} — ${i.description?.substring(0, 60)}`));
 
     const actionable = issues.filter(i => i.severity !== 'info');
     if (actionable.length === 0) {

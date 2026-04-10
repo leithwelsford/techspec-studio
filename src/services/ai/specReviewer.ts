@@ -295,18 +295,32 @@ function checkContentDuplication(
   sections: SectionInfo[],
   issues: ReviewIssue[]
 ): void {
-  // Extract significant paragraphs (>50 words) from each section
+  // Sections whose PURPOSE is to list references, abbreviations, or terminology
+  // are exempt from duplication checks — other sections referencing the same
+  // standards/terms is expected, not duplication.
+  const referencePatterns = /reference|abbreviat|terminolog|glossar|definition|acronym|appendix/i;
+
+  // Extract significant paragraphs (>80 words) from each section
   const sectionParagraphs: Array<{ section: SectionInfo; paragraph: string; normalized: string }> = [];
 
   for (const section of sections) {
-    const paragraphs = section.content.split(/\n\n+/).filter(p => countWords(p) > 50);
+    const paragraphs = section.content.split(/\n\n+/).filter(p => countWords(p) > 80);
     for (const para of paragraphs) {
-      // Normalize: lowercase, remove requirement IDs, collapse whitespace
+      // Skip tables (markdown tables have lots of shared terms but aren't duplication)
+      if (para.includes('|---') || para.includes('| ---')) continue;
+      // Skip cross-reference paragraphs (they naturally share words with the target)
+      if (/\b(?:see|refer to|as defined in|described in)\b.*\bsection\b/i.test(para)) continue;
+
+      // Normalize: lowercase, remove requirement IDs, remove standard doc numbers, collapse whitespace
       const normalized = para
         .toLowerCase()
         .replace(/\*\*[a-z]+-[a-z]+-[a-z]+-\d{5}\*\*/g, '')
+        .replace(/(?:3gpp\s+)?ts\s+\d+\.\d+/g, '')  // Remove "TS 23.203" etc.
+        .replace(/rfc\s*\d+/g, '')                     // Remove "RFC 3748" etc.
+        .replace(/ieee\s+[\d.]+/g, '')                 // Remove "IEEE 802.1X" etc.
         .replace(/\s+/g, ' ')
         .trim();
+      if (countWords(normalized) < 30) continue; // Skip if too little content after normalization
       sectionParagraphs.push({ section, paragraph: para, normalized });
     }
   }
@@ -319,8 +333,11 @@ function checkContentDuplication(
       const b = sectionParagraphs[j];
       if (a.section.number === b.section.number) continue;
 
+      // Skip if either section is a dedicated reference/terminology section
+      if (referencePatterns.test(a.section.title) || referencePatterns.test(b.section.title)) continue;
+
       const similarity = calculateSimilarity(a.normalized, b.normalized);
-      if (similarity > 0.6) {
+      if (similarity > 0.75) { // Higher threshold to avoid false positives
         const key = `${a.section.number}-${b.section.number}`;
         if (reported.has(key)) continue;
         reported.add(key);
@@ -576,6 +593,87 @@ Respond with ONLY the corrected section content (including the heading).`;
     };
   } catch (error) {
     console.error(`Failed to generate fix for issue ${issue.id}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Fix multiple issues in the same section with a single AI call.
+ * More efficient than fixing one at a time — avoids redundant near-identical fixes.
+ */
+export async function generateGroupedFix(
+  markdown: string,
+  sectionNumber: string,
+  sectionTitle: string,
+  issues: ReviewIssue[],
+  provider: any,
+  config: Partial<AIConfig>,
+  stableMarkdown?: string
+): Promise<ReviewFix | null> {
+  const specForPrompt = stableMarkdown || markdown;
+
+  const sectionContent = extractSectionByNumber(markdown, sectionNumber);
+  if (!sectionContent) {
+    console.warn(`Could not extract section ${sectionNumber} for grouped fix`);
+    return null;
+  }
+
+  const systemPrompt = `You are a technical specification editor. You fix issues found during review.
+Output ONLY the corrected section content (including its heading). No explanation, no markdown fences.
+
+## Full Specification (for cross-reference context)
+
+${specForPrompt.substring(0, 100000)}${specForPrompt.length > 100000 ? '\n\n[... specification truncated ...]' : ''}`;
+
+  const issueList = issues.map((issue, idx) =>
+    `### Issue ${idx + 1}
+- **Severity:** ${issue.severity}
+- **Category:** ${issue.category}
+- **Description:** ${issue.description}
+- **Suggestion:** ${issue.suggestion}${issue.contentSnippet ? `\n- **Snippet:** "${issue.contentSnippet}"` : ''}`
+  ).join('\n\n');
+
+  const userPrompt = `Fix ALL of the following ${issues.length} issues in Section ${sectionNumber}: ${sectionTitle}.
+
+${issueList}
+
+## Section to Fix
+
+${sectionContent}
+
+## Rules
+
+1. Apply ALL fixes above in a single pass. Do not address them separately.
+2. Preserve ALL existing content that is not related to the issues.
+3. Preserve the exact heading format (e.g., "# 4 Section Title" or "## 4.1 Subsection").
+4. Preserve all {{fig:...}} and {{ref:...}} placeholders exactly as they are.
+5. Preserve all requirement IDs unless an issue specifically asks to change them.
+6. For depth-compliance issues: trim verbose content, move detail to cross-references.
+7. For cross-reference issues: fix the section number to point to the correct section.
+8. For consistency issues: align terminology with the rest of the document.
+
+Respond with ONLY the corrected section content (including the heading).`;
+
+  try {
+    const result = await provider.generate(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      { ...config, temperature: 0.2, maxTokens: 16000 }
+    );
+
+    const descriptions = issues.map(i => i.description).join('; ');
+    return {
+      issueId: issues.map(i => i.id).join('+'),
+      sectionNumber,
+      sectionTitle,
+      originalContent: sectionContent,
+      fixedContent: result.content.trim(),
+      description: `Fix ${issues.length} issues: ${descriptions}`,
+    };
+  } catch (error) {
+    console.error(`Failed to generate grouped fix for section ${sectionNumber}:`, error);
     return null;
   }
 }

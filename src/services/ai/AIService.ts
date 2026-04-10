@@ -3254,7 +3254,7 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
       throw new Error('AI service not initialized');
     }
 
-    const { generateFixForIssue } = await import('./specReviewer');
+    const { generateFixForIssue, generateGroupedFix } = await import('./specReviewer');
     const config = this.config;
     const provider = this.provider;
     const fixes: Array<{ issueId: string; sectionNumber: string; sectionTitle: string; originalContent: string; fixedContent: string; description: string }> = [];
@@ -3264,44 +3264,87 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
     const actionableIssues = issues.filter(i => i.severity !== 'info');
 
     // Freeze the original spec for system prompt caching.
-    // The system message stays identical across all calls so the cache key doesn't change.
-    // Section extraction uses the evolving `markdown` so fixes see prior corrections.
     const originalMarkdown = markdown;
 
-    console.log(`🔧 Fixing ${actionableIssues.length} review issues...`);
+    // Group non-duplication issues by section number.
+    // Duplication issues are handled separately (they span two sections).
+    const duplicationIssues = actionableIssues.filter(i => i.category === 'duplication' && i.relatedSection);
+    const otherIssues = actionableIssues.filter(i => !(i.category === 'duplication' && i.relatedSection));
 
-    // Run fixes sequentially to maximize prompt cache hits.
-    // The full spec is sent as a system message (~33K tokens) — cached on first call,
-    // then read at 0.1x cost for all subsequent calls (~84% savings per request).
-    for (let i = 0; i < actionableIssues.length; i++) {
-      const issue = actionableIssues[i];
-      onProgress?.(i + 1, actionableIssues.length, `${issue.sectionNumber} ${issue.sectionTitle}: ${issue.category}`);
-      console.log(`🔧 [${i + 1}/${actionableIssues.length}] Fixing ${issue.severity}: ${issue.description}`);
-      try { fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fix-progress', current: i + 1, total: actionableIssues.length, issue: `${issue.sectionNumber} ${issue.sectionTitle}: ${issue.category}` }) }).catch(() => {}); } catch { /* non-blocking */ }
+    // Group other issues by top-level section
+    const sectionGroups = new Map<string, typeof otherIssues>();
+    for (const issue of otherIssues) {
+      const key = issue.sectionNumber;
+      if (!sectionGroups.has(key)) {
+        sectionGroups.set(key, []);
+      }
+      sectionGroups.get(key)!.push(issue);
+    }
+
+    const totalTasks = sectionGroups.size + duplicationIssues.length;
+    let currentTask = 0;
+
+    console.log(`🔧 Fixing ${actionableIssues.length} issues: ${sectionGroups.size} section groups + ${duplicationIssues.length} duplication fixes`);
+
+    // Fix grouped issues (one AI call per section, regardless of issue count)
+    for (const [sectionNum, groupIssues] of sectionGroups) {
+      currentTask++;
+      const sectionTitle = groupIssues[0].sectionTitle;
+      const label = `Section ${sectionNum} ${sectionTitle} (${groupIssues.length} issue${groupIssues.length > 1 ? 's' : ''})`;
+      onProgress?.(currentTask, totalTasks, label);
+      console.log(`🔧 [${currentTask}/${totalTasks}] Fixing ${label}`);
+      try { fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fix-progress', current: currentTask, total: totalTasks, issue: label }) }).catch(() => {}); } catch { /* non-blocking */ }
 
       try {
-        const fix = await generateFixForIssue(
-          markdown,
-          issue as any,
-          provider,
-          { model: config.model, temperature: 0.2 },
-          originalMarkdown
-        );
+        let fix;
+        if (groupIssues.length === 1) {
+          // Single issue — use standard fix
+          fix = await generateFixForIssue(markdown, groupIssues[0] as any, provider, { model: config.model, temperature: 0.2 }, originalMarkdown);
+        } else {
+          // Multiple issues — use grouped fix (single AI call)
+          fix = await generateGroupedFix(markdown, sectionNum, sectionTitle, groupIssues as any[], provider, { model: config.model, temperature: 0.2 }, originalMarkdown);
+        }
 
         if (fix) {
-          // Duplication fixes return an array of two fixes (both sections)
           const fixArray = Array.isArray(fix) ? fix : [fix];
           for (const f of fixArray) {
             fixes.push(f);
             markdown = applySectionFix(markdown, f.originalContent, f.fixedContent);
           }
-          console.log(`✅ Fix generated for section ${issue.sectionNumber}${Array.isArray(fix) ? ` (+ related section, ${fix.length} fixes)` : ''}`);
+          console.log(`✅ Fixed section ${sectionNum} (${groupIssues.length} issue${groupIssues.length > 1 ? 's' : ''})`);
         } else {
-          errors.push(`Could not generate fix for: ${issue.description}`);
+          errors.push(`Could not generate fix for section ${sectionNum}`);
         }
       } catch (err) {
-        console.error(`❌ Error fixing issue ${issue.id}:`, err);
-        errors.push(`Failed to fix "${issue.description}": ${err}`);
+        console.error(`❌ Error fixing section ${sectionNum}:`, err);
+        errors.push(`Failed to fix section ${sectionNum}: ${err}`);
+      }
+    }
+
+    // Fix duplication issues (each spans two sections, handled individually)
+    for (const issue of duplicationIssues) {
+      currentTask++;
+      const label = `Duplication: ${issue.sectionNumber} ↔ ${issue.relatedSection}`;
+      onProgress?.(currentTask, totalTasks, label);
+      console.log(`🔧 [${currentTask}/${totalTasks}] Fixing ${label}`);
+      try { fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fix-progress', current: currentTask, total: totalTasks, issue: label }) }).catch(() => {}); } catch { /* non-blocking */ }
+
+      try {
+        const fix = await generateFixForIssue(markdown, issue as any, provider, { model: config.model, temperature: 0.2 }, originalMarkdown);
+
+        if (fix) {
+          const fixArray = Array.isArray(fix) ? fix : [fix];
+          for (const f of fixArray) {
+            fixes.push(f);
+            markdown = applySectionFix(markdown, f.originalContent, f.fixedContent);
+          }
+          console.log(`✅ Fixed duplication: ${issue.sectionNumber} ↔ ${issue.relatedSection}`);
+        } else {
+          errors.push(`Could not fix duplication: ${issue.description}`);
+        }
+      } catch (err) {
+        console.error(`❌ Error fixing duplication ${issue.sectionNumber}:`, err);
+        errors.push(`Failed to fix duplication: ${err}`);
       }
     }
 
