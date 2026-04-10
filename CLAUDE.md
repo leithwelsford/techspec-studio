@@ -24,17 +24,10 @@ npm run lint         # Check for TypeScript/ESLint errors (run before commits)
 ```bash
 cd server && npm install && npm start       # Port 3001
 cd server && npm run dev                    # With --watch hot reload
-# Or: docker-compose up                     # Both services via Docker
+docker-compose up                           # Both frontend + pandoc via Docker
 ```
 
 **Note**: Dev server uses `strictPort: true` on port 3000. If port is in use, it will fail rather than try another port.
-
-**Editor Shortcuts** (for manual testing):
-- **Space + Drag**: Pan diagram canvas
-- **Scroll Wheel**: Zoom diagrams
-- **Double-click**: Edit node/edge labels
-- **Enter**: Send chat message
-- **Shift + Enter**: New line in chat
 
 ## Critical Rules
 
@@ -301,13 +294,7 @@ Only `VITE_` prefixed variables are exposed to the browser.
 
 ## Documentation
 
-Detailed docs in [docs/](docs/):
-- `docs/architecture/` - System design, AI integration, project summaries
-- `docs/features/` - Feature implementations and testing guides
-- `docs/bugs-and-fixes/` - Bug investigations and fixes
-- `docs/phases/` - Development phase progress tracking
-- `docs/plans/` - Implementation plans for upcoming features
-- `docs/sessions/` - Development session summaries
+Detailed docs in [docs/](docs/) covering architecture, features, bug investigations, development phases, implementation plans, and session summaries.
 
 ## Git Commit Format
 
