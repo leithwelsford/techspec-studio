@@ -295,6 +295,50 @@ export default function Workspace() {
     }
   }, [aiConfig, project, createApproval]);
 
+  // Review Spec handler — runs full AI review, strips old reports, appends fresh one
+  const [isReviewing, setIsReviewing] = useState(false);
+  const handleReviewSpec = useCallback(async () => {
+    const spec = project?.specification?.markdown;
+    if (!spec || !aiConfig?.apiKey) return;
+
+    setIsReviewing(true);
+    try {
+      const decryptedKey = decrypt(aiConfig.apiKey);
+      await aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
+
+      const specClean = spec.replace(/\n*(?:---\n+)?# Specification Review Report[\s\S]*$/g, '');
+      const updateSpec = useProjectStore.getState().updateSpecification;
+
+      const { reviewSpecification } = await import('../services/ai/specReviewer');
+      const report = await reviewSpecification(specClean, {}, aiService.getProvider(), {
+        model: aiConfig.model,
+        temperature: 0.2,
+      });
+
+      if (report.totalIssues > 0) {
+        let reviewSummary = '\n\n---\n\n# Specification Review Report\n\n';
+        reviewSummary += `**${report.errors} errors, ${report.warnings} warnings, ${report.info} informational items**\n\n`;
+        reviewSummary += '| # | Severity | Section | Category | Issue | Suggestion |\n';
+        reviewSummary += '|---|---|---|---|---|---|\n';
+        report.issues.forEach((issue: any, idx: number) => {
+          reviewSummary += `| ${idx + 1} | ${issue.severity} | ${issue.sectionNumber} ${issue.sectionTitle} | ${issue.category} | ${issue.description} | ${issue.suggestion} |\n`;
+        });
+        reviewSummary += '\n> **Note:** This review report is appended for editorial reference. Remove this section before finalising the specification.\n';
+
+        updateSpec(specClean + reviewSummary);
+        alert(`Review complete: ${report.errors} errors, ${report.warnings} warnings, ${report.info} info items.\n\nUse "Fix Review Issues" to address them.`);
+      } else {
+        updateSpec(specClean);
+        alert('Review complete: No issues found!');
+      }
+    } catch (err) {
+      console.error('Review failed:', err);
+      alert(`Review failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsReviewing(false);
+    }
+  }, [aiConfig, project]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
@@ -395,20 +439,35 @@ export default function Workspace() {
             </button>
           )}
 
-          {/* Fix Review Issues Button - visible when spec has a review report */}
-          {project?.specification?.markdown?.includes('# Specification Review Report') && (
-            <button
-              onClick={handleFixReviewIssues}
-              disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim() || isFixingReviewIssues}
-              className={`px-4 py-1.5 text-sm font-medium rounded-md ${
-                aiConfig?.apiKey && aiConfig.apiKey.trim() && !isFixingReviewIssues
-                  ? 'text-white bg-orange-600 hover:bg-orange-700'
-                  : 'text-gray-400 bg-gray-100 cursor-not-allowed'
-              }`}
-              title="AI-fix errors and warnings from the review report"
-            >
-              {isFixingReviewIssues ? 'Fixing...' : 'Fix Review Issues'}
-            </button>
+          {/* Review Spec / Fix Review Issues — mutually exclusive based on report presence */}
+          {project?.specification && project.specification.markdown.trim().length > 0 && (
+            project.specification.markdown.includes('# Specification Review Report') ? (
+              <button
+                onClick={handleFixReviewIssues}
+                disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim() || isFixingReviewIssues}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md ${
+                  aiConfig?.apiKey && aiConfig.apiKey.trim() && !isFixingReviewIssues
+                    ? 'text-white bg-orange-600 hover:bg-orange-700'
+                    : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                }`}
+                title="AI-fix errors and warnings from the review report"
+              >
+                {isFixingReviewIssues ? 'Fixing...' : 'Fix Review Issues'}
+              </button>
+            ) : (
+              <button
+                onClick={handleReviewSpec}
+                disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim() || isReviewing}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md ${
+                  aiConfig?.apiKey && aiConfig.apiKey.trim() && !isReviewing
+                    ? 'text-white bg-teal-600 hover:bg-teal-700'
+                    : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                }`}
+                title="Run a full AI review of the specification"
+              >
+                {isReviewing ? 'Reviewing...' : 'Review Spec'}
+              </button>
+            )
           )}
 
           {/* Template & Export Button - always visible when project exists */}
