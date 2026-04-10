@@ -432,7 +432,7 @@ export type AITaskOutput =
 export interface PendingApproval {
   id: string;
   taskId: string;
-  type: 'document' | 'section' | 'diagram' | 'refinement' | 'cascaded-refinement';
+  type: 'document' | 'section' | 'diagram' | 'refinement' | 'cascaded-refinement' | 'review-fix';
   status: 'pending' | 'approved' | 'rejected';
   originalContent?: string;
   generatedContent: any;

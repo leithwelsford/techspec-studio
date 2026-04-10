@@ -105,6 +105,29 @@ function updateRequirementCounters(
 }
 
 /**
+ * Run async tasks with bounded concurrency.
+ * Tasks are executed by a pool of workers; each worker picks the next task when idle.
+ */
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number
+): Promise<T[]> {
+  const results: T[] = [];
+  let nextIdx = 0;
+
+  async function worker() {
+    while (nextIdx < tasks.length) {
+      const idx = nextIdx++;
+      results[idx] = await tasks[idx]();
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+/**
  * Main AI Service for content generation
  */
 export class AIService {
@@ -919,6 +942,9 @@ export class AIService {
       throw new Error('AI service not initialized');
     }
 
+    // Capture config for use in closures (TypeScript narrowing doesn't carry through)
+    const config = this.config;
+
     const blockDiagrams: BlockDiagram[] = [];
     const sequenceDiagrams: MermaidDiagram[] = [];
     const errors: string[] = [];
@@ -1130,7 +1156,13 @@ export class AIService {
     if (mermaidSections.length > 0) {
       console.log(`\n📊 Generating ${mermaidDiagramCount} Mermaid diagrams (AI determines type)...`);
 
-      for (const section of mermaidSections) {
+      // Build per-section tasks, then run sections concurrently (max 2)
+      // Figures within each section stay sequential for within-section dedup
+      const sectionTasks = mermaidSections.map((section) => async () => {
+        const sectionDiagrams: MermaidDiagram[] = [];
+        const sectionErrors: string[] = [];
+        const sectionWarnings: string[] = [];
+
         // Get all Mermaid figure references (non-block diagrams)
         const mermaidFigureRefs = getMermaidFigureRefs(section);
         const figureRefs = mermaidFigureRefs.length > 0
@@ -1138,7 +1170,7 @@ export class AIService {
           : (section.figureReferences?.length ? [] : [null]); // null = suggested diagram
 
         // Skip if no mermaid-type figures in this section
-        if (figureRefs.length === 0) continue;
+        if (figureRefs.length === 0) return { diagrams: sectionDiagrams, errors: sectionErrors, warnings: sectionWarnings };
 
         for (let figIdx = 0; figIdx < figureRefs.length; figIdx++) {
           const figureRef = figureRefs[figIdx];
@@ -1160,7 +1192,7 @@ export class AIService {
           try {
             // Use appropriate token limits for diagram generation
             const { isReasoningModel } = await import('../../utils/aiModels');
-            const isReasoning = isReasoningModel(this.config.model || '');
+            const isReasoning = isReasoningModel(config.model || '');
             const maxTokens = isReasoning ? 64000 : 4000;
 
             // Build guidance: use specific TODO for this figure, not all TODOs combined
@@ -1182,9 +1214,7 @@ export class AIService {
 
             // Add context about which specific figure we're generating and what others exist
             if (figureRef && figureRefs.length > 1) {
-              const alreadyGenerated = sequenceDiagrams
-                .filter(d => d.sourceSection?.id === section.sectionId)
-                .map(d => d.title);
+              const alreadyGenerated = sectionDiagrams.map(d => d.title);
 
               let figureContext = `**Specific Figure:** Generate diagram for {{fig:${figureRef}}}.\n`;
               figureContext += `This section has ${figureRefs.length} different figure placeholders:\n`;
@@ -1229,18 +1259,28 @@ export class AIService {
               if (figureRef) {
                 mermaidResult.diagram.slug = figureRef;
               }
-              sequenceDiagrams.push(mermaidResult.diagram);
+              sectionDiagrams.push(mermaidResult.diagram);
               console.log(`✅ ${mermaidResult.detectedType || 'Mermaid'} diagram generated (${mandatoryLabel}): ${section.sectionTitle} → ID: ${diagramId}, slug: ${figureRef || 'none'}`);
             } else {
               console.error(`❌ No diagram generated for: ${section.sectionTitle} (${diagramId})`, mermaidResult.errors);
             }
-            errors.push(...mermaidResult.errors);
-            warnings.push(...mermaidResult.warnings);
+            sectionErrors.push(...mermaidResult.errors);
+            sectionWarnings.push(...mermaidResult.warnings);
           } catch (err) {
             console.error(`❌ Error generating Mermaid diagram for ${section.sectionTitle} (${diagramId}):`, err);
-            errors.push(`Failed to generate Mermaid diagram for ${section.sectionTitle} (${diagramId}): ${err}`);
+            sectionErrors.push(`Failed to generate Mermaid diagram for ${section.sectionTitle} (${diagramId}): ${err}`);
           }
         }
+
+        return { diagrams: sectionDiagrams, errors: sectionErrors, warnings: sectionWarnings };
+      });
+
+      // Run sections concurrently (max 2 to avoid API rate limits)
+      const sectionResults = await runWithConcurrency(sectionTasks, 2);
+      for (const result of sectionResults) {
+        sequenceDiagrams.push(...result.diagrams);
+        errors.push(...result.errors);
+        warnings.push(...result.warnings);
       }
     } else {
       console.log('ℹ️ No Mermaid diagram sections detected');
@@ -3198,6 +3238,78 @@ Continue writing from this point. Do NOT repeat any content already written. Sta
       reviewReport,
     };
   }
+  /**
+   * Fix review issues by generating corrected section content for each issue.
+   * Returns fixes as ReviewFix objects for the approval workflow.
+   */
+  async fixReviewIssues(
+    markdown: string,
+    issues: Array<{ id: string; severity: string; category: string; sectionNumber: string; sectionTitle: string; description: string; suggestion: string; contentSnippet?: string; relatedSection?: string }>,
+    onProgress?: (current: number, total: number, issueTitle: string) => void,
+  ): Promise<{
+    fixes: Array<{ issueId: string; sectionNumber: string; sectionTitle: string; originalContent: string; fixedContent: string; description: string }>;
+    errors: string[];
+  }> {
+    if (!this.provider || !this.config) {
+      throw new Error('AI service not initialized');
+    }
+
+    const { generateFixForIssue } = await import('./specReviewer');
+    const config = this.config;
+    const provider = this.provider;
+    const fixes: Array<{ issueId: string; sectionNumber: string; sectionTitle: string; originalContent: string; fixedContent: string; description: string }> = [];
+    const errors: string[] = [];
+
+    // Filter to actionable issues (errors and warnings, skip info)
+    const actionableIssues = issues.filter(i => i.severity !== 'info');
+
+    console.log(`🔧 Fixing ${actionableIssues.length} review issues...`);
+
+    // Run fixes sequentially to maximize prompt cache hits.
+    // The full spec is sent as a system message (~33K tokens) — cached on first call,
+    // then read at 0.1x cost for all subsequent calls (~84% savings per request).
+    for (let i = 0; i < actionableIssues.length; i++) {
+      const issue = actionableIssues[i];
+      onProgress?.(i + 1, actionableIssues.length, `${issue.sectionNumber} ${issue.sectionTitle}: ${issue.category}`);
+      console.log(`🔧 [${i + 1}/${actionableIssues.length}] Fixing ${issue.severity}: ${issue.description}`);
+
+      try {
+        const fix = await generateFixForIssue(
+          markdown,
+          issue as any,
+          provider,
+          { model: config.model, temperature: 0.2 }
+        );
+
+        if (fix) {
+          fixes.push(fix);
+          // Apply fix to working copy so subsequent fixes see prior corrections
+          markdown = applySectionFix(markdown, fix.originalContent, fix.fixedContent);
+          console.log(`✅ Fix generated for section ${issue.sectionNumber}`);
+        } else {
+          errors.push(`Could not generate fix for: ${issue.description}`);
+        }
+      } catch (err) {
+        console.error(`❌ Error fixing issue ${issue.id}:`, err);
+        errors.push(`Failed to fix "${issue.description}": ${err}`);
+      }
+    }
+
+    console.log(`🔧 Fix generation complete: ${fixes.length} fixes, ${errors.length} errors`);
+    return { fixes, errors };
+  }
+}
+
+/**
+ * Apply a section fix to the full markdown by replacing the original content.
+ */
+function applySectionFix(markdown: string, originalContent: string, fixedContent: string): string {
+  const idx = markdown.indexOf(originalContent);
+  if (idx === -1) {
+    console.warn('Could not find original content to replace');
+    return markdown;
+  }
+  return markdown.substring(0, idx) + fixedContent + markdown.substring(idx + originalContent.length);
 }
 
 // Singleton instance

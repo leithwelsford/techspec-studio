@@ -142,19 +142,41 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
 
         alert(`Generated ${result.blockDiagrams.length + result.sequenceDiagrams.length} diagram(s)! Please review them in the Review Panel before applying.`);
       } else {
-        // Directly add generated diagrams to store
+        // Directly add generated diagrams to store, skipping duplicates by slug
+        const project = useProjectStore.getState().project;
+        const existingBlockSlugs = new Set((project?.blockDiagrams ?? []).map(d => d.slug).filter(Boolean));
+        const existingMermaidSlugs = new Set([
+          ...(project?.sequenceDiagrams ?? []).map(d => d.slug),
+          ...(project?.flowDiagrams ?? []).map(d => d.slug),
+        ].filter(Boolean));
+        let skippedCount = 0;
+
         for (const diagram of result.blockDiagrams) {
+          if (diagram.slug && existingBlockSlugs.has(diagram.slug)) {
+            console.log(`[Dedup] Skipping block diagram with existing slug: ${diagram.slug}`);
+            skippedCount++;
+            continue;
+          }
           addBlockDiagram(diagram);
         }
 
         for (const diagram of result.sequenceDiagrams) {
-          addMermaidDiagram('sequence', diagram);
+          if (diagram.slug && existingMermaidSlugs.has(diagram.slug)) {
+            console.log(`[Dedup] Skipping mermaid diagram with existing slug: ${diagram.slug}`);
+            skippedCount++;
+            continue;
+          }
+          addMermaidDiagram(diagram.type || 'sequence', diagram);
+        }
+
+        if (skippedCount > 0) {
+          result.warnings.push(`${skippedCount} diagram(s) skipped — already exist with the same figure reference.`);
         }
 
         // Create snapshot
         createSnapshot(
           'diagram-add',
-          `AI-generated ${result.blockDiagrams.length} block diagram(s) and ${result.sequenceDiagrams.length} sequence diagram(s) from Technical Specification`,
+          `AI-generated ${result.blockDiagrams.length} block diagram(s) and ${result.sequenceDiagrams.length} Mermaid diagram(s) from Technical Specification`,
           'ai'
         );
       }
@@ -176,7 +198,15 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
       }
     } catch (err: any) {
       console.error('Failed to generate diagrams:', err);
-      setError(err.message || 'Failed to generate diagrams. Please check your AI configuration.');
+      const detail = err.message || 'Unknown error';
+      const hint = detail.includes('401') || detail.includes('403')
+        ? ' Check your API key is valid.'
+        : detail.includes('429')
+        ? ' API rate limit reached — try again in a moment.'
+        : detail.includes('not initialized')
+        ? ' Please configure your AI provider in Settings.'
+        : '';
+      setError(`Failed to generate diagrams: ${detail}.${hint}`);
     } finally {
       setIsGenerating(false);
     }
@@ -315,7 +345,7 @@ export const GenerateDiagramsModal: React.FC<GenerateDiagramsModalProps> = ({ is
               </h3>
               <div className={`text-sm ${generationResults.errors.length > 0 ? 'text-yellow-800' : 'text-green-800'} space-y-1`}>
                 <p>✓ <strong>{generationResults.blockDiagrams}</strong> block diagram(s) created</p>
-                <p>✓ <strong>{generationResults.sequenceDiagrams}</strong> sequence diagram(s) created</p>
+                <p>✓ <strong>{generationResults.sequenceDiagrams}</strong> Mermaid diagram(s) created</p>
                 {generationResults.errors.length > 0 && (
                   <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
                     <p className="font-medium text-red-900">Errors ({generationResults.errors.length}):</p>

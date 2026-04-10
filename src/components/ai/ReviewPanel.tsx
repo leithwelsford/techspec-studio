@@ -523,7 +523,26 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
 
     try {
       // Apply the generated content
-      if (approval.type === 'section' || approval.type === 'document' || approval.type === 'refinement') {
+      if (approval.type === 'review-fix') {
+        // Apply section-level fix: replace original content in the current specification
+        const currentSpec = useProjectStore.getState().project?.specification?.markdown || '';
+        const idx = currentSpec.indexOf(approval.originalContent || '');
+        if (idx !== -1 && approval.originalContent) {
+          const updatedSpec = currentSpec.substring(0, idx) + approval.generatedContent + currentSpec.substring(idx + approval.originalContent.length);
+          updateSpecification(updatedSpec);
+          console.log(`✅ Applied review fix to section`);
+        } else {
+          console.warn('⚠️ Could not find original content in spec — applying full replacement');
+          updateSpecification(approval.generatedContent);
+        }
+
+        createSnapshot(
+          'ai-refinement',
+          `Applied review fix`,
+          'ai',
+          { relatedApprovalId: approval.id }
+        );
+      } else if (approval.type === 'section' || approval.type === 'document' || approval.type === 'refinement') {
         console.log('✅ Type check passed, applying specification changes');
         // For specification content (section generation, document generation, or refinement)
         const currentMarkdown = approval.originalContent || '';
@@ -591,6 +610,64 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
     // Clear selection and feedback
     setSelectedApprovalId(null);
     setFeedback('');
+
+    // Re-review after all review-fix approvals are done
+    if (approval.type === 'review-fix') {
+      const remainingFixes = pendingApprovals.filter(
+        a => a.type === 'review-fix' && a.id !== approval.id
+      );
+      if (remainingFixes.length === 0) {
+        // All fixes applied — trigger re-review
+        triggerReReview();
+      }
+    }
+  };
+
+  const triggerReReview = async () => {
+    try {
+      const state = useProjectStore.getState();
+      const spec = state.project?.specification?.markdown;
+      const aiConfig = state.aiConfig;
+      if (!spec || !aiConfig?.apiKey) return;
+
+      console.log('🔄 Re-reviewing specification after fixes...');
+
+      // Strip old review report before re-reviewing
+      const specWithoutReport = spec.replace(/\n---\n\n# Specification Review Report\n[\s\S]*$/, '');
+
+      const { decrypt: dec } = await import('../../utils/encryption');
+      const { aiService } = await import('../../services/ai/AIService');
+      const decryptedKey = dec(aiConfig.apiKey);
+      await aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
+
+      const { reviewSpecification } = await import('../../services/ai/specReviewer');
+      const report = await reviewSpecification(specWithoutReport, {}, aiService.getProvider(), {
+        model: aiConfig.model,
+        temperature: 0.2,
+      });
+
+      if (report.totalIssues > 0) {
+        // Append new review report
+        let reviewSummary = '\n\n---\n\n# Specification Review Report\n\n';
+        reviewSummary += `**${report.errors} errors, ${report.warnings} warnings, ${report.info} informational items**\n\n`;
+        reviewSummary += '| # | Severity | Section | Category | Issue | Suggestion |\n';
+        reviewSummary += '|---|---|---|---|---|---|\n';
+        report.issues.forEach((issue: any, idx: number) => {
+          reviewSummary += `| ${idx + 1} | ${issue.severity} | ${issue.sectionNumber} ${issue.sectionTitle} | ${issue.category} | ${issue.description} | ${issue.suggestion} |\n`;
+        });
+        reviewSummary += '\n> **Note:** This review report is appended for editorial reference. Remove this section before finalising the specification.\n';
+
+        updateSpecification(specWithoutReport + reviewSummary);
+        alert(`Re-review complete: ${report.errors} errors, ${report.warnings} warnings, ${report.info} info items remaining.\n\nYou can fix these with "Fix Review Issues" again.`);
+      } else {
+        // Clean — remove old review report
+        updateSpecification(specWithoutReport);
+        alert('Re-review complete: No issues found! The review report has been removed.');
+      }
+    } catch (error) {
+      console.error('Re-review failed:', error);
+      alert('Re-review failed — you can manually re-generate to review.');
+    }
   };
 
   const handleReject = (approval: PendingApproval) => {
@@ -631,6 +708,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
         return 'Refinement';
       case 'cascaded-refinement':
         return 'Cascaded Refinement';
+      case 'review-fix':
+        return 'Review Fix';
       default:
         return 'Content';
     }
@@ -648,6 +727,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
         return 'bg-amber-100 text-amber-700';
       case 'cascaded-refinement':
         return 'bg-orange-100 text-orange-700';
+      case 'review-fix':
+        return 'bg-red-100 text-red-700';
       default:
         return 'bg-gray-100 text-gray-700';
     }
@@ -724,11 +805,20 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                     <p className="text-sm text-gray-700 dark:text-gray-200 font-medium line-clamp-2">
                       {approval.type === 'diagram'
                         ? approval.generatedContent.title || 'Untitled Diagram'
+                        : approval.type === 'review-fix'
+                        ? `Fix: Section ${approval.taskId.replace(/^review-fix-\d+-/, '')}`
                         : `Generated ${approval.type}`}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">
-                      Task ID: {approval.taskId.slice(0, 8)}
-                    </p>
+                    {approval.type === 'review-fix' && approval.originalContent && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                        {approval.originalContent.split('\n')[0]?.substring(0, 80)}
+                      </p>
+                    )}
+                    {approval.type !== 'review-fix' && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">
+                        Task ID: {approval.taskId.slice(0, 8)}
+                      </p>
+                    )}
                   </button>
                 ))
               )}

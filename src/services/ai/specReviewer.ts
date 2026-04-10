@@ -483,3 +483,152 @@ ${markdown.length > 80000 ? '\n\n[... specification truncated for review ...]' :
     return { issues: [], tokensUsed: 0, cost: 0 };
   }
 }
+
+// ========== Fix Generation ==========
+
+export interface ReviewFix {
+  issueId: string;
+  sectionNumber: string;
+  sectionTitle: string;
+  originalContent: string;
+  fixedContent: string;
+  description: string;
+}
+
+/**
+ * Generate a fix for a single review issue.
+ * Extracts the affected section, sends it to the AI with the issue details,
+ * and returns the corrected section content.
+ */
+export async function generateFixForIssue(
+  markdown: string,
+  issue: ReviewIssue,
+  provider: any,
+  config: Partial<AIConfig>
+): Promise<ReviewFix | null> {
+  // Extract the affected section
+  const sectionContent = extractSectionByNumber(markdown, issue.sectionNumber);
+  if (!sectionContent) {
+    console.warn(`Could not extract section ${issue.sectionNumber} for fix`);
+    return null;
+  }
+
+  // For duplication issues, also extract the related section
+  let relatedContent = '';
+  if (issue.relatedSection) {
+    const relatedNumber = issue.relatedSection.split(' ')[0];
+    const related = extractSectionByNumber(markdown, relatedNumber);
+    if (related) {
+      relatedContent = `\n\n## Related Section (for cross-reference context)\n\n${related}`;
+    }
+  }
+
+  // Stable system context (cached across all fix calls for Anthropic models)
+  // Contains the full spec so the AI can check cross-references and consistency
+  const systemPrompt = `You are a technical specification editor. You fix issues found during review.
+Output ONLY the corrected section content (including its heading). No explanation, no markdown fences.
+
+## Full Specification (for cross-reference context)
+
+${markdown.substring(0, 100000)}${markdown.length > 100000 ? '\n\n[... specification truncated ...]' : ''}`;
+
+  // Issue-specific user prompt (changes per fix)
+  const userPrompt = `Fix the following issue in Section ${issue.sectionNumber}: ${issue.sectionTitle}.
+
+## Issue
+- **Severity:** ${issue.severity}
+- **Category:** ${issue.category}
+- **Description:** ${issue.description}
+- **Suggestion:** ${issue.suggestion}
+${issue.contentSnippet ? `- **Problematic snippet:** "${issue.contentSnippet}"` : ''}
+${issue.relatedSection ? `- **Related section:** ${issue.relatedSection}` : ''}
+
+## Section to Fix
+
+${sectionContent}
+${relatedContent}
+
+## Rules
+
+1. Apply the suggested fix to the section content above.
+2. Preserve ALL existing content that is not related to the issue.
+3. Preserve the exact heading format (e.g., "# 4 Section Title" or "## 4.1 Subsection").
+4. Preserve all {{fig:...}} and {{ref:...}} placeholders exactly as they are.
+5. Preserve all requirement IDs (e.g., **PCC-CAPTIVE-REQ-00001**) unless the issue specifically asks to change them.
+6. For duplication issues: You are fixing Section ${issue.sectionNumber} ONLY.${issue.relatedSection ? ` The related section is ${issue.relatedSection}.` : ''}
+   - If this section (${issue.sectionNumber}) has a LOWER number than the related section, this is the PRIMARY section — keep the full content here. The related section will be fixed separately.
+   - If this section (${issue.sectionNumber}) has a HIGHER number (or is an Appendix), replace the duplicated content with a cross-reference like "See Section X for details" or "As defined in Section X".
+   - NEVER delete content from both sections. One must keep it, the other must reference it.
+7. For depth-compliance issues: trim verbose content, move detail to cross-references.
+8. For cross-reference issues: fix the section number to point to the correct section.
+9. For consistency issues: align terminology with the rest of the document.
+
+Respond with ONLY the corrected section content (including the heading).`;
+
+  try {
+    const result = await provider.generate(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      {
+        ...config,
+        temperature: 0.2,
+        maxTokens: 16000,
+      }
+    );
+
+    const fixedContent = result.content.trim();
+
+    // Basic validation: the fix should contain the section heading
+    if (!fixedContent.includes(issue.sectionNumber)) {
+      console.warn(`Fix for ${issue.id} may be invalid — doesn't contain section number`);
+    }
+
+    return {
+      issueId: issue.id,
+      sectionNumber: issue.sectionNumber,
+      sectionTitle: issue.sectionTitle,
+      originalContent: sectionContent,
+      fixedContent,
+      description: `Fix: ${issue.description}`,
+    };
+  } catch (error) {
+    console.error(`Failed to generate fix for issue ${issue.id}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Extract a section from markdown by its number (e.g., "4" or "4.1").
+ */
+function extractSectionByNumber(markdown: string, sectionNumber: string): string | null {
+  const escaped = sectionNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const lines = markdown.split('\n');
+  let startIdx = -1;
+  let headingLevel = 0;
+
+  // Find the section heading
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(new RegExp(`^(#{1,4})\\s+${escaped}\\s+`));
+    if (match) {
+      startIdx = i;
+      headingLevel = match[1].length;
+      break;
+    }
+  }
+
+  if (startIdx === -1) return null;
+
+  // Find the end (next heading of same or higher level)
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const headingMatch = lines[i].match(/^(#{1,4})\s+/);
+    if (headingMatch && headingMatch[1].length <= headingLevel) {
+      endIdx = i;
+      break;
+    }
+  }
+
+  return lines.slice(startIdx, endIdx).join('\n');
+}

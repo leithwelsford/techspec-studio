@@ -463,8 +463,12 @@ function extractTodoComments(content: string): TodoExtractionResult {
     if (figMatch) {
       const figureRef = figMatch[1];
 
-      // Look for TODO comment on same line or next 2 lines
+      // Look for TODO comment on same line or next 2 lines,
+      // but stop if we hit another {{fig:...}} first (prevents misattribution)
       for (let j = i; j <= Math.min(i + 2, lines.length - 1); j++) {
+        // If we hit another figure reference (not on the same line), stop looking
+        if (j > i && /\{\{fig:[^}]+\}\}/.test(lines[j])) break;
+
         const todoMatch = lines[j].match(/<!--\s*TODO:\s*(.+?)\s*-->/);
         if (todoMatch) {
           const todoText = todoMatch[1].trim();

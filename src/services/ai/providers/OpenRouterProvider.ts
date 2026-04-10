@@ -194,10 +194,18 @@ export class OpenRouterProvider {
     };
 
     // Log cache performance if available
-    const cacheRead = data.usage.cache_read_input_tokens || 0;
-    const cacheCreation = data.usage.cache_creation_input_tokens || 0;
+    // OpenRouter may return cache tokens in different formats:
+    // - Anthropic native: cache_read_input_tokens / cache_creation_input_tokens
+    // - OpenRouter wrapped: prompt_tokens_details.cached_tokens / cache_write_tokens
+    const cacheRead = data.usage.cache_read_input_tokens
+      || data.usage.prompt_tokens_details?.cached_tokens
+      || 0;
+    const cacheCreation = data.usage.cache_creation_input_tokens
+      || data.usage.prompt_tokens_details?.cache_write_tokens
+      || 0;
     if (cacheRead > 0 || cacheCreation > 0) {
-      console.log('💾 Prompt cache:', { cacheRead, cacheCreation, normalInput: tokens.prompt - cacheRead - cacheCreation });
+      const savings = cacheRead > 0 ? `~${Math.round((cacheRead / tokens.prompt) * 90)}% savings` : 'cache write';
+      console.log(`💾 Prompt cache: ${cacheRead} read, ${cacheCreation} written (${savings})`, { cacheRead, cacheCreation, normalInput: tokens.prompt - cacheRead - cacheCreation });
     }
 
     // Estimate cost with cache-aware pricing

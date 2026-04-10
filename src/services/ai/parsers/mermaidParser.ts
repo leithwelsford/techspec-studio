@@ -269,7 +269,21 @@ export function detectMermaidType(code: string): MermaidDiagramType | null {
     cleanedCode = cleanedCode.replace(/\n?```\s*$/, '').trim();
   }
 
-  const firstLine = cleanedCode.split('\n')[0].toLowerCase().trim();
+  let firstLine = cleanedCode.split('\n')[0].toLowerCase().trim();
+
+  // If the first line doesn't look like a diagram declaration, scan all lines
+  // This handles AI preamble text before the actual diagram code
+  const knownStarts = /^(sequencediagram|flowchart|graph\s|statediagram|classdiagram|erdiagram|gantt|timeline|pie|quadrantchart|xychart|sankey|mindmap|c4context|c4container|c4component|c4dynamic|c4deployment|architecture|block-beta|journey|gitgraph|requirementdiagram|zenuml|kanban|packet|radar|treemap)/i;
+  if (!firstLine.match(knownStarts)) {
+    const lines = cleanedCode.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim().toLowerCase();
+      if (trimmed.match(knownStarts)) {
+        firstLine = trimmed;
+        break;
+      }
+    }
+  }
 
   // Core diagrams
   if (firstLine.startsWith('sequencediagram')) return 'sequence';

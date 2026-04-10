@@ -22,6 +22,7 @@ export default function Workspace() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showStructureDiscovery, setShowStructureDiscovery] = useState(false);
   const [isGeneratingFromStructure, setIsGeneratingFromStructure] = useState(false);
+  const [isFixingReviewIssues, setIsFixingReviewIssues] = useState(false);
 
   // Generation progress state
   const [generationProgress, setGenerationProgress] = useState<{
@@ -181,6 +182,93 @@ export default function Workspace() {
     }
   }, [aiConfig, brsDocument, updateUsageStats, createApproval, project]);
 
+  // Fix review issues handler
+  const handleFixReviewIssues = useCallback(async () => {
+    const spec = project?.specification?.markdown;
+    if (!spec || !aiConfig?.apiKey) return;
+
+    // Parse review issues from the review report table in the specification
+    const reviewSection = spec.match(/# Specification Review Report\n\n([\s\S]*?)(?:\n> \*\*Note:)/);
+    if (!reviewSection) {
+      alert('No review report found in the specification. Generate a specification with review first.');
+      return;
+    }
+
+    // Parse the markdown table rows
+    const tableRows = reviewSection[1].match(/\|\s*\d+\s*\|[^\n]+/g);
+    if (!tableRows || tableRows.length === 0) {
+      alert('No issues found in the review report.');
+      return;
+    }
+
+    const issues = tableRows.map((row, idx) => {
+      const cells = row.split('|').map(c => c.trim()).filter(Boolean);
+      // Format: # | Severity | Section | Category | Issue | Suggestion
+      const sectionParts = (cells[2] || '').match(/^(\S+)\s+(.*)/);
+      return {
+        id: `review-fix-${idx}`,
+        severity: cells[1] || 'warning',
+        sectionNumber: sectionParts?.[1] || '',
+        sectionTitle: sectionParts?.[2] || cells[2] || '',
+        category: cells[3] || '',
+        description: cells[4] || '',
+        suggestion: cells[5] || '',
+      };
+    });
+
+    const actionable = issues.filter(i => i.severity !== 'info');
+    if (actionable.length === 0) {
+      alert('No errors or warnings to fix — only informational items.');
+      return;
+    }
+
+    if (!confirm(`Fix ${actionable.length} review issue(s) (${issues.filter(i => i.severity === 'error').length} errors, ${issues.filter(i => i.severity === 'warning').length} warnings)?\n\nEach fix will be sent to the Review Panel for your approval.`)) {
+      return;
+    }
+
+    setIsFixingReviewIssues(true);
+    try {
+      // Initialize AI
+      const decryptedKey = decrypt(aiConfig.apiKey);
+      await aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
+
+      const result = await aiService.fixReviewIssues(
+        spec,
+        actionable,
+        (current, total, issueTitle) => {
+          setGenerationProgress({ current, total, sectionTitle: `Fixing: ${issueTitle}`, status: 'generating' });
+        }
+      );
+
+      // Create an approval for each fix
+      for (const fix of result.fixes) {
+        createApproval({
+          taskId: `review-fix-${Date.now()}-${fix.sectionNumber}`,
+          type: 'review-fix',
+          status: 'pending',
+          originalContent: fix.originalContent,
+          generatedContent: fix.fixedContent,
+        });
+      }
+
+      setShowReviewPanel(true);
+
+      let message = `Generated ${result.fixes.length} fix(es).`;
+      if (result.errors.length > 0) {
+        message += `\n\n${result.errors.length} issue(s) could not be fixed:\n${result.errors.join('\n')}`;
+      }
+      message += '\n\nPlease review each fix in the Review Panel.';
+      message += '\nAfter approving all fixes, a re-review will check for new issues.';
+      alert(message);
+    } catch (err) {
+      console.error('Fix review issues failed:', err);
+      alert(`Failed to fix review issues: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsFixingReviewIssues(false);
+      setGenerationProgress(null);
+    }
+  }, [aiConfig, project, createApproval]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
@@ -278,6 +366,22 @@ export default function Workspace() {
               title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Generate diagrams from Technical Specification'}
             >
               Generate Diagrams
+            </button>
+          )}
+
+          {/* Fix Review Issues Button - visible when spec has a review report */}
+          {project?.specification?.markdown?.includes('# Specification Review Report') && (
+            <button
+              onClick={handleFixReviewIssues}
+              disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim() || isFixingReviewIssues}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md ${
+                aiConfig?.apiKey && aiConfig.apiKey.trim() && !isFixingReviewIssues
+                  ? 'text-white bg-orange-600 hover:bg-orange-700'
+                  : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+              }`}
+              title="AI-fix errors and warnings from the review report"
+            >
+              {isFixingReviewIssues ? 'Fixing...' : 'Fix Review Issues'}
             </button>
           )}
 
