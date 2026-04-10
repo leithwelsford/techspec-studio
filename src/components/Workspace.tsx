@@ -295,54 +295,6 @@ export default function Workspace() {
     }
   }, [aiConfig, project, createApproval]);
 
-  // Re-review handler — full AI review, strips old reports first
-  const [isReReviewing, setIsReReviewing] = useState(false);
-  const handleReReview = useCallback(async () => {
-    const spec = project?.specification?.markdown;
-    if (!spec || !aiConfig?.apiKey) return;
-
-    if (!confirm('Run a full AI review of the specification?\n\nThis will strip any existing review reports and append a fresh one.')) return;
-
-    setIsReReviewing(true);
-    try {
-      const decryptedKey = decrypt(aiConfig.apiKey);
-      await aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
-
-      // Strip all existing review reports
-      const specClean = spec.replace(/\n*(?:---\n+)?# Specification Review Report[\s\S]*$/g, '');
-
-      const { reviewSpecification } = await import('../services/ai/specReviewer');
-      const updateSpecification = useProjectStore.getState().updateSpecification;
-
-      const report = await reviewSpecification(specClean, {}, aiService.getProvider(), {
-        model: aiConfig.model,
-        temperature: 0.2,
-      });
-
-      if (report.totalIssues > 0) {
-        let reviewSummary = '\n\n---\n\n# Specification Review Report\n\n';
-        reviewSummary += `**${report.errors} errors, ${report.warnings} warnings, ${report.info} informational items**\n\n`;
-        reviewSummary += '| # | Severity | Section | Category | Issue | Suggestion |\n';
-        reviewSummary += '|---|---|---|---|---|---|\n';
-        report.issues.forEach((issue: any, idx: number) => {
-          reviewSummary += `| ${idx + 1} | ${issue.severity} | ${issue.sectionNumber} ${issue.sectionTitle} | ${issue.category} | ${issue.description} | ${issue.suggestion} |\n`;
-        });
-        reviewSummary += '\n> **Note:** This review report is appended for editorial reference. Remove this section before finalising the specification.\n';
-
-        updateSpecification(specClean + reviewSummary);
-        alert(`Review complete: ${report.errors} errors, ${report.warnings} warnings, ${report.info} info items.\n\nSee the review report at the end of the specification.`);
-      } else {
-        updateSpecification(specClean);
-        alert('Review complete: No issues found!');
-      }
-    } catch (err) {
-      console.error('Re-review failed:', err);
-      alert(`Re-review failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setIsReReviewing(false);
-    }
-  }, [aiConfig, project]);
-
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
@@ -440,22 +392,6 @@ export default function Workspace() {
               title={!aiConfig?.apiKey || !aiConfig.apiKey.trim() ? 'Configure AI first' : 'Generate diagrams from Technical Specification'}
             >
               Generate Diagrams
-            </button>
-          )}
-
-          {/* Re-review Button - visible when spec exists */}
-          {project?.specification && project.specification.markdown.trim().length > 0 && (
-            <button
-              onClick={handleReReview}
-              disabled={!aiConfig?.apiKey || !aiConfig.apiKey.trim() || isReReviewing}
-              className={`px-4 py-1.5 text-sm font-medium rounded-md ${
-                aiConfig?.apiKey && aiConfig.apiKey.trim() && !isReReviewing
-                  ? 'text-white bg-teal-600 hover:bg-teal-700'
-                  : 'text-gray-400 bg-gray-100 cursor-not-allowed'
-              }`}
-              title="Run a full AI review — strips old reports and appends a fresh one"
-            >
-              {isReReviewing ? 'Reviewing...' : 'Review Spec'}
             </button>
           )}
 

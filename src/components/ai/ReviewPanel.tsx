@@ -630,9 +630,11 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
       const aiConfig = state.aiConfig;
       if (!spec || !aiConfig?.apiKey) return;
 
-      console.log('🔄 Re-reviewing specification after fixes...');
+      alert('All fixes applied. Running a full review of the updated specification...');
 
-      // Strip ALL review reports — match on heading alone (separator may vary or be absent)
+      console.log('🔄 Re-reviewing specification after fixes (full AI review)...');
+
+      // Strip ALL old review reports
       const specWithoutReport = spec.replace(/\n*(?:---\n+)?# Specification Review Report[\s\S]*$/g, '');
 
       const { decrypt: dec } = await import('../../utils/encryption');
@@ -640,14 +642,15 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
       const decryptedKey = dec(aiConfig.apiKey);
       await aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
 
-      // Run LOCAL checks only (no AI call) — deterministic, free, and won't re-introduce
-      // issues the user already fixed. AI review is expensive and non-deterministic;
-      // it can flag new "issues" that create an infinite fix→review→fix loop.
+      // Full AI review of the cleaned specification
       const { reviewSpecification } = await import('../../services/ai/specReviewer');
-      const report = await reviewSpecification(specWithoutReport, {});
+      const report = await reviewSpecification(specWithoutReport, {}, aiService.getProvider(), {
+        model: aiConfig.model,
+        temperature: 0.2,
+      });
 
       if (report.totalIssues > 0) {
-        // Append new review report
+        // Append fresh review report
         let reviewSummary = '\n\n---\n\n# Specification Review Report\n\n';
         reviewSummary += `**${report.errors} errors, ${report.warnings} warnings, ${report.info} informational items**\n\n`;
         reviewSummary += '| # | Severity | Section | Category | Issue | Suggestion |\n';
@@ -658,15 +661,14 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
         reviewSummary += '\n> **Note:** This review report is appended for editorial reference. Remove this section before finalising the specification.\n';
 
         updateSpecification(specWithoutReport + reviewSummary);
-        alert(`Re-review complete: ${report.errors} errors, ${report.warnings} warnings, ${report.info} info items remaining.\n\nYou can fix these with "Fix Review Issues" again.`);
+        alert(`Review complete: ${report.errors} errors, ${report.warnings} warnings, ${report.info} info items.\n\nUse "Fix Review Issues" to address them.`);
       } else {
-        // Clean — remove old review report
         updateSpecification(specWithoutReport);
-        alert('Re-review complete: No issues found! The review report has been removed.');
+        alert('Review complete: No issues found! The specification is clean.');
       }
     } catch (error) {
       console.error('Re-review failed:', error);
-      alert('Re-review failed — you can manually re-generate to review.');
+      alert('Re-review failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
