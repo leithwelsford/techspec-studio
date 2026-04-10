@@ -79,21 +79,19 @@ export async function reviewSpecification(
   const sections = parseSections(markdown);
   const issues: ReviewIssue[] = [];
 
-  // Phase 1: Local checks (no AI needed)
-  checkDepthCompliance(sections, sectionDepths, issues);
-  checkRequirementIdDuplication(sections, issues);
-  checkCrossReferences(sections, markdown, issues);
-  checkContentDuplication(sections, issues);
-
-  // Phase 2: AI-powered holistic review (if provider available)
-  let aiTokens = 0;
-  let aiCost = 0;
-  if (provider && config) {
-    const aiResult = await runAIReview(markdown, sections, sectionDepths, provider, config);
-    issues.push(...aiResult.issues);
-    aiTokens = aiResult.tokensUsed;
-    aiCost = aiResult.cost;
+  if (!provider || !config) {
+    // No AI provider — can't review
+    return {
+      totalIssues: 0, errors: 0, warnings: 0, info: 0,
+      issues: [], tokensUsed: 0, cost: 0,
+      summary: 'No AI provider available for review.',
+    };
   }
+
+  // AI-powered holistic review — the AI understands context, cross-references,
+  // and document structure far better than local pattern matching
+  const aiResult = await runAIReview(markdown, sections, sectionDepths, provider, config);
+  issues.push(...aiResult.issues);
 
   const errors = issues.filter(i => i.severity === 'error').length;
   const warnings = issues.filter(i => i.severity === 'warning').length;
@@ -105,8 +103,8 @@ export async function reviewSpecification(
     warnings,
     info,
     issues,
-    tokensUsed: aiTokens,
-    cost: aiCost,
+    tokensUsed: aiResult.tokensUsed,
+    cost: aiResult.cost,
     summary: `Review complete: ${errors} errors, ${warnings} warnings, ${info} info items across ${sections.length} sections.`,
   };
 }
@@ -162,226 +160,12 @@ function extractRequirementIds(text: string): string[] {
 }
 
 /**
- * Check 1: Depth compliance
- * Sections marked 'brief' should be under ~1000 words
- * Sections marked 'standard' should be under ~3000 words
- */
-function checkDepthCompliance(
-  sections: SectionInfo[],
-  sectionDepths: Record<string, SectionDepth>,
-  issues: ReviewIssue[]
-): void {
-  const thresholds: Record<SectionDepth, { wordLimit: number; reqIdLimit: number }> = {
-    brief: { wordLimit: 1000, reqIdLimit: 15 },
-    standard: { wordLimit: 3500, reqIdLimit: 40 },
-    detailed: { wordLimit: 999999, reqIdLimit: 999 },
-  };
-
-  for (const section of sections) {
-    // Try to match depth by section ID or title
-    const depth = findDepthForSection(section, sectionDepths);
-    if (!depth || depth === 'detailed') continue;
-
-    const limits = thresholds[depth];
-
-    if (section.wordCount > limits.wordLimit) {
-      issues.push({
-        id: `depth-words-${section.number}`,
-        severity: 'warning',
-        category: 'depth-compliance',
-        sectionTitle: section.title,
-        sectionNumber: section.number,
-        description: `Section ${section.number} "${section.title}" is marked as '${depth}' but contains ${section.wordCount} words (limit: ~${limits.wordLimit}).`,
-        suggestion: `Reduce this section to ~${limits.wordLimit} words. Move detailed content (attribute tables, procedures, formulas) to the appropriate detailed section and add cross-references.`,
-      });
-    }
-
-    if (section.requirementIds.length > limits.reqIdLimit) {
-      issues.push({
-        id: `depth-reqs-${section.number}`,
-        severity: 'warning',
-        category: 'depth-compliance',
-        sectionTitle: section.title,
-        sectionNumber: section.number,
-        description: `Section ${section.number} "${section.title}" is marked as '${depth}' but contains ${section.requirementIds.length} requirement IDs (limit: ~${limits.reqIdLimit}).`,
-        suggestion: `Consolidate requirement IDs. For '${depth}' sections, only create IDs for spec-specific design decisions, not for restating standards.`,
-      });
-    }
-  }
-}
-
-/**
- * Check 2: Requirement ID duplication
- */
-function checkRequirementIdDuplication(
-  sections: SectionInfo[],
-  issues: ReviewIssue[]
-): void {
-  const idToSections: Record<string, string[]> = {};
-
-  for (const section of sections) {
-    for (const reqId of section.requirementIds) {
-      if (!idToSections[reqId]) idToSections[reqId] = [];
-      idToSections[reqId].push(`${section.number} ${section.title}`);
-    }
-  }
-
-  for (const [reqId, sectionList] of Object.entries(idToSections)) {
-    if (sectionList.length > 1) {
-      issues.push({
-        id: `dup-req-${reqId}`,
-        severity: 'error',
-        category: 'requirement-id',
-        sectionTitle: sectionList[0],
-        sectionNumber: (sectionList[0] || '').split(' ')[0] || 'unknown',
-        description: `Requirement ID ${reqId} appears in ${sectionList.length} sections: ${sectionList.join(', ')}.`,
-        suggestion: `Each requirement ID must be unique. Keep the ID in the primary section and remove or renumber duplicates.`,
-        relatedSection: sectionList[1],
-      });
-    }
-  }
-}
-
-/**
- * Check 3: Cross-reference consistency
- */
-function checkCrossReferences(
-  sections: SectionInfo[],
-  _markdown: string,
-  issues: ReviewIssue[]
-): void {
-  // Find all "Section X" or "Section X.Y" references
-  const refPattern = /Section\s+(\d+(?:\.\d+)*)/g;
-  const sectionNumbers = new Set(sections.map(s => s.number));
-  // Also add subsection numbers
-  for (const section of sections) {
-    const subHeadings = section.content.match(/^#{2,4}\s+(\d+(?:\.\d+)+)\s+/gm) || [];
-    for (const heading of subHeadings) {
-      const numMatch = heading.match(/(\d+(?:\.\d+)+)/);
-      if (numMatch) sectionNumbers.add(numMatch[1]);
-    }
-  }
-
-  for (const section of sections) {
-    let match;
-    const content = section.content;
-    refPattern.lastIndex = 0;
-
-    while ((match = refPattern.exec(content)) !== null) {
-      const referencedNumber = match[1];
-      // Check if the top-level section exists
-      const topLevel = referencedNumber.split('.')[0];
-      if (!sectionNumbers.has(topLevel) && !sectionNumbers.has(referencedNumber)) {
-        issues.push({
-          id: `xref-${section.number}-${referencedNumber}`,
-          severity: 'error',
-          category: 'cross-reference',
-          sectionTitle: section.title,
-          sectionNumber: section.number,
-          description: `Section ${section.number} references "Section ${referencedNumber}" which does not exist in the document.`,
-          suggestion: `Update the reference to point to the correct section number, or remove the reference.`,
-          contentSnippet: content.substring(Math.max(0, match.index - 40), match.index + match[0].length + 40),
-        });
-      }
-    }
-  }
-}
-
-/**
- * Check 4: Content duplication detection
- * Finds paragraphs or significant text blocks that appear similar in multiple sections.
- */
-function checkContentDuplication(
-  sections: SectionInfo[],
-  issues: ReviewIssue[]
-): void {
-  // Sections whose PURPOSE is to list references, abbreviations, or terminology
-  // are exempt from duplication checks — other sections referencing the same
-  // standards/terms is expected, not duplication.
-  const referencePatterns = /reference|abbreviat|terminolog|glossar|definition|acronym|appendix/i;
-
-  // Extract significant paragraphs (>80 words) from each section
-  const sectionParagraphs: Array<{ section: SectionInfo; paragraph: string; normalized: string }> = [];
-
-  for (const section of sections) {
-    const paragraphs = section.content.split(/\n\n+/).filter(p => countWords(p) > 80);
-    for (const para of paragraphs) {
-      // Skip tables (markdown tables have lots of shared terms but aren't duplication)
-      if (para.includes('|---') || para.includes('| ---')) continue;
-      // Skip cross-reference paragraphs (they naturally share words with the target)
-      if (/\b(?:see|refer to|as defined in|described in)\b.*\bsection\b/i.test(para)) continue;
-
-      // Normalize: lowercase, remove requirement IDs, remove standard doc numbers, collapse whitespace
-      const normalized = para
-        .toLowerCase()
-        .replace(/\*\*[a-z]+-[a-z]+-[a-z]+-\d{5}\*\*/g, '')
-        .replace(/(?:3gpp\s+)?ts\s+\d+\.\d+/g, '')  // Remove "TS 23.203" etc.
-        .replace(/rfc\s*\d+/g, '')                     // Remove "RFC 3748" etc.
-        .replace(/ieee\s+[\d.]+/g, '')                 // Remove "IEEE 802.1X" etc.
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (countWords(normalized) < 30) continue; // Skip if too little content after normalization
-      sectionParagraphs.push({ section, paragraph: para, normalized });
-    }
-  }
-
-  // Compare each pair of paragraphs across different sections
-  const reported = new Set<string>();
-  for (let i = 0; i < sectionParagraphs.length; i++) {
-    for (let j = i + 1; j < sectionParagraphs.length; j++) {
-      const a = sectionParagraphs[i];
-      const b = sectionParagraphs[j];
-      if (a.section.number === b.section.number) continue;
-
-      // Skip if either section is a dedicated reference/terminology section
-      if (referencePatterns.test(a.section.title) || referencePatterns.test(b.section.title)) continue;
-
-      const similarity = calculateSimilarity(a.normalized, b.normalized);
-      if (similarity > 0.75) { // Higher threshold to avoid false positives
-        const key = `${a.section.number}-${b.section.number}`;
-        if (reported.has(key)) continue;
-        reported.add(key);
-
-        issues.push({
-          id: `dup-content-${a.section.number}-${b.section.number}`,
-          severity: 'warning',
-          category: 'duplication',
-          sectionTitle: a.section.title,
-          sectionNumber: a.section.number,
-          description: `Similar content found in Section ${a.section.number} "${a.section.title}" and Section ${b.section.number} "${b.section.title}" (${Math.round(similarity * 100)}% similarity).`,
-          suggestion: `Keep the content in the more appropriate section and replace the duplicate with a cross-reference: "as defined in Section X".`,
-          contentSnippet: a.paragraph.substring(0, 150) + '...',
-          relatedSection: `${b.section.number} ${b.section.title}`,
-        });
-      }
-    }
-  }
-}
-
-/**
- * Simple word-overlap similarity between two normalized strings.
- */
-function calculateSimilarity(a: string, b: string): number {
-  const wordsA = new Set(a.split(' ').filter(w => w.length > 3));
-  const wordsB = new Set(b.split(' ').filter(w => w.length > 3));
-  if (wordsA.size === 0 || wordsB.size === 0) return 0;
-
-  let overlap = 0;
-  for (const word of wordsA) {
-    if (wordsB.has(word)) overlap++;
-  }
-
-  return overlap / Math.min(wordsA.size, wordsB.size);
-}
-
-/**
  * Match a section to its depth setting by ID or title keywords.
  */
 function findDepthForSection(
   section: SectionInfo,
   sectionDepths: Record<string, SectionDepth>
 ): SectionDepth | null {
-  // Try exact match by various key formats
   for (const [key, depth] of Object.entries(sectionDepths)) {
     if (key === section.number) return depth;
     if (section.title.toLowerCase().includes(key.toLowerCase())) return depth;
@@ -414,11 +198,10 @@ ${depthSummary}
 
 1. **Depth Compliance**: Sections marked 'brief' should be ~1-2 pages (under 1000 words). Sections marked 'standard' should be ~3-5 pages (under 3000 words). Flag any that significantly exceed their depth budget.
 
-2. **Content Duplication**: Identify topics, requirements, or procedures that are substantially repeated across sections. For each, state which section should own the content and which should cross-reference.
-   **IMPORTANT EXCLUSIONS — Do NOT flag these as duplication:**
-   - References, abbreviations, terminology, or glossary sections (e.g., Appendices) are EXPECTED to contain terms that also appear in body sections. This is not duplication.
-   - A body section mentioning standard document numbers (TS 23.203, RFC 3748, etc.) that also appear in a References section is normal cross-referencing, NOT duplication.
-   - Cross-reference paragraphs ("See Section X", "As defined in Appendix A") sharing words with the target section is expected.
+2. **Content Duplication**: Identify procedures, requirement text, or technical descriptions that are copy-pasted or substantially restated across sections. Only flag TRUE duplication — the same substantive content appearing in full in two places. Do NOT flag:
+   - A section cross-referencing another ("See Section X", "As defined in Appendix A") — this is the correct fix for duplication, not a new instance of it.
+   - Shared terminology, standard numbers, or protocol names appearing in multiple sections — that is normal technical writing.
+   - A dedicated section (References, Abbreviations, Terminology, Appendix) containing items also mentioned in body sections — that is their purpose.
 
 3. **Cross-Section Consistency**: Check that terminology, acronyms, and interface names are used consistently. Flag contradictions.
 
