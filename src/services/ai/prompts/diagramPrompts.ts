@@ -147,10 +147,15 @@ Diagrams are for visual overview - detailed explanations belong in the specifica
    - Use "dashed" for optional or backup paths
    - Labels should be SHORT: "Gx", "S1-U", "SGi" - NOT full descriptions
    - When multiple edges connect the same pair of nodes, combine them into ONE edge with a combined label (e.g., "RADIUS Auth + Acct" not two separate edges)
-8. **Separator**: Use sepY if diagram has distinct sections (e.g., mobile network above, fixed network below)
-9. **Label Offsets**: Usually not needed initially, can be added later for fine-tuning
-10. **Visual Emphasis** (for related diagrams):
-   - If TODO says "FOCUS ON NODES": Use larger sizes (w: 150, h: 70), group related nodes visually
+8. **Separator**: Use sepY to draw a horizontal divider when the diagram has distinct logical regions (e.g., control plane above, user plane below). Set sepY to the Y coordinate where the divider should appear.
+9. **Grouping / Domains**: Do NOT create fake "domain" or "group" nodes to visually group elements. Instead:
+   - Use the sepY separator to divide distinct regions
+   - Position related nodes close together in the same horizontal row or vertical column
+   - Use edge styles to distinguish domains (e.g., bold for user plane, solid for control plane, dashed for optional)
+   - If a logical grouping label is needed, add it as a comment in the description, not as a node
+10. **Label Offsets**: Usually not needed initially, can be added later for fine-tuning
+11. **Visual Emphasis** (for related diagrams):
+   - If TODO says "FOCUS ON NODES": Use larger sizes (w: 150, h: 70), group related nodes visually by proximity
    - If TODO says "FOCUS ON INTERFACES": Make ALL edges bold, ensure all interface names shown
    - Related diagrams should look VISUALLY DISTINCT even if they show similar topology
    - Even when focusing, KEEP LABELS CONCISE - focus is about visual emphasis, not verbosity
