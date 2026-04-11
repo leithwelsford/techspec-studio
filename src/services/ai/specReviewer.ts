@@ -225,7 +225,7 @@ Respond with a JSON array of issues:
 ]
 \`\`\`
 
-Limit your response to the top 20 most important issues. Prioritise errors over warnings, and warnings over info.
+Only report GENUINE issues — do not pad the list to reach a target count. If you find 3 real issues, return 3. If you find none, return an empty array. Prioritise errors over warnings, and warnings over info. Maximum 20 if there are truly that many.
 
 ## Specification Content
 
