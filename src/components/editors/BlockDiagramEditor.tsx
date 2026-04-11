@@ -355,9 +355,38 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
     return { x: p.x + s.w / 2, y: p.y + s.h / 2 };
   };
 
-  // Compute edge endpoints with auto-offset for parallel edges
+  // Helper: Get a connection point on the node border, offset from center
+  // portOffset: -1 = top/left side, 0 = center, 1 = bottom/right side
+  const nodePort = (id: string, targetId: string, portOffset: number) => {
+    const meta = nodes[id];
+    const p = positions[id];
+    const s = sizes[id] || DEFAULT_SIZE[meta?.shape || 'rect'];
+    const cx = p.x + s.w / 2;
+    const cy = p.y + s.h / 2;
+    const tp = positions[targetId];
+    const ts = sizes[targetId] || DEFAULT_SIZE[nodes[targetId]?.shape || 'rect'];
+    const tcx = tp.x + ts.w / 2;
+    const tcy = tp.y + ts.h / 2;
+
+    // Determine which side of the node faces the target
+    const dx = tcx - cx;
+    const dy = tcy - cy;
+    const portShift = portOffset * 15; // 15px between parallel connection points
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal: connect on left or right side
+      const ex = dx > 0 ? p.x + s.w : p.x; // right or left edge
+      return { x: ex, y: cy + portShift };
+    } else {
+      // Vertical: connect on top or bottom side
+      const ey = dy > 0 ? p.y + s.h : p.y; // bottom or top edge
+      return { x: cx + portShift, y: ey };
+    }
+  };
+
+  // Compute edge endpoints with separate connection points for parallel edges
   const edgesWithPoints = useMemo(() => {
-    // Count edges between same node pairs to offset parallel ones
+    // Count edges between same node pairs
     const pairCount: Record<string, number> = {};
     const pairIndex: Record<string, number> = {};
     edges.forEach((e) => {
@@ -366,28 +395,23 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
     });
 
     return edges.map((e) => {
-      const a = nodeCenter(e.from);
-      const b = nodeCenter(e.to);
       const key = [e.from, e.to].sort().join('|');
       const total = pairCount[key] || 1;
 
-      if (total <= 1) return { ...e, a, b };
+      if (total <= 1) {
+        // Single edge: connect center-to-center
+        return { ...e, a: nodeCenter(e.from), b: nodeCenter(e.to) };
+      }
 
-      // Offset parallel edges perpendicular to the edge direction
+      // Parallel edges: use different connection points on node border
       const idx = pairIndex[key] || 0;
       pairIndex[key] = idx + 1;
-      const offsetAmount = (idx - (total - 1) / 2) * 20; // 20px spacing between parallel edges
-
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const len = Math.sqrt(dx * dx + dy * dy) || 1;
-      const nx = -dy / len; // perpendicular normal
-      const ny = dx / len;
+      const portOffset = idx - (total - 1) / 2; // -0.5, 0.5 for 2 edges; -1, 0, 1 for 3
 
       return {
         ...e,
-        a: { x: a.x + nx * offsetAmount, y: a.y + ny * offsetAmount },
-        b: { x: b.x + nx * offsetAmount, y: b.y + ny * offsetAmount },
+        a: nodePort(e.from, e.to, portOffset),
+        b: nodePort(e.to, e.from, portOffset),
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
