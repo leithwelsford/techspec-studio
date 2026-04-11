@@ -355,9 +355,41 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
     return { x: p.x + s.w / 2, y: p.y + s.h / 2 };
   };
 
-  // Compute edge endpoints
+  // Compute edge endpoints with auto-offset for parallel edges
   const edgesWithPoints = useMemo(() => {
-    return edges.map((e) => ({ ...e, a: nodeCenter(e.from), b: nodeCenter(e.to) }));
+    // Count edges between same node pairs to offset parallel ones
+    const pairCount: Record<string, number> = {};
+    const pairIndex: Record<string, number> = {};
+    edges.forEach((e) => {
+      const key = [e.from, e.to].sort().join('|');
+      pairCount[key] = (pairCount[key] || 0) + 1;
+    });
+
+    return edges.map((e) => {
+      const a = nodeCenter(e.from);
+      const b = nodeCenter(e.to);
+      const key = [e.from, e.to].sort().join('|');
+      const total = pairCount[key] || 1;
+
+      if (total <= 1) return { ...e, a, b };
+
+      // Offset parallel edges perpendicular to the edge direction
+      const idx = pairIndex[key] || 0;
+      pairIndex[key] = idx + 1;
+      const offsetAmount = (idx - (total - 1) / 2) * 20; // 20px spacing between parallel edges
+
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const nx = -dy / len; // perpendicular normal
+      const ny = dx / len;
+
+      return {
+        ...e,
+        a: { x: a.x + nx * offsetAmount, y: a.y + ny * offsetAmount },
+        b: { x: b.x + nx * offsetAmount, y: b.y + ny * offsetAmount },
+      };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edges, positions, sizes, nodes]);
 
@@ -668,42 +700,42 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
   return (
     <div className="flex flex-col h-full bg-white dark:bg-slate-900">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex-wrap bg-white dark:bg-slate-900">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex-wrap bg-white dark:bg-slate-800">
         <div className="flex items-center gap-2">
           <button
             onClick={onZoomOut}
-            className="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 transition-colors text-sm font-medium"
+            className="px-3 py-1.5 border border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium text-gray-700 dark:text-gray-200"
           >
             −
           </button>
           <button
             onClick={onZoomIn}
-            className="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 transition-colors text-sm font-medium"
+            className="px-3 py-1.5 border border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium text-gray-700 dark:text-gray-200"
           >
             +
           </button>
           <button
             onClick={onResetView}
-            className="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 transition-colors text-sm"
+            className="px-3 py-1.5 border border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors text-sm text-gray-700 dark:text-gray-200"
           >
             Reset View
           </button>
-          <span className="text-xs text-gray-500 ml-1">({Math.round(scale * 100)}%)</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">({Math.round(scale * 100)}%)</span>
         </div>
 
-        <div className="h-6 w-px bg-gray-300" />
+        <div className="h-6 w-px bg-gray-300 dark:bg-slate-600" />
 
-        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
           <input type="checkbox" checked={snapToGrid} onChange={(e) => setSnapToGrid(e.target.checked)} />
           Snap to grid
         </label>
 
-        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
           <input type="checkbox" checked={orthogonal} onChange={(e) => setOrthogonal(e.target.checked)} />
           Orthogonal connectors
         </label>
 
-        <div className="h-6 w-px bg-gray-300" />
+        <div className="h-6 w-px bg-gray-300 dark:bg-slate-600" />
 
         <button
           onClick={() => {
@@ -711,8 +743,8 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
             setAddNodeMode(null);
             setAddEdgeMode(false);
           }}
-          className={`px-3 py-1.5 border rounded hover:bg-gray-50 transition-colors text-sm font-medium ${
-            showCatalogue ? 'bg-blue-50 border-blue-400 text-blue-700' : 'border-gray-300'
+          className={`px-3 py-1.5 border rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium ${
+            showCatalogue ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-300' : 'border-gray-300 dark:border-slate-500 text-gray-700 dark:text-gray-200'
           }`}
         >
           {showCatalogue ? 'Hide' : 'Add Node'}
@@ -725,8 +757,8 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
             setAddNodeMode(null);
             setShowCatalogue(false);
           }}
-          className={`px-3 py-1.5 border rounded hover:bg-gray-50 transition-colors text-sm font-medium ${
-            addEdgeMode ? 'bg-purple-50 border-purple-400 text-purple-700' : 'border-gray-300'
+          className={`px-3 py-1.5 border rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium ${
+            addEdgeMode ? 'bg-purple-50 dark:bg-purple-900/30 border-purple-400 text-purple-700 dark:text-purple-300' : 'border-gray-300 dark:border-slate-500 text-gray-700 dark:text-gray-200'
           }`}
         >
           {addEdgeMode ? 'Cancel Edge' : 'Add Edge'}
@@ -735,29 +767,29 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
         {selectedNode && (
           <button
             onClick={() => deleteNode(selectedNode)}
-            className="px-3 py-1.5 bg-red-50 border border-red-300 text-red-700 rounded hover:bg-red-100 transition-colors text-sm font-medium"
+            className="px-3 py-1.5 bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-500 text-red-700 dark:text-red-300 rounded hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors text-sm font-medium"
           >
             Delete Node
           </button>
         )}
 
-        <div className="h-6 w-px bg-gray-300" />
+        <div className="h-6 w-px bg-gray-300 dark:bg-slate-600" />
 
         <button
           onClick={onExportSVG}
-          className="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 transition-colors text-sm"
+          className="px-3 py-1.5 border border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors text-sm text-gray-700 dark:text-gray-200"
         >
           Export SVG
         </button>
         <button
           onClick={onExportPNG}
-          className="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 transition-colors text-sm"
+          className="px-3 py-1.5 border border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors text-sm text-gray-700 dark:text-gray-200"
         >
           Export PNG
         </button>
 
         {statusMsg && (
-          <div className="ml-auto text-xs text-gray-600 px-3 py-1 bg-gray-50 rounded border border-gray-200">
+          <div className="ml-auto text-xs text-gray-600 dark:text-gray-300 px-3 py-1 bg-gray-50 dark:bg-slate-700 rounded border border-gray-200 dark:border-slate-600">
             {statusMsg}
           </div>
         )}
