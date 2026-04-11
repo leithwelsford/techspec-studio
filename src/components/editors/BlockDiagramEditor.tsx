@@ -26,8 +26,8 @@ interface BlockDiagramEditorProps {
 const GRID = 10;
 const MIN_W = 60;
 const MIN_H = 28;
-const CANVAS_W = 1800;
-const CANVAS_H = 900;
+const CANVAS_W = 3600;
+const CANVAS_H = 2400;
 
 // Node catalogue for common 5G network elements
 const NODE_CATALOGUE: Array<{ id: string; label: string; shape: NodeShape; category: string }> = [
