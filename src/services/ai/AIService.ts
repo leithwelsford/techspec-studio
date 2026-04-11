@@ -2180,7 +2180,7 @@ Generate the complete Section 4 now in markdown format.`;
       // Configure token limits based on model type
       // Reasoning models: 64k for large sections (Architecture, Procedures, etc.)
       // Non-reasoning models: Use configured maxTokens or 8k default
-      const sectionMaxTokens = isReasoning ? 64000 : (this.config.maxTokens || 8000);
+      const sectionMaxTokens = isReasoning ? 64000 : Math.max(this.config.maxTokens || 16000, 16000);
 
       console.log(`🎯 Generating section ${i + 1}/${enabledSections.length}: ${sectionTitle} (maxTokens: ${sectionMaxTokens})`);
 
@@ -2986,7 +2986,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       generationGuidance,
       onProgress,
       autoRetryTruncated = true,
-      maxRetries = 1
+      maxRetries = 2
     } = params;
     const sections = structure.sections.sort((a, b) => a.order - b.order);
 
@@ -3004,7 +3004,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
     // Determine maxTokens based on model type (using shared utility for consistency)
     const { isReasoningModel: checkIsReasoning } = await import('../../utils/aiModels');
     const isReasoning = checkIsReasoning(this.config.model || '');
-    const sectionMaxTokens = isReasoning ? 64000 : (this.config.maxTokens || 8000);
+    const sectionMaxTokens = isReasoning ? 64000 : Math.max(this.config.maxTokens || 16000, 16000);
     console.log(`🎯 Using maxTokens: ${sectionMaxTokens} (reasoning model: ${isReasoning})`);
 
     const generatedSections: Array<{ title: string; content: string; tokensUsed: number; wasTruncated: boolean }> = [];

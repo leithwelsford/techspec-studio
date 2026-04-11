@@ -348,10 +348,11 @@ function highlightCode(code: string, errorInfo: MermaidErrorInfo): React.ReactNo
 }
 
 // Helper component: Mermaid Diagram Renderer
-const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram }> = ({ diagram }) => {
+const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram; onCodeFixed?: (fixedCode: string) => void }> = ({ diagram, onCodeFixed }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [showFullCode, setShowFullCode] = useState(false);
+  const [isHealing, setIsHealing] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current || !diagram.mermaidCode) return;
@@ -441,6 +442,53 @@ const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram }> = ({ diagram
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* AI Heal Button */}
+        {onCodeFixed && (
+          <div className="mb-4">
+            <button
+              onClick={async () => {
+                setIsHealing(true);
+                try {
+                  const state = (await import('../../store/projectStore')).useProjectStore.getState();
+                  const aiConfig = state.aiConfig;
+                  if (!aiConfig?.apiKey) { alert('AI not configured'); return; }
+
+                  const { decrypt: dec } = await import('../../utils/encryption');
+                  const { aiService } = await import('../../services/ai/AIService');
+                  const decryptedKey = dec(aiConfig.apiKey);
+                  await aiService.initialize({ ...aiConfig, apiKey: decryptedKey });
+
+                  const provider = aiService.getProvider();
+                  const result = await provider.generate([
+                    { role: 'system', content: 'You are a Mermaid diagram syntax expert. Fix the syntax error in the diagram code. Output ONLY the corrected Mermaid code, no explanation, no markdown fences.' },
+                    { role: 'user', content: `Fix this Mermaid diagram. Error: "${renderError}"\n\nBroken code:\n\`\`\`\n${diagram.mermaidCode}\n\`\`\`\n\nOutput only the fixed Mermaid code.` },
+                  ], { model: aiConfig.model, temperature: 0.1, maxTokens: 8000 });
+
+                  let fixedCode = result.content.trim();
+                  // Strip markdown fences if AI wraps the output
+                  const fenceMatch = fixedCode.match(/```(?:mermaid)?\s*\n([\s\S]*?)\n```/);
+                  if (fenceMatch) fixedCode = fenceMatch[1].trim();
+
+                  onCodeFixed(fixedCode);
+                } catch (err) {
+                  console.error('Healing failed:', err);
+                  alert(`Healing failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                } finally {
+                  setIsHealing(false);
+                }
+              }}
+              disabled={isHealing}
+              className={`w-full px-4 py-2 text-sm font-medium rounded-lg ${
+                isHealing
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+            >
+              {isHealing ? 'Healing...' : '🔧 Heal with AI'}
+            </button>
           </div>
         )}
 
@@ -1229,7 +1277,19 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                             console.log('✅ Rendering Mermaid diagram, code length:', diagram.mermaidCode.length);
                             console.log('📜 Mermaid code preview:', diagram.mermaidCode.substring(0, 200));
                             // Mermaid diagrams don't use PanZoomWrapper (HTML-based)
-                            return <MermaidDiagramRenderer diagram={diagram as MermaidDiagram} />;
+                            return <MermaidDiagramRenderer
+                              diagram={diagram as MermaidDiagram}
+                              onCodeFixed={(fixedCode) => {
+                                // Update the pending approval with healed Mermaid code
+                                useProjectStore.setState((state) => ({
+                                  pendingApprovals: state.pendingApprovals.map((a) =>
+                                    a.id === selectedApproval.id
+                                      ? { ...a, generatedContent: { ...a.generatedContent, mermaidCode: fixedCode } }
+                                      : a
+                                  ),
+                                }));
+                              }}
+                            />;
                           }
                           // Fallback to JSON for debugging
                           console.log('❌ Unknown diagram format, showing fallback');

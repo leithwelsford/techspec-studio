@@ -129,21 +129,24 @@ Diagrams are for visual overview - detailed explanations belong in the specifica
 4. **Node Shapes**:
    - Use "rect" for network functions, servers, equipment
    - Use "cloud" for networks, Internet, external domains
-5. **Positioning**:
-   - Left-to-right flow for typical data paths
-   - X coordinates: start around 100, space nodes 200-300 units apart
-   - Y coordinates: start around 100, space layers 150-200 units apart
-   - Position related nodes close together
-   - Create clear visual groupings
+5. **Positioning** (CRITICAL for readability):
+   - Left-to-right flow for user-plane data paths; top-to-bottom for control plane
+   - X coordinates: start at 100, space nodes **350-450 units apart** horizontally
+   - Y coordinates: start at 100, space layers **250-300 units apart** vertically
+   - Nodes connected by edges MUST have enough space for the edge label to render without overlapping other labels or nodes
+   - If a node has 3+ edges, give it extra surrounding space (500+ units from neighbours)
+   - NEVER place two nodes closer than 300 units apart — edge labels need room
+   - Arrange nodes to minimise edge crossings: place frequently connected nodes adjacent
 6. **Sizes**:
-   - Standard rect nodes: { w: 120, h: 60 }
-   - Larger components: { w: 150, h: 70 }
-   - Cloud shapes: { w: 140, h: 80 }
+   - Standard rect nodes: { w: 150, h: 60 }
+   - Hub nodes (3+ connections, e.g., PCEF, PCRF): { w: 180, h: 70 }
+   - Cloud shapes: { w: 160, h: 80 }
 7. **Edges**:
    - Use "bold" for primary data paths
    - Use "solid" for control interfaces
    - Use "dashed" for optional or backup paths
    - Labels should be SHORT: "Gx", "S1-U", "SGi" - NOT full descriptions
+   - When multiple edges connect the same pair of nodes, combine them into ONE edge with a combined label (e.g., "RADIUS Auth + Acct" not two separate edges)
 8. **Separator**: Use sepY if diagram has distinct sections (e.g., mobile network above, fixed network below)
 9. **Label Offsets**: Usually not needed initially, can be added later for fine-tuning
 10. **Visual Emphasis** (for related diagrams):
