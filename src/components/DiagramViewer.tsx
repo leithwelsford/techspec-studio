@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import mermaid from 'mermaid';
-import BlockDiagramEditor from './editors/ReactFlowBlockEditor';
+import BlockDiagramEditor from './editors/BlockDiagramEditor';
 import SequenceDiagramEditor from './editors/SequenceDiagramEditor';
 import { GenerateDiagramsModal } from './ai/GenerateDiagramsModal';
 import { GenerateDiagramFromTextModal } from './ai/GenerateDiagramFromTextModal';
