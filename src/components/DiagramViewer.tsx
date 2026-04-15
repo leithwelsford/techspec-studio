@@ -459,6 +459,7 @@ function BlockDiagramContent({ diagram }: { diagram: any }) {
   const edges = diagram.edges || [];
   const positions = diagram.positions || {};
   const sizes = diagram.sizes || {};
+  const labelOffsets = diagram.labelOffsets || {};
 
   // Compute parallel edge groupings so we can offset them on distinct node border ports
   const pairCount: Record<string, number> = {};
@@ -525,6 +526,11 @@ function BlockDiagramContent({ diagram }: { diagram: any }) {
             ? { strokeWidth: 1.5, stroke: '#6B7280', strokeDasharray: '5,5' }
             : { strokeWidth: 2, stroke: '#6B7280' };
 
+          // Apply user-dragged label offset if present
+          const labelOff = labelOffsets[String(idx)] || { dx: 0, dy: 0 };
+          const labelX = (fromX + toX) / 2 + labelOff.dx;
+          const labelY = (fromY + toY) / 2 - 5 + labelOff.dy;
+
           return (
             <g key={`edge-${idx}`}>
               <line
@@ -533,12 +539,11 @@ function BlockDiagramContent({ diagram }: { diagram: any }) {
                 x2={toX}
                 y2={toY}
                 {...lineStyle}
-                markerEnd="url(#arrowhead)"
               />
               {edge.label && (
                 <text
-                  x={(fromX + toX) / 2}
-                  y={(fromY + toY) / 2 - 5}
+                  x={labelX}
+                  y={labelY}
                   textAnchor="middle"
                   className="text-xs fill-gray-700"
                   style={{ fontSize: '12px' }}
