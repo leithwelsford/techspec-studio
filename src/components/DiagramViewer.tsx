@@ -460,6 +460,36 @@ function BlockDiagramContent({ diagram }: { diagram: any }) {
   const positions = diagram.positions || {};
   const sizes = diagram.sizes || {};
 
+  // Compute parallel edge groupings so we can offset them on distinct node border ports
+  const pairCount: Record<string, number> = {};
+  edges.forEach((e: any) => {
+    const key = [e.from, e.to].sort().join('|');
+    pairCount[key] = (pairCount[key] || 0) + 1;
+  });
+  const pairIndex: Record<string, number> = {};
+
+  // Helper: connection point on node border, offset from center for parallel edges
+  const nodePort = (id: string, targetId: string, portOffset: number) => {
+    const p = positions[id];
+    const s = sizes[id] || { w: 120, h: 60 };
+    const cx = p.x + s.w / 2;
+    const cy = p.y + s.h / 2;
+    const tp = positions[targetId];
+    const ts = sizes[targetId] || { w: 120, h: 60 };
+    const tcx = tp.x + ts.w / 2;
+    const tcy = tp.y + ts.h / 2;
+    const dx = tcx - cx;
+    const dy = tcy - cy;
+    const portShift = portOffset * 15;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      const ex = dx > 0 ? p.x + s.w : p.x;
+      return { x: ex, y: cy + portShift };
+    } else {
+      const ey = dy > 0 ? p.y + s.h : p.y;
+      return { x: cx + portShift, y: ey };
+    }
+  };
+
   return (
     <>
         {/* Render Edges */}
@@ -471,10 +501,23 @@ function BlockDiagramContent({ diagram }: { diagram: any }) {
 
           if (!fromPos || !toPos) return null;
 
-          const fromX = fromPos.x + fromSize.w / 2;
-          const fromY = fromPos.y + fromSize.h / 2;
-          const toX = toPos.x + toSize.w / 2;
-          const toY = toPos.y + toSize.h / 2;
+          // If this edge is parallel to another, connect to different ports
+          const pairKey = [edge.from, edge.to].sort().join('|');
+          const total = pairCount[pairKey] || 1;
+          let fromX: number, fromY: number, toX: number, toY: number;
+          if (total > 1) {
+            const i = pairIndex[pairKey] || 0;
+            pairIndex[pairKey] = i + 1;
+            const portOffset = i - (total - 1) / 2;
+            const a = nodePort(edge.from, edge.to, portOffset);
+            const b = nodePort(edge.to, edge.from, portOffset);
+            fromX = a.x; fromY = a.y; toX = b.x; toY = b.y;
+          } else {
+            fromX = fromPos.x + fromSize.w / 2;
+            fromY = fromPos.y + fromSize.h / 2;
+            toX = toPos.x + toSize.w / 2;
+            toY = toPos.y + toSize.h / 2;
+          }
 
           const lineStyle = edge.style === 'bold'
             ? { strokeWidth: 3, stroke: '#4B5563' }
