@@ -562,11 +562,15 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
         return;
       }
 
+      const label = prompt('Edge label (optional):', '') || '';
+      const styleInput = prompt('Edge style: "solid", "bold", or "dashed"', 'solid') || 'solid';
+      const style: EdgeStyle = (['solid', 'bold', 'dashed'].includes(styleInput) ? styleInput : 'solid') as EdgeStyle;
+
       const newEdge: EdgeDef = {
         from: edgeSourceNode,
         to: nodeId,
-        label: '',
-        style: 'solid',
+        label,
+        style,
       };
 
       updateBlockDiagram(diagramId, {
@@ -795,6 +799,23 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
           >
             Delete Node
           </button>
+        )}
+
+        {selectedEdge !== null && edges[selectedEdge] && (
+          <select
+            value={edges[selectedEdge].style || 'solid'}
+            onChange={(e) => {
+              const newEdges = edges.map((edge, idx) =>
+                idx === selectedEdge ? { ...edge, style: e.target.value as EdgeStyle } : edge
+              );
+              updateBlockDiagram(diagramId, { edges: newEdges });
+            }}
+            className="px-3 py-1.5 border border-gray-300 dark:border-slate-500 rounded text-sm bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200"
+          >
+            <option value="solid">Solid</option>
+            <option value="bold">Bold</option>
+            <option value="dashed">Dashed</option>
+          </select>
         )}
 
         <div className="h-6 w-px bg-gray-300 dark:bg-slate-600" />
