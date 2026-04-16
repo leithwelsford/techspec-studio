@@ -87,6 +87,7 @@ export interface ProjectState {
 
   // Actions - Specification Document
   updateSpecification: (markdown: string) => void;
+  setSpecTitle: (title: string) => void;
   updateDocumentMetadata: (metadata: Partial<SpecDocument['metadata']>) => void;
 
   // Actions - Block Diagrams
@@ -382,6 +383,22 @@ export const useProjectStore = create<ProjectState>()(
         });
         // Auto-number figures after specification update
         get().autoNumberFigures();
+      },
+
+      setSpecTitle: (title) => {
+        set((state) => {
+          if (!state.project) return state;
+          return {
+            project: {
+              ...state.project,
+              specification: {
+                ...state.project.specification,
+                title,
+              },
+              updatedAt: new Date(),
+            },
+          };
+        });
       },
 
       updateDocumentMetadata: (metadata) => {

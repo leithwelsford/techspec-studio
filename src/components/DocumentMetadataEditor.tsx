@@ -42,8 +42,11 @@ export default function DocumentMetadataEditor({
   vendorLogoFilename,
   customerLogoFilename,
 }: DocumentMetadataEditorProps) {
+  const specTitle = useProjectStore((state) => state.project?.specification.title);
   const metadata = useProjectStore((state) => state.project?.specification.metadata);
   const updateMetadata = useProjectStore((state) => state.updateDocumentMetadata);
+  // Update spec title via direct store set (no dedicated action exists)
+  const setSpecTitle = useProjectStore((state) => state.setSpecTitle);
   const [showDocTypeSuggestions, setShowDocTypeSuggestions] = useState(false);
 
   if (!metadata) return null;
@@ -118,6 +121,17 @@ export default function DocumentMetadataEditor({
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-1">
           Cover Page
         </h3>
+
+        <div>
+          <label className={labelClass}>Document Title</label>
+          <input
+            type="text"
+            value={specTitle || ''}
+            onChange={(e) => setSpecTitle(e.target.value)}
+            placeholder="e.g., Wi-Fi Offload Solution"
+            className={inputClass}
+          />
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
