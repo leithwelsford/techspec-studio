@@ -594,6 +594,27 @@ export class TemplateAnalyzer {
       }
     });
 
+    // Also scan latent styles (w:lsdException) — Word stores some styles here
+    // that aren't fully expanded as w:style elements until used
+    for (let i = 0; i < allElements.length; i++) {
+      const el = allElements[i];
+      if (el.localName === 'lsdException' || el.tagName === 'w:lsdException') {
+        const name = el.getAttribute('w:name') || el.getAttribute('name') || '';
+        if (!name) continue;
+        // Check if this looks like a table style (heuristic: name contains "Table" or "Grid" or "List Table")
+        if (/table|grid/i.test(name) && !result.tableStyles.styleIds.includes(name)) {
+          result.tableStyles.exists = true;
+          result.tableStyles.styleIds.push(name);
+          if (!result.tableStyles.styleIdMap) {
+            result.tableStyles.styleIdMap = {};
+          }
+          // For latent styles, the name IS the styleId reference
+          result.tableStyles.styleIdMap[name] = name.replace(/\s+/g, '');
+          console.log(`[Template Analyzer] Found latent table style: "${name}"`);
+        }
+      }
+    }
+
     // Set TOC levels count
     result.tocHeading.levels = tocLevels.size > 0 ? Math.max(...tocLevels) : 0;
 
