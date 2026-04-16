@@ -21,20 +21,12 @@ export interface FrontMatterOptions {
 }
 
 /**
- * Raw OOXML for a section break (next page).
- * Wrapped in Pandoc's raw openxml fence syntax.
+ * Page break using Pandoc's \newpage command.
+ * Using \newpage instead of raw OOXML section breaks because OOXML <w:sectPr>
+ * resets the template's heading numbering counter, causing flat numbering
+ * (1, 2, 3 instead of 1.1, 1.2, 1.3).
  */
-const SECTION_BREAK = `
-\`\`\`{=openxml}
-<w:p>
-  <w:pPr>
-    <w:sectPr>
-      <w:type w:val="nextPage"/>
-    </w:sectPr>
-  </w:pPr>
-</w:p>
-\`\`\`
-`;
+const PAGE_BREAK = '\n\\newpage\n';
 
 /**
  * Raw OOXML for a horizontal rule with accent color.
@@ -54,17 +46,11 @@ function ooXmlHorizontalRule(color: string = 'ED7D31'): string {
 }
 
 /**
- * Raw OOXML for empty spacing paragraphs.
+ * Generate blank lines for spacing using simple markdown line breaks.
  */
-function ooXmlSpacing(lines: number = 1): string {
-  const paras = Array(lines).fill(
-    '<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr></w:p>'
-  ).join('\n  ');
-  return `
-\`\`\`{=openxml}
-  ${paras}
-\`\`\`
-`;
+function markdownSpacing(lines: number = 1): string {
+  // Use non-breaking spaces on empty lines to force Pandoc to emit paragraphs
+  return Array(lines).fill('&nbsp;\n').join('\n');
 }
 
 /**
@@ -111,7 +97,7 @@ function generateCoverPage(
   }
 
   // Spacing after logos
-  parts.push(ooXmlSpacing(4));
+  parts.push(markdownSpacing(4));
 
   // Customer name (Title style)
   if (metadata.customer) {
@@ -151,7 +137,7 @@ ${metadata.documentType}
   parts.push(date);
 
   // Section break
-  parts.push(SECTION_BREAK);
+  parts.push(PAGE_BREAK);
 
   return parts.join('\n\n');
 }
@@ -213,7 +199,7 @@ function generateDocumentControl(metadata: DocumentMetadata): string {
   }
 
   // Section break
-  parts.push(SECTION_BREAK);
+  parts.push(PAGE_BREAK);
 
   return parts.join('\n');
 }
