@@ -559,7 +559,13 @@ abstract: |
 </w:p>
 \`\`\`
 
-\\newpage
+\`\`\`{=openxml}
+<w:p>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+\`\`\`
 
 `;
   }
@@ -592,7 +598,13 @@ abstract: |
 </w:p>
 \`\`\`
 
-\\newpage
+\`\`\`{=openxml}
+<w:p>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+\`\`\`
 
 `;
   }
@@ -625,7 +637,13 @@ abstract: |
 </w:p>
 \`\`\`
 
-\\newpage
+\`\`\`{=openxml}
+<w:p>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+\`\`\`
 
 `;
   }

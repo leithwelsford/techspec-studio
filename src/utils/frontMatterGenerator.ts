@@ -21,12 +21,22 @@ export interface FrontMatterOptions {
 }
 
 /**
- * Page break using Pandoc's \newpage command.
- * Using \newpage instead of raw OOXML section breaks because OOXML <w:sectPr>
- * resets the template's heading numbering counter, causing flat numbering
- * (1, 2, 3 instead of 1.1, 1.2, 1.3).
+ * Raw OOXML page break (not section break).
+ * Uses <w:br w:type="page"/> which creates a page break without resetting
+ * the template's heading numbering counter.
+ * \newpage doesn't work reliably for DOCX output.
  */
-const PAGE_BREAK = '\n\n\\newpage\n\n';
+const PAGE_BREAK = `
+
+\`\`\`{=openxml}
+<w:p>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+\`\`\`
+
+`;
 
 /**
  * Raw OOXML for a horizontal rule with accent color.
