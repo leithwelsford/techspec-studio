@@ -128,7 +128,7 @@ export async function analyzeSectionsForDiagrams(
 function extractAllFigureReferences(content: string): string[] {
   const figureRegex = /\{\{fig:([^}]+)\}\}/g;
   const matches = Array.from(content.matchAll(figureRegex));
-  return matches.map(m => m[1]);
+  return [...new Set(matches.map(m => m[1]))];
 }
 
 /**
@@ -137,7 +137,7 @@ function extractAllFigureReferences(content: string): string[] {
 function extractFigureReferences(content: string): string[] {
   const figureRegex = /\{\{fig:([^}]+)\}\}/g;
   const matches = Array.from(content.matchAll(figureRegex));
-  return matches.map(m => m[1]);
+  return [...new Set(matches.map(m => m[1]))];
 }
 
 /**
@@ -453,6 +453,7 @@ interface TodoExtractionResult {
 function extractTodoComments(content: string): TodoExtractionResult {
   const todos: string[] = [];
   const todosByFigure: Record<string, string> = {};
+  const seenFigures = new Set<string>();
   const lines = content.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
@@ -462,6 +463,12 @@ function extractTodoComments(content: string): TodoExtractionResult {
     const figMatch = line.match(/\{\{fig:([^}]+)\}\}/);
     if (figMatch) {
       const figureRef = figMatch[1];
+
+      // Skip if we've already processed this figure reference (dedup for
+      // aggregated parent+subsection content where the same {{fig:...}}
+      // appears in both the subsection and the parent's aggregated view)
+      if (seenFigures.has(figureRef)) continue;
+      seenFigures.add(figureRef);
 
       // Look for TODO comment on same line or next 2 lines,
       // but stop if we hit another {{fig:...}} first (prevents misattribution)
