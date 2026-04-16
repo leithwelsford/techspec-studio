@@ -193,6 +193,23 @@ export const CascadedRefinementReviewPanel: React.FC<CascadedRefinementReviewPan
           )}
         </div>
 
+        {/* Truncation banner */}
+        {propagatedChanges.some((c: PropagatedChange) => c.wasTruncated) && (
+          <div className="mb-4 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg flex items-start gap-3">
+            <svg className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-red-800 dark:text-red-200">
+                {propagatedChanges.filter((c: PropagatedChange) => c.wasTruncated).length} section(s) were truncated
+              </p>
+              <p className="text-xs text-red-700 dark:text-red-300 mt-1">
+                These sections hit the AI output token limit and are incomplete. They have been deselected to prevent applying broken content. You can regenerate them individually after applying the non-truncated changes.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Propagated Changes */}
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -247,7 +264,17 @@ export const CascadedRefinementReviewPanel: React.FC<CascadedRefinementReviewPan
                         <span className="text-xs px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                           {change.actionType === 'REMOVE_SECTION' ? 'REMOVE' : 'MODIFY'}
                         </span>
+                        {change.wasTruncated && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-red-600 text-white font-semibold animate-pulse">
+                            TRUNCATED
+                          </span>
+                        )}
                       </div>
+                      {change.wasTruncated && (
+                        <div className="mt-1 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
+                          This section was truncated by the AI (output hit token limit). The content is incomplete and has been <strong>deselected by default</strong>. Do not apply — instead, reject and regenerate this section individually with a larger token budget.
+                        </div>
+                      )}
                       <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                         {change.reasoning}
                       </p>

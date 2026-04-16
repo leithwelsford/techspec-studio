@@ -74,6 +74,14 @@ export function parseMermaidDiagram(
     mermaidCode = mermaidCode.replace(/(\{[^}]*?)\n([^}]*?\})/g, '$1 $2');
     mermaidCode = mermaidCode.replace(/(\([^)]*?)\n([^)]*?\))/g, '$1 $2');
 
+    // Wrap sequence-diagram phases in rect blocks for proper vertical separation.
+    // Mermaid doesn't pad before bare "Note over" lines, so phase headers run into
+    // the previous message. The wrapPhasesInRect pass detects numbered phase notes
+    // and wraps each phase + its messages in an alternating-colour rect block.
+    if (diagramType === 'sequence') {
+      mermaidCode = wrapSequencePhasesInRect(mermaidCode);
+    }
+
     // Fix common flowchart syntax errors
     if (diagramType === 'flow') {
       // Fix incorrect arrow syntax: --> --> should be just -->
@@ -128,6 +136,117 @@ export function parseMermaidDiagram(
     errors.push(`Parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     return { success: false, errors, warnings };
   }
+}
+
+/**
+ * Wrap each numbered phase in a sequence diagram inside a `rect ... end` block
+ * for visual separation. A "phase" is a top-level `Note over X[,Y]: N. Title` line.
+ *
+ * Rules:
+ * - Only top-level (depth 0) phase notes are wrapped — phases inside an existing
+ *   rect/alt/opt/loop/par/critical/break/box block are left alone.
+ * - If the first phase note is preceded by a `rect` already, the diagram is assumed
+ *   to be pre-wrapped and we leave it alone.
+ * - Phase content runs from the phase note up to (but not including) the next
+ *   top-level phase note or end-of-diagram.
+ * - Background colours alternate between two soft greys for readability.
+ */
+export function wrapSequencePhasesInRect(code: string): string {
+  const lines = code.split('\n');
+
+  // Patterns
+  const phaseNoteRe = /^\s*Note\s+(?:over|left of|right of)\s+[^:]+:\s*\d+[.)]/i;
+  const blockOpenRe = /^\s*(rect\b|alt\b|opt\b|loop\b|par\b|critical\b|break\b|box\b)/i;
+  const blockEndRe = /^\s*end\s*$/i;
+
+  // Walk once to compute depth at each line and locate top-level phase notes.
+  type PhaseLoc = { idx: number };
+  const phaseLocs: PhaseLoc[] = [];
+  let depth = 0;
+  let alreadyWrapped = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (depth === 0 && phaseNoteRe.test(line)) {
+      // If immediately preceded (skipping blanks) by a `rect`, treat as pre-wrapped
+      // and bail out — don't double-wrap.
+      for (let j = i - 1; j >= 0; j--) {
+        const prev = lines[j].trim();
+        if (prev === '') continue;
+        if (/^rect\b/i.test(prev)) alreadyWrapped = true;
+        break;
+      }
+      if (alreadyWrapped) break;
+      phaseLocs.push({ idx: i });
+    }
+    if (blockOpenRe.test(line)) depth++;
+    else if (blockEndRe.test(line)) depth = Math.max(0, depth - 1);
+  }
+
+  if (alreadyWrapped || phaseLocs.length === 0) return code;
+
+  // Compute end of each phase: line before the next phase, or last non-blank line
+  // of the diagram. We rebuild the file line-by-line, inserting `rect` openings
+  // at phase starts and `end` closings at phase ends.
+  const colours = ['rgb(245, 247, 250)', 'rgb(235, 240, 248)'];
+  const phaseStartIdxs = new Set(phaseLocs.map((p) => p.idx));
+  const phaseEndIdxs = new Map<number, number>(); // idx -> phaseIndex (for colour)
+  for (let p = 0; p < phaseLocs.length; p++) {
+    const start = phaseLocs[p].idx;
+    const nextStart = p + 1 < phaseLocs.length ? phaseLocs[p + 1].idx : lines.length;
+    // End is the last line strictly before nextStart that isn't trailing blank.
+    let endIdx = nextStart - 1;
+    while (endIdx > start && lines[endIdx].trim() === '') endIdx--;
+    phaseEndIdxs.set(endIdx, p);
+  }
+
+  // Detect indentation of the first phase note so inserted rect/end lines align.
+  const firstPhaseLine = lines[phaseLocs[0].idx];
+  const indentMatch = firstPhaseLine.match(/^(\s*)/);
+  const indent = indentMatch ? indentMatch[1] : '    ';
+
+  const out: string[] = [];
+  let phaseColourIdx = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (phaseStartIdxs.has(i)) {
+      out.push(`${indent}rect ${colours[phaseColourIdx % colours.length]}`);
+      phaseColourIdx++;
+    }
+    // Re-indent the original phase note and its body by 4 extra spaces so it
+    // visually sits inside the rect block.
+    if (
+      phaseEndIdxs.size > 0 &&
+      isInsidePhase(i, phaseLocs, phaseEndIdxs)
+    ) {
+      out.push(`    ${lines[i]}`);
+    } else {
+      out.push(lines[i]);
+    }
+    if (phaseEndIdxs.has(i)) {
+      out.push(`${indent}end`);
+    }
+  }
+
+  return out.join('\n');
+}
+
+function isInsidePhase(
+  lineIdx: number,
+  phaseLocs: { idx: number }[],
+  phaseEndIdxs: Map<number, number>
+): boolean {
+  // Find the phase whose [start, end] range contains lineIdx.
+  for (let p = 0; p < phaseLocs.length; p++) {
+    const start = phaseLocs[p].idx;
+    let end = -1;
+    for (const [idx, pi] of phaseEndIdxs) {
+      if (pi === p) {
+        end = idx;
+        break;
+      }
+    }
+    if (lineIdx >= start && lineIdx <= end) return true;
+  }
+  return false;
 }
 
 /**

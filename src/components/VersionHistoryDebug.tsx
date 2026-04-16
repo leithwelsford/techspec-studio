@@ -9,40 +9,23 @@ import { useProjectStore } from '../store/projectStore';
 
 export const VersionHistoryDebug: React.FC = () => {
   const project = useProjectStore(state => state.project);
+  const versionHistory = useProjectStore(state => state.versionHistory);
   const restoreSnapshot = useProjectStore(state => state.restoreSnapshot);
   const getAllSnapshots = useProjectStore(state => state.getAllSnapshots);
-
-  // Debug log to see what's in the store
-  console.log('🔍 Store State Check:', {
-    hasProject: !!project,
-    projectName: project?.name,
-    specLength: project?.specification?.markdown?.length || 0,
-  });
 
   if (!project) {
     return (
       <div className="p-4 bg-white dark:bg-gray-800 rounded-lg">
         <div className="text-center">
           <p className="text-gray-500 mb-4">No project loaded.</p>
-          <p className="text-sm text-gray-400">
-            This shouldn't happen if you can see documents in other tabs.
-            Check the browser console for debug info.
-          </p>
         </div>
       </div>
     );
   }
 
-  // Safely get snapshots and version history
   const snapshots = getAllSnapshots() || [];
   const currentDoc = project.specification?.markdown || '';
-  const versionHistory = project.versionHistory || { snapshots: [], currentSnapshotId: null };
-
-  console.log('🕒 Version History Debug:', {
-    snapshotsCount: snapshots.length,
-    currentDocLength: currentDoc.length,
-    currentSnapshotId: versionHistory?.currentSnapshotId || null
-  });
+  const currentSnapshotId = versionHistory?.currentSnapshotId || null;
 
   const handleRestore = (snapshotId: string) => {
     if (confirm('Restore this version? Current changes will be saved as a new snapshot.')) {
@@ -77,10 +60,11 @@ export const VersionHistoryDebug: React.FC = () => {
         {snapshots.length === 0 ? (
           <p className="text-gray-500 text-sm">No snapshots available</p>
         ) : (
-          snapshots.reverse().map((snapshot, index) => {
-            const docLength = snapshot.projectState?.specification?.markdown?.length || 0;
-            const sections = (snapshot.projectState?.specification?.markdown?.match(/^#{2,4}\s+\d+/gm) || []).length;
-            const isCurrent = snapshot.id === versionHistory.currentSnapshotId;
+          [...snapshots].reverse().map((snapshot, index) => {
+            const snapMd = snapshot.specification?.markdown || '';
+            const docLength = snapMd.length;
+            const sections = (snapMd.match(/^#{2,4}\s+\d+/gm) || []).length;
+            const isCurrent = snapshot.id === currentSnapshotId;
 
             return (
               <div
@@ -117,11 +101,11 @@ export const VersionHistoryDebug: React.FC = () => {
                       <div>
                         Document: {docLength.toLocaleString()} chars, {sections} sections
                       </div>
-                      {snapshot.metadata.tokensUsed && (
+                      {snapshot.tokensUsed != null && (
                         <div>
-                          Tokens: {snapshot.metadata.tokensUsed.toLocaleString()}
-                          {snapshot.metadata.costIncurred && (
-                            <> (${snapshot.metadata.costIncurred.toFixed(3)})</>
+                          Tokens: {snapshot.tokensUsed.toLocaleString()}
+                          {snapshot.costIncurred != null && (
+                            <> (${snapshot.costIncurred.toFixed(3)})</>
                           )}
                         </div>
                       )}

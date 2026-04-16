@@ -442,6 +442,19 @@ export interface PendingApproval {
   reviewedAt?: Date;
 }
 
+// ========== Review Fix Digest ==========
+
+export interface FixDigestEntry {
+  id: string;
+  approvalId: string;
+  timestamp: number;
+  sectionTitle?: string;
+  summary: string;
+  additions: number;
+  deletions: number;
+  diagramsRemoved: string[];
+}
+
 // ========== Cascaded Refinement Types ==========
 
 export interface ImpactAnalysis {
@@ -468,6 +481,7 @@ export interface PropagatedChange {
   impactLevel: 'HIGH' | 'MEDIUM' | 'LOW';
   confidence: number; // 0-1, AI's confidence in this change
   isSelected: boolean; // User can deselect changes they don't want
+  wasTruncated?: boolean;
 }
 
 export interface CascadedRefinementApproval extends PendingApproval {

@@ -16,6 +16,8 @@ import DiffViewer from '../DiffViewer';
 import { CascadedRefinementReviewPanel } from './CascadedRefinementReviewPanel';
 import { PanZoomWrapper } from '../PanZoomWrapper';
 import mermaid from 'mermaid';
+import { wrapSequencePhasesInRect } from '../../services/ai/parsers/mermaidParser';
+import { findOrphanedDiagrams, computeFixLineStats } from '../../utils/diagramOrphanSweep';
 
 interface ReviewPanelProps {
   isOpen: boolean;
@@ -361,7 +363,8 @@ const MermaidDiagramRenderer: React.FC<{ diagram: MermaidDiagram; onCodeFixed?: 
       try {
         // Mermaid is initialized globally in main.tsx - no need to re-initialize here
         const uniqueId = `mermaid-review-${Math.random().toString(36).substr(2, 9)}`;
-        const { svg } = await mermaid.render(uniqueId, diagram.mermaidCode);
+        const renderCode = wrapSequencePhasesInRect(diagram.mermaidCode);
+        const { svg } = await mermaid.render(uniqueId, renderCode);
 
         // Check if the SVG contains an error message (Mermaid sometimes renders errors as SVG)
         if (svg.includes('Syntax error') ||
@@ -557,7 +560,12 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
   const updateSpecification = useProjectStore((state) => state.updateSpecification);
   const addBlockDiagram = useProjectStore((state) => state.addBlockDiagram);
   const addMermaidDiagram = useProjectStore((state) => state.addMermaidDiagram);
+  const deleteBlockDiagram = useProjectStore((state) => state.deleteBlockDiagram);
+  const deleteMermaidDiagram = useProjectStore((state) => state.deleteMermaidDiagram);
   const createSnapshot = useProjectStore((state) => state.createSnapshot);
+  const reviewFixDigest = useProjectStore((state) => state.reviewFixDigest);
+  const addFixDigestEntry = useProjectStore((state) => state.addFixDigestEntry);
+  const clearReviewFixDigest = useProjectStore((state) => state.clearReviewFixDigest);
 
   const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
@@ -584,14 +592,49 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
         // Apply section-level fix: replace original content in the current specification
         const currentSpec = useProjectStore.getState().project?.specification?.markdown || '';
         const idx = currentSpec.indexOf(approval.originalContent || '');
+        let updatedSpec: string;
         if (idx !== -1 && approval.originalContent) {
-          const updatedSpec = currentSpec.substring(0, idx) + approval.generatedContent + currentSpec.substring(idx + approval.originalContent.length);
+          updatedSpec = currentSpec.substring(0, idx) + approval.generatedContent + currentSpec.substring(idx + approval.originalContent.length);
           updateSpecification(updatedSpec);
           console.log(`✅ Applied review fix to section`);
         } else {
           console.warn('⚠️ Could not find original content in spec — applying full replacement');
-          updateSpecification(approval.generatedContent);
+          updatedSpec = approval.generatedContent;
+          updateSpecification(updatedSpec);
         }
+
+        // Orphan diagram sweep: any diagram no longer referenced by a
+        // {{fig:...}} placeholder in the updated spec is removed so the
+        // project stays aligned with the prose.
+        const project = useProjectStore.getState().project;
+        const removedDiagramTitles: string[] = [];
+        if (project) {
+          const orphans = findOrphanedDiagrams(
+            updatedSpec,
+            project.blockDiagrams,
+            [...project.sequenceDiagrams, ...project.flowDiagrams]
+          );
+          for (const bid of orphans.orphanedBlockIds) deleteBlockDiagram(bid);
+          for (const mid of orphans.orphanedMermaidIds) deleteMermaidDiagram(mid);
+          removedDiagramTitles.push(...orphans.removedTitles);
+          if (removedDiagramTitles.length > 0) {
+            console.log(`🧹 Orphan sweep removed ${removedDiagramTitles.length} diagram(s):`, removedDiagramTitles);
+          }
+        }
+
+        // Fix digest entry — accumulates a running change log across the batch.
+        const stats = computeFixLineStats(
+          approval.originalContent || '',
+          typeof approval.generatedContent === 'string' ? approval.generatedContent : ''
+        );
+        addFixDigestEntry({
+          approvalId: approval.id,
+          sectionTitle: (approval as { sectionTitle?: string }).sectionTitle,
+          summary: (approval as { title?: string }).title || 'Review fix',
+          additions: stats.added,
+          deletions: stats.removed,
+          diagramsRemoved: removedDiagramTitles,
+        });
 
         createSnapshot(
           'ai-refinement',
@@ -829,6 +872,50 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
           </div>
         </div>
 
+        {/* Review fix digest — accumulating change log for this review pass */}
+        {reviewFixDigest.length > 0 && (
+          <div className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 bg-orange-50 dark:bg-orange-900/10">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <span className="text-sm font-semibold text-orange-800 dark:text-orange-200">
+                  Fix log — {reviewFixDigest.length} applied
+                </span>
+                <span className="text-xs text-orange-700 dark:text-orange-300">
+                  (+{reviewFixDigest.reduce((a, e) => a + e.additions, 0)} / −{reviewFixDigest.reduce((a, e) => a + e.deletions, 0)} lines
+                  {(() => {
+                    const diagCount = reviewFixDigest.reduce((a, e) => a + e.diagramsRemoved.length, 0);
+                    return diagCount > 0 ? `, ${diagCount} orphaned diagram${diagCount !== 1 ? 's' : ''} removed` : '';
+                  })()})
+                </span>
+              </div>
+              <button
+                onClick={() => clearReviewFixDigest()}
+                className="text-xs text-orange-700 dark:text-orange-300 hover:underline"
+              >
+                Clear log
+              </button>
+            </div>
+            <div className="max-h-28 overflow-y-auto space-y-1">
+              {reviewFixDigest.map((entry, i) => (
+                <div key={entry.id} className="text-xs text-orange-900 dark:text-orange-100 flex items-start gap-2">
+                  <span className="text-orange-600 dark:text-orange-400 font-mono shrink-0">{i + 1}.</span>
+                  <span className="flex-1">
+                    <span className="font-medium">{entry.sectionTitle ? `[${entry.sectionTitle}] ` : ''}</span>
+                    {entry.summary}
+                    <span className="ml-2 text-orange-700 dark:text-orange-300">
+                      (+{entry.additions}/−{entry.deletions}
+                      {entry.diagramsRemoved.length > 0 && `, −${entry.diagramsRemoved.length} diagram${entry.diagramsRemoved.length !== 1 ? 's' : ''}`})
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left sidebar: Approval list */}
@@ -915,20 +1002,46 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({ isOpen, onClose }) => 
                     // Import safe replacement functions
                     const { replaceSectionById, removeSectionById } = await import('../../services/ai/prompts/refinementPrompts');
 
-                    // Apply primary change first using SAFE section replacement
-                    const primaryReplaced = replaceSectionById(
-                      updatedMarkdown,
-                      primaryChange.sectionId,
-                      primaryChange.refinedContent
-                    );
+                    // Apply primary change. Two cases:
+                    //   (a) The user selected a sub-range inside a section (e.g. a
+                    //       table row, a paragraph). In that case we do an in-place
+                    //       string substitution of originalContent -> refinedContent.
+                    //   (b) The user selected an entire section (its heading plus body).
+                    //       Then replaceSectionById is appropriate.
+                    // We detect (a) by checking whether originalContent exists verbatim
+                    // in the document — if so, string substitution is the safe choice
+                    // and preserves everything else in the section. This avoids
+                    // replaceSectionById wiping out the whole section when the refined
+                    // content only covers a small fragment.
+                    const originalFragment: string = primaryChange.originalContent || '';
+                    const refinedFragment: string = primaryChange.refinedContent || '';
+                    let primaryApplied: string | null = null;
 
-                    if (!primaryReplaced) {
-                      alert(`Failed to apply primary change to section ${primaryChange.sectionId}. The section may not exist in the document.`);
+                    if (originalFragment && updatedMarkdown.includes(originalFragment)) {
+                      primaryApplied = updatedMarkdown.replace(originalFragment, refinedFragment);
+                      console.log('✅ Primary change applied via in-place string substitution');
+                    } else {
+                      primaryApplied = replaceSectionById(
+                        updatedMarkdown,
+                        primaryChange.sectionId,
+                        refinedFragment
+                      );
+                      if (primaryApplied) {
+                        console.log(`✅ Primary change applied via replaceSectionById(${primaryChange.sectionId})`);
+                      }
+                    }
+
+                    if (!primaryApplied) {
+                      alert(
+                        `Failed to apply primary change to section ${primaryChange.sectionId}. ` +
+                        `The original selected text could not be found in the document and section-level ` +
+                        `replacement also failed. Please reject this approval and retry the refinement.`
+                      );
                       return;
                     }
 
-                    updatedMarkdown = primaryReplaced;
-                    console.log('✅ Primary change applied. Document now:', updatedMarkdown.length, 'chars');
+                    updatedMarkdown = primaryApplied;
+                    console.log('📄 Document now:', updatedMarkdown.length, 'chars');
 
                     // Apply selected propagated changes using SAFE section operations
                     for (const change of selectedChanges) {

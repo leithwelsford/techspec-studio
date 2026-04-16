@@ -273,17 +273,29 @@ function Edge({
   b,
   style,
   orthogonal,
+  isSelected,
+  onSelect,
 }: {
   a: Point;
   b: Point;
   label?: string;
   style?: EdgeStyle;
   orthogonal: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }) {
   const dash = style === 'dashed' ? '6,6' : undefined;
   const strokeWidth = style === 'bold' ? 4 : style === 'solid' ? 1.6 : 1.2;
   // Use CSS classes for dark mode - stroke-slate-700 in light, stroke-slate-400 in dark
-  const strokeClass = style === 'dashed' ? 'stroke-gray-500 dark:stroke-slate-400' : 'stroke-slate-700 dark:stroke-slate-400';
+  const baseStrokeClass = style === 'dashed' ? 'stroke-gray-500 dark:stroke-slate-400' : 'stroke-slate-700 dark:stroke-slate-400';
+  const strokeClass = isSelected ? 'stroke-emerald-500' : baseStrokeClass;
+  const hitClick = onSelect
+    ? (ev: React.MouseEvent) => {
+        ev.stopPropagation();
+        onSelect();
+      }
+    : undefined;
+  const hitStyle = onSelect ? { cursor: 'pointer' as const } : undefined;
 
   if (!orthogonal) {
     return (
@@ -300,21 +312,44 @@ function Edge({
           />
         )}
         <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={strokeClass} strokeWidth={strokeWidth} strokeDasharray={dash} />
+        {onSelect && (
+          <line
+            x1={a.x}
+            y1={a.y}
+            x2={b.x}
+            y2={b.y}
+            stroke="transparent"
+            strokeWidth={14}
+            onClick={hitClick}
+            style={hitStyle}
+          />
+        )}
       </g>
     );
   }
 
   // Right-angle connector: horizontal then vertical
   const midx = (a.x + b.x) / 2;
+  const points = `${a.x},${a.y} ${midx},${a.y} ${midx},${b.y} ${b.x},${b.y}`;
   return (
     <g>
       <polyline
-        points={`${a.x},${a.y} ${midx},${a.y} ${midx},${b.y} ${b.x},${b.y}`}
+        points={points}
         fill="none"
         className={strokeClass}
         strokeWidth={strokeWidth}
         strokeDasharray={dash}
       />
+      {onSelect && (
+        <polyline
+          points={points}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={14}
+          onClick={hitClick}
+          style={hitStyle}
+        />
+      )}
     </g>
   );
 }
@@ -949,7 +984,19 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
 
           {/* Edges */}
           {edgesWithPoints.map((e: any, i: number) => (
-            <Edge key={`edge-${i}`} a={e.a} b={e.b} label={e.label} style={e.style} orthogonal={orthogonal} />
+            <Edge
+              key={`edge-${i}`}
+              a={e.a}
+              b={e.b}
+              label={e.label}
+              style={e.style}
+              orthogonal={orthogonal}
+              isSelected={selectedEdge === i}
+              onSelect={() => {
+                setSelectedEdge(i);
+                setSelectedNode(null);
+              }}
+            />
           ))}
 
           {/* Nodes */}
@@ -1024,6 +1071,11 @@ export default function BlockDiagramEditor({ diagramId }: BlockDiagramEditorProp
                   textAnchor="middle"
                   fontSize={11}
                   className="fill-slate-700 dark:fill-slate-200"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    setSelectedEdge(i);
+                    setSelectedNode(null);
+                  }}
                   onDoubleClick={(ev) => {
                     (ev as any).stopPropagation();
                     const v = prompt('Connector label', lbl);

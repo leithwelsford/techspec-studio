@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import mermaid from 'mermaid';
+import { wrapSequencePhasesInRect } from '../services/ai/parsers/mermaidParser';
 import type { BlockDiagram, MermaidDiagram, NodeMeta, Point, Size, EdgeDef, EdgeStyle } from '../types';
 
 interface InlineDiagramPreviewProps {
@@ -495,7 +496,8 @@ function MermaidDiagramPreview({ diagram }: { diagram: MermaidDiagram; maxWidth?
       try {
         setError('');
         const uniqueId = `inline-mermaid-${diagram.id}-${Date.now()}`;
-        const { svg: renderedSvg } = await mermaid.render(uniqueId, diagram.mermaidCode);
+        const renderCode = wrapSequencePhasesInRect(diagram.mermaidCode);
+        const { svg: renderedSvg } = await mermaid.render(uniqueId, renderCode);
         // Pre-process SVG to remove width/height, but extract max-width first
         const { svg: processedSvg, maxWidth: extractedMaxWidth } = preprocessMermaidSvg(renderedSvg);
         setSvg(processedSvg);

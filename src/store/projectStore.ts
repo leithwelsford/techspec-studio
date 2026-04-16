@@ -18,6 +18,7 @@ import type {
   AIMessage,
   AITask,
   PendingApproval,
+  FixDigestEntry,
   AIUsageStats,
   VersionSnapshot,
   VersionHistory,
@@ -61,6 +62,9 @@ export interface ProjectState {
   currentTaskId: string | null;
   usageStats: AIUsageStats;
   chatPanelOpen: boolean;
+
+  // Review fix digest — accumulates a running summary of applied review fixes
+  reviewFixDigest: FixDigestEntry[];
 
   // Version history
   versionHistory: VersionHistory;
@@ -152,6 +156,10 @@ export interface ProjectState {
   rejectContent: (id: string, feedback: string) => void;
   removeApproval: (id: string) => void;
   clearAllApprovals: () => void;
+
+  // Actions - Review Fix Digest
+  addFixDigestEntry: (entry: Omit<FixDigestEntry, 'id' | 'timestamp'>) => void;
+  clearReviewFixDigest: () => void;
 
   // Actions - Usage Stats
   updateUsageStats: (tokens: number, cost: number) => void;
@@ -296,6 +304,7 @@ export const useProjectStore = create<ProjectState>()(
       chatHistory: [],
       activeTasks: [],
       pendingApprovals: [],
+      reviewFixDigest: [],
       isGenerating: false,
       currentTaskId: null,
       chatPanelOpen: false,
@@ -876,6 +885,7 @@ export const useProjectStore = create<ProjectState>()(
         chatHistory: [],
         activeTasks: [],
         pendingApprovals: [],
+        reviewFixDigest: [],
       }),
 
       // AI Chat actions
@@ -1014,6 +1024,24 @@ export const useProjectStore = create<ProjectState>()(
         set(() => ({
           pendingApprovals: [],
         }));
+      },
+
+      // Review Fix Digest actions
+      addFixDigestEntry: (entry) => {
+        set((state) => ({
+          reviewFixDigest: [
+            ...state.reviewFixDigest,
+            {
+              ...entry,
+              id: generateId(),
+              timestamp: Date.now(),
+            },
+          ],
+        }));
+      },
+
+      clearReviewFixDigest: () => {
+        set(() => ({ reviewFixDigest: [] }));
       },
 
       // Usage Stats actions
@@ -1753,6 +1781,7 @@ export const useProjectStore = create<ProjectState>()(
           chatHistory: [],
           activeTasks: [],
           pendingApprovals: [],
+          reviewFixDigest: [],
           isGenerating: false,
           currentTaskId: null,
           chatPanelOpen: false,

@@ -222,24 +222,28 @@ You must output valid Mermaid syntax for a sequence diagram.
 ${syntaxDocs}
 === END SYNTAX REFERENCE ===
 
-Example (using shorthand +/- for activation - PREFERRED):
+Example (using shorthand +/- for activation - PREFERRED, box-grouped participants, and rect-wrapped phases):
 \`\`\`mermaid
 sequenceDiagram
+    box rgb(245, 247, 250) "Access"
     participant UE as UE_CPE
     participant PGW as P_GW
+    end
+    box rgb(245, 247, 250) "PCC & Charging"
     participant PCRF
     participant TDF
+    end
 
-    Note over UE,TDF: IP-CAN Session Establishment
+    rect rgb(238, 241, 246)
+        Note over UE,TDF: 1. IP-CAN Session Establishment
+        UE->>+PGW: Attach Request
+        PGW->>+PCRF: CCR-Initial (Gx)
+        PCRF-->>-PGW: CCA-Initial (PCC Rules)
+        PGW-->>-UE: Attach Accept
+    end
 
-    UE->>+PGW: Attach Request
-    PGW->>+PCRF: CCR-Initial (Gx)
-    PCRF-->>-PGW: CCA-Initial (PCC Rules)
-    PGW-->>-UE: Attach Accept
-
-    Note right of PGW: Session established
-
-    alt Application Traffic Detection
+    rect rgb(250, 251, 253)
+        Note over UE,TDF: 2. Application Traffic Detection
         UE->>PGW: Application Traffic
         PGW->>TDF: Deep Packet Inspection
         TDF->>PCRF: Service Detection (Sd)
@@ -271,6 +275,13 @@ Guidelines:
 3. **Notes** - 1-2 short sentences max, not paragraphs
 
 4. Identify all participants from the description
+4a. **Group participants into functional domains with \`box\` blocks** — ALWAYS wrap participants in \`box "<Domain Name>" ... end\` groupings when they fall into two or more distinct functional domains. This is MANDATORY for telecom flows. Typical telecom domains:
+    - **Access Network**: UE, CPE, eNodeB, gNodeB, WLAN AP, BRAS, BNG
+    - **AAA / HSS**: AAA server, HSS, HLR, UDR, SPR
+    - **PCC & Charging**: PCRF, PCEF, TDF, OCS, OFCS, P-GW, SMF
+    - **IMS Core**: P-CSCF, S-CSCF, I-CSCF, AS
+    - **OSS / Management**: NMS, EMS, provisioning, subscriber portal
+    ALL boxes MUST use EXACTLY the same neutral grey background: \`rgb(245, 247, 250)\`. Do NOT assign different colours per domain — the box outline and label provide the separation, not the fill. Even if a box contains only one participant, still use a box so domain structure is visible. Colours MUST be identical across every sequence diagram in the document.
 5. Use meaningful aliases for clarity
 6. Show the sequence of messages chronologically
 7. Use appropriate arrow types:
@@ -278,7 +289,7 @@ Guidelines:
    - Dotted arrows for responses
 8. Add activation boxes for processing (sparingly)
 9. Use alt/opt/loop for conditional flows
-10. Group related messages with rect blocks
+10. **Group each phase in a rect block** - Wrap every numbered phase (e.g. "1. Accounting-Start", "2. Validate Binding") in a \`rect rgb(...) ... end\` block. The first line inside the rect is the \`Note over\` phase title; subsequent messages belong to that phase. Alternate EXACTLY these two fixed colours between phases: \`rgb(238, 241, 246)\` (slightly darker grey) and \`rgb(250, 251, 253)\` (slightly lighter grey). Do not pick other colours. This gives proper vertical padding between phases — Mermaid does NOT pad before bare \`Note over\` lines, so phases run together without rect wrappers.
 11. Use proper interface names (Gx, Rx, S5, etc.) where applicable
 12. **Use standard protocol command names** for known interfaces, even if the input text uses generic descriptions:
     - **Gx/Sd (PCRF)**: CCR-I/CCA-I (initial), CCR-U/CCA-U (update), CCR-T/CCA-T (terminate) - NOT "policy request/response"
@@ -660,6 +671,53 @@ Diagrams provide visual overview - detailed explanations belong in the specifica
 - **RADIUS**: Acct-Start/Stop, Disconnect-Req/ACK/NAK
 - **SIP**: INVITE, BYE, 200 OK - NOT "call setup"
 - **HTTP**: GET, POST 201, PUT - NOT "fetch", "create"
+
+**⚠️ IF YOU GENERATE A SEQUENCE DIAGRAM — MANDATORY RULES:**
+
+Sequence diagrams MUST follow these rules or the output is incorrect:
+
+**1. Group participants into functional domains with \`box\` blocks** — ALWAYS wrap participants in \`box "<Domain Name>" ... end\` groupings when they fall into two or more distinct functional domains. MANDATORY for telecom flows. Typical telecom domains:
+- **Access Network**: UE, CPE, eNodeB, gNodeB, WLAN AP, BRAS, BNG
+- **AAA / HSS**: AAA server, HSS, HLR, UDR, SPR
+- **PCC & Charging**: PCRF, PCEF, TDF, OCS, OFCS, P-GW, SMF
+- **IMS Core**: P-CSCF, S-CSCF, I-CSCF, AS
+- **OSS / Management**: NMS, EMS, provisioning, subscriber portal
+ALL boxes MUST use EXACTLY the same neutral grey background: \`rgb(245, 247, 250)\`. Do NOT assign different colours per domain — the box outline and label provide the separation, not the fill. Even single-participant domains still need a box. Colours MUST be identical across ALL sequence diagrams in the same document.
+
+**2. Group each phase in a \`rect\` block** — Wrap every numbered phase (e.g. "1. Accounting-Start", "2. Validate Binding") in a \`rect rgb(...) ... end\` block. The first line inside the rect is the \`Note over\` phase title; subsequent messages belong to that phase. Alternate EXACTLY these two fixed colours between phases: \`rgb(238, 241, 246)\` (slightly darker grey) and \`rgb(250, 251, 253)\` (slightly lighter grey). Do not pick other colours. Mermaid does NOT pad before bare \`Note over\` lines — phases run together visually without rect wrappers.
+
+**3. Avoid activate/deactivate** — they are the most common source of syntax errors. Use shorthand \`+\`/\`-\` on arrows if you need activation boxes, or omit entirely.
+
+**4. Short labels** — message labels max 30-40 chars, participant names alphanumeric/underscore only (no hyphens, slashes, parens in IDs — use aliases instead: \`participant PGW as P_GW\`).
+
+**Sequence-diagram example (follow this structure exactly):**
+\`\`\`mermaid
+sequenceDiagram
+    box rgb(245, 247, 250) "Access"
+    participant UE as UE_CPE
+    participant BRAS
+    end
+    box rgb(245, 247, 250) "AAA"
+    participant AAA
+    end
+    box rgb(245, 247, 250) "PCC & Charging"
+    participant PCEF
+    participant PCRF
+    end
+
+    rect rgb(238, 241, 246)
+        Note over UE,PCRF: 1. Accounting-Start Trigger
+        UE->>BRAS: Attach
+        BRAS->>AAA: Acct-Request(Start)
+        AAA->>PCEF: Acct-Request(Start)
+    end
+
+    rect rgb(250, 251, 253)
+        Note over PCEF,PCRF: 2. Gx Session Establishment
+        PCEF->>PCRF: CCR-I
+        PCRF-->>PCEF: CCA-I (PCC rules)
+    end
+\`\`\`
 
 **OUTPUT REQUIREMENTS:**
 1. Output valid Mermaid syntax wrapped in \`\`\`mermaid ... \`\`\`

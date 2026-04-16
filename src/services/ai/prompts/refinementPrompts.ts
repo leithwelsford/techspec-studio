@@ -332,21 +332,30 @@ export function parseMarkdownSections(markdown: string): Array<{
     });
   }
 
-  // Calculate section boundaries
+  // Calculate section boundaries hierarchically. A section ends where the next
+  // heading with LEVEL ≤ current.level begins — so a parent section (e.g. "# 5")
+  // spans all its descendants ("## 5.1", "### 5.4.1", ...) up to the next same-
+  // or-higher-level heading ("# 6"). This matches the user's mental model of
+  // "section 5" meaning the whole subtree, and prevents replaceSectionById from
+  // leaving stale child subsections behind when the AI returns a full rewrite.
   for (let i = 0; i < matches.length; i++) {
     const current = matches[i];
-    const next = matches[i + 1];
 
-    const startIndex = current.index;
-    const endIndex = next ? next.index : markdown.length;
+    let endIndex = markdown.length;
+    for (let j = i + 1; j < matches.length; j++) {
+      if (matches[j].level <= current.level) {
+        endIndex = matches[j].index;
+        break;
+      }
+    }
 
     sections.push({
       id: current.id,
       title: current.title,
       level: current.level,
-      startIndex,
+      startIndex: current.index,
       endIndex,
-      content: markdown.substring(startIndex, endIndex),
+      content: markdown.substring(current.index, endIndex),
     });
   }
 
@@ -389,7 +398,20 @@ export function replaceSectionById(
   const before = fullDocument.substring(0, sectionToReplace.startIndex);
   const after = fullDocument.substring(sectionToReplace.endIndex);
 
-  return before + newContent + after;
+  // Normalize the replacement so adjacent headings stay on their own lines:
+  //   1. Strip any ```markdown / ``` fences the AI wrapped around its output.
+  //   2. Trim and guarantee exactly one trailing blank line so the following
+  //      sibling heading starts on a fresh line — otherwise a missing newline
+  //      concatenates "…last line## 2.3 Next" and the heading regex's
+  //      ^-anchor silently fails to detect the next heading on re-parse.
+  let normalized = newContent
+    .replace(/^```(?:markdown|md)?\s*\n/i, '')
+    .replace(/\n```\s*$/i, '')
+    .trimEnd();
+  if (!normalized.endsWith('\n')) normalized += '\n';
+  normalized += '\n';
+
+  return before + normalized + after;
 }
 
 /**

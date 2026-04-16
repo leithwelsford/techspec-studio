@@ -406,11 +406,32 @@ export default function MarkdownEditor() {
         const refinementResult = await aiService.refineContent(selectedText, instructions, context);
         const refinedSection = refinementResult.content;
 
-        // Step 2: Extract section ID and title from selected text (first heading)
-        // Heading format: "## 6.3 Title" or "### 6.3.1 Subtitle"
-        const headingMatch = selectedText.match(/^#{1,4}\s+(\d+(?:\.\d+)*)\s+(.+?)$/m);
-        const sectionId = headingMatch ? headingMatch[1] : 'unknown';
-        const sectionTitle = headingMatch ? headingMatch[2].trim() : 'Selected Section';
+        // Step 2: Infer section ID and title containing the selection.
+        // Strategy:
+        //   (a) If the selection itself begins with a numbered heading, use that.
+        //   (b) Otherwise walk backwards from the selection start through the
+        //       document to find the nearest preceding numbered heading — that's
+        //       the section the selection lives in.
+        const HEADING_RE = /^#{1,6}\s+(\d+(?:\.\d+)*)\s+(.+?)$/;
+        let sectionId = 'unknown';
+        let sectionTitle = 'Selected Section';
+        const selectionHeading = selectedText.match(new RegExp(HEADING_RE.source, 'm'));
+        if (selectionHeading) {
+          sectionId = selectionHeading[1];
+          sectionTitle = selectionHeading[2].trim();
+        } else {
+          const beforeSelection = textarea.value.substring(0, textarea.selectionStart);
+          const lines = beforeSelection.split('\n');
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const match = lines[i].match(HEADING_RE);
+            if (match) {
+              sectionId = match[1];
+              sectionTitle = match[2].trim();
+              break;
+            }
+          }
+        }
+        console.log(`📍 Cascade primary change resolved to section ${sectionId} — ${sectionTitle}`);
 
         // Step 3: Perform cascaded refinement analysis
         const cascadeResult = await aiService.performCascadedRefinement(

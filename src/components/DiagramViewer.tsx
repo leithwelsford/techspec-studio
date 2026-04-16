@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import mermaid from 'mermaid';
+import { wrapSequencePhasesInRect } from '../services/ai/parsers/mermaidParser';
 import BlockDiagramEditor from './editors/BlockDiagramEditor';
 import SequenceDiagramEditor from './editors/SequenceDiagramEditor';
 import { GenerateDiagramsModal } from './ai/GenerateDiagramsModal';
@@ -662,7 +663,8 @@ function MermaidDiagramRenderer({ diagram }: { diagram: any }) {
       try {
         setError('');
         const uniqueId = `mermaid-${diagram.id}-${Date.now()}`;
-        const { svg } = await mermaid.render(uniqueId, diagram.mermaidCode);
+        const renderCode = wrapSequencePhasesInRect(diagram.mermaidCode);
+        const { svg } = await mermaid.render(uniqueId, renderCode);
         if (mounted) {
           setSvgContent(svg);
         }

@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import mermaid from 'mermaid';
+import { wrapSequencePhasesInRect } from '../../services/ai/parsers/mermaidParser';
 
 interface SequenceDiagramEditorProps {
   diagramId: string;
@@ -128,7 +129,8 @@ export default function SequenceDiagramEditor({ diagramId }: SequenceDiagramEdit
     try {
       setError('');
       const uniqueId = `mermaid-preview-${Date.now()}`;
-      const { svg } = await mermaid.render(uniqueId, mermaidCode);
+      const renderCode = wrapSequencePhasesInRect(mermaidCode);
+      const { svg } = await mermaid.render(uniqueId, renderCode);
       setPreviewSvg(svg);
     } catch (err) {
       console.error('Mermaid rendering error:', err);
@@ -327,7 +329,7 @@ export default function SequenceDiagramEditor({ diagramId }: SequenceDiagramEdit
               </div>
             ) : previewSvg ? (
               <div
-                className="flex justify-center items-center"
+                className="flex justify-center items-center bg-white rounded-lg p-4 shadow-sm"
                 dangerouslySetInnerHTML={{ __html: previewSvg }}
               />
             ) : (

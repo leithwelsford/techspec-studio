@@ -62,6 +62,65 @@ export interface GenerationResult {
 }
 
 /**
+ * Parse JSON from an LLM response tolerant to common wrapping patterns:
+ *   1. Raw JSON
+ *   2. Fenced ```json ... ``` or ``` ... ``` blocks
+ *   3. JSON object embedded in prose (takes the first balanced {...} block)
+ * Throws if no parseable JSON is found.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseLenientJson(raw: string): any {
+  const text = (raw || '').trim();
+  if (!text) throw new Error('empty response');
+
+  // 1. Raw parse first.
+  try {
+    return JSON.parse(text);
+  } catch {
+    // fall through
+  }
+
+  // 2. Strip markdown fences.
+  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1].trim());
+    } catch {
+      // fall through
+    }
+  }
+
+  // 3. Extract first balanced {...} block.
+  const firstBrace = text.indexOf('{');
+  if (firstBrace >= 0) {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = firstBrace; i < text.length; i++) {
+      const ch = text[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          const candidate = text.substring(firstBrace, i + 1);
+          try {
+            return JSON.parse(candidate);
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  throw new Error('no parseable JSON found in response');
+}
+
+/**
  * Detect if AI-generated content contains placeholder text
  * Returns true if placeholders are detected, false otherwise
  */
@@ -467,7 +526,7 @@ export class AIService {
       }
     } else {
       // For non-reasoning models
-      refinementMaxTokens = options?.maxTokens ?? this.config.maxTokens ?? 8000;
+      refinementMaxTokens = Math.max(options?.maxTokens ?? this.config.maxTokens ?? 16000, 16000);
     }
 
     console.log(`🎯 Refining content with maxTokens: ${refinementMaxTokens}`, {
@@ -1765,7 +1824,7 @@ Generate the complete Section 4 now in markdown format.`;
       // Reasoning tokens are separate and unlimited; maxTokens only applies to output
       const isReasoningModel = this.config.model.toLowerCase().includes('o1') ||
                                this.config.model.toLowerCase().includes('gpt-5');
-      const sectionMaxTokens = isReasoningModel ? 64000 : (this.config.maxTokens || 8000);
+      const sectionMaxTokens = isReasoningModel ? 64000 : Math.max(this.config.maxTokens || 16000, 16000);
 
       console.log(`🎯 Generating section with maxTokens: ${sectionMaxTokens} (reasoning model: ${isReasoningModel})`);
 
@@ -2377,12 +2436,12 @@ ${enabledSections.map((s, i) => {
     });
 
     try {
-      const analysis = JSON.parse(result.content);
+      const analysis = parseLenientJson(result.content);
       console.log('📊 Impact Analysis Result:', analysis);
       return analysis;
     } catch (error) {
       console.error('Failed to parse impact analysis:', result.content);
-      throw new Error('Failed to parse impact analysis JSON');
+      throw new Error(`Failed to parse impact analysis JSON: ${error instanceof Error ? error.message : 'unknown'}`);
     }
   }
 
@@ -2452,16 +2511,17 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
       ];
 
       try {
+        const sectionMaxTokens = Math.max(this.config.maxTokens || 16000, 16000);
         const result = await this.provider.generate(messages, {
           model: this.config.model,
           temperature: 0.3,
-          maxTokens: 4000
+          maxTokens: sectionMaxTokens
         });
 
         // Handle REMOVE action (JSON response)
         if (affectedSection.impactType === 'REMOVE') {
           try {
-            const removeResult = JSON.parse(result.content);
+            const removeResult = parseLenientJson(result.content);
             propagatedChanges.push({
               sectionId: affectedSection.sectionId,
               sectionTitle: affectedSection.sectionTitle,
@@ -2535,6 +2595,14 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
             );
           }
 
+          const truncated = wasOutputTruncated(result);
+          if (truncated) {
+            console.warn(
+              `⚠️ TRUNCATED: Propagated change for section ${affectedSection.sectionId} was truncated. ` +
+              `Output may be incomplete (${proposedContent.length} chars).`
+            );
+          }
+
           propagatedChanges.push({
             sectionId: affectedSection.sectionId,
             sectionTitle: affectedSection.sectionTitle,
@@ -2544,7 +2612,8 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
             reasoning: affectedSection.reasoning,
             impactLevel: affectedSection.impactLevel,
             confidence: 0.85,
-            isSelected: true, // Default to selected
+            isSelected: !truncated,
+            wasTruncated: truncated,
           });
         }
       } catch (error) {
@@ -2593,7 +2662,7 @@ Change: Modified from ${primaryChange.originalContent.length} to ${primaryChange
         maxTokens: 8000 // Increased for reasoning models and comprehensive validation reports
       });
 
-      const validation = JSON.parse(result.content);
+      const validation = parseLenientJson(result.content);
       console.log('🔍 Validation Result:', validation);
       return validation;
     } catch (error) {

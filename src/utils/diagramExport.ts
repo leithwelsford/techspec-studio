@@ -6,6 +6,7 @@
 
 import type { BlockDiagram, MermaidDiagram } from '../types';
 import mermaid from 'mermaid';
+import { wrapSequencePhasesInRect } from '../services/ai/parsers/mermaidParser';
 
 /**
  * Escape special XML characters in text content
@@ -238,7 +239,8 @@ export async function renderMermaidDiagramToSVG(diagram: MermaidDiagram): Promis
     const id = `mermaid-export-${Date.now()}`;
 
     // Render to SVG using global Mermaid config (B&W theme)
-    const { svg } = await mermaid.render(id, diagram.mermaidCode);
+    const renderCode = wrapSequencePhasesInRect(diagram.mermaidCode);
+    const { svg } = await mermaid.render(id, renderCode);
 
     // Normalize the viewBox to remove excessive padding
     const normalizedSvg = normalizeViewBox(svg);
