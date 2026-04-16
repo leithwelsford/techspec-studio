@@ -314,6 +314,16 @@ export default function DocumentMetadataEditor({
                 <option key={name} value={name}>{name}</option>
               ))}
             </select>
+            <div className="mt-1">
+              <label className={labelClass}>Or type a custom table style name</label>
+              <input
+                type="text"
+                value={selectedTableStyle || ''}
+                onChange={(e) => onTableStyleChanged?.(e.target.value)}
+                placeholder="e.g., Table-AllotGrey"
+                className={inputClass}
+              />
+            </div>
           </div>
         </div>
       )}
