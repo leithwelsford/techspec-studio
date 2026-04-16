@@ -557,14 +557,19 @@ export class TemplateAnalyzer {
       // Check for table styles (type="table")
       if (styleType === 'table') {
         result.tableStyles.exists = true;
-        result.tableStyles.styleIds.push(styleId);
+        // Use the display name if available, otherwise the styleId
+        // The display name is what Pandoc's custom-style attribute needs
+        const tableStyleName = name || styleId;
+        if (!result.tableStyles.styleIds.includes(tableStyleName)) {
+          result.tableStyles.styleIds.push(tableStyleName);
+        }
 
         // Check if it's the default table style
         const defaultAttr = styleEl.getAttribute('w:default') || styleEl.getAttribute('default');
         if (defaultAttr === '1' || defaultAttr === 'true') {
-          result.tableStyles.defaultStyle = styleId;
+          result.tableStyles.defaultStyle = tableStyleName;
         }
-        console.log(`[Template Analyzer] Found table style: ${styleId}`);
+        console.log(`[Template Analyzer] Found table style: "${tableStyleName}" (styleId: ${styleId})`);
       }
 
       // Check for other notable styles
