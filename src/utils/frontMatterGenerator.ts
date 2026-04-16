@@ -26,7 +26,7 @@ export interface FrontMatterOptions {
  * resets the template's heading numbering counter, causing flat numbering
  * (1, 2, 3 instead of 1.1, 1.2, 1.3).
  */
-const PAGE_BREAK = '\n\\newpage\n';
+const PAGE_BREAK = '\n\n\\newpage\n\n';
 
 /**
  * Raw OOXML for a horizontal rule with accent color.
