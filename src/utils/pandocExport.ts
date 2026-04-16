@@ -470,9 +470,15 @@ export async function exportWithPandoc(
   }
 
   // Add YAML front matter for title page metadata
-  // This ensures title, subtitle, version, etc. are handled as metadata, not content
+  // When custom cover page is enabled, suppress Pandoc's auto-generated title page
+  // by omitting title/author/date/abstract from YAML (our cover page handles these)
   const specMeta = project.specification.metadata;
-  const yamlFrontMatter = `---
+  let yamlFrontMatter: string;
+  if (options.includeCoverPage) {
+    // Minimal YAML — no title page fields, just enough for Pandoc to process
+    yamlFrontMatter = '---\n---\n\n';
+  } else {
+    yamlFrontMatter = `---
 title: "${project.specification.title || 'Technical Specification'}"
 ${specMeta?.subtitle ? `subtitle: "${specMeta.subtitle}"` : ''}
 author: "${options.author || specMeta?.author || 'TechSpec Studio'}"
@@ -483,8 +489,27 @@ abstract: |
 ---
 
 `;
+  }
 
   // Generate cover page and document control front matter
+  console.log('[Pandoc Export] Front matter options:', {
+    includeCoverPage: options.includeCoverPage,
+    includeDocControl: options.includeDocControl,
+    vendorLogo: options.vendorLogoFilename,
+    customerLogo: options.customerLogoFilename,
+    logoBlobs: options.logoBlobs?.length || 0,
+  });
+  console.log('[Pandoc Export] Metadata for front matter:', {
+    customer: project.specification.metadata?.customer,
+    documentType: project.specification.metadata?.documentType,
+    versionStatus: project.specification.metadata?.versionStatus,
+    version: project.specification.metadata?.version,
+    author: project.specification.metadata?.author,
+    releaseEntries: project.specification.metadata?.documentRelease?.length || 0,
+    approvers: project.specification.metadata?.approvers?.length || 0,
+    revisions: project.specification.metadata?.revisions?.length || 0,
+  });
+
   const coverAndDocControl = generateFrontMatter(
     project.specification.metadata,
     {
@@ -495,6 +520,10 @@ abstract: |
       customerLogoFilename: options.customerLogoFilename,
     }
   );
+  console.log('[Pandoc Export] Front matter generated:', coverAndDocControl.length, 'chars');
+  if (coverAndDocControl.length > 0) {
+    console.log('[Pandoc Export] Front matter preview:\n' + coverAndDocControl.substring(0, 500));
+  }
 
   // Build front matter sections (TOC, LoF, LoT)
   // Use styled paragraphs instead of headings to avoid template's auto-numbering
