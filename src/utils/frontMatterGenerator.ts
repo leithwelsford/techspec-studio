@@ -106,9 +106,9 @@ ${metadata.customer}
 :::`);
   }
 
-  // Document title (Title style)
+  // Document title (Title 1 style — larger/primary heading on cover)
   const title = options.specTitle || 'Technical Specification';
-  parts.push(`::: {custom-style="Title"}
+  parts.push(`::: {custom-style="Title 1"}
 ${title}
 :::`);
 
@@ -118,23 +118,28 @@ ${title}
   // Spacing
   parts.push('');
 
-  // Document type (Subtitle style)
+  // Document type (Title style)
   if (metadata.documentType) {
-    parts.push(`::: {custom-style="Subtitle"}
+    parts.push(`::: {custom-style="Title"}
 ${metadata.documentType}
 :::`);
   }
 
-  // Version + status
+  // Version + status (Subtitle style)
   const version = metadata.version || '0.1';
   const status = metadata.versionStatus ? ` (${metadata.versionStatus})` : '';
-  parts.push(`Version ${version}${status}`);
+  parts.push(`::: {custom-style="Subtitle"}
+Version ${version}${status}
+:::`);
 
-  // Date
+  // Date (Date style)
   const date = metadata.date || new Date().toLocaleDateString('en-GB', {
     day: '2-digit', month: 'long', year: 'numeric'
   });
-  parts.push(date);
+  parts.push(`::: {custom-style="Date"}
+${date}
+:::`);
+
 
   // Section break
   parts.push(PAGE_BREAK);
