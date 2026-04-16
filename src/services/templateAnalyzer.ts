@@ -557,19 +557,22 @@ export class TemplateAnalyzer {
       // Check for table styles (type="table")
       if (styleType === 'table') {
         result.tableStyles.exists = true;
-        // Use the display name if available, otherwise the styleId
-        // The display name is what Pandoc's custom-style attribute needs
-        const tableStyleName = name || styleId;
-        if (!result.tableStyles.styleIds.includes(tableStyleName)) {
-          result.tableStyles.styleIds.push(tableStyleName);
+        const displayName = name || styleId;
+        if (!result.tableStyles.styleIds.includes(displayName)) {
+          result.tableStyles.styleIds.push(displayName);
         }
+        // Map display name → XML styleId (they often differ)
+        if (!result.tableStyles.styleIdMap) {
+          result.tableStyles.styleIdMap = {};
+        }
+        result.tableStyles.styleIdMap[displayName] = styleId;
 
         // Check if it's the default table style
         const defaultAttr = styleEl.getAttribute('w:default') || styleEl.getAttribute('default');
         if (defaultAttr === '1' || defaultAttr === 'true') {
-          result.tableStyles.defaultStyle = tableStyleName;
+          result.tableStyles.defaultStyle = displayName;
         }
-        console.log(`[Template Analyzer] Found table style: "${tableStyleName}" (styleId: ${styleId})`);
+        console.log(`[Template Analyzer] Found table style: "${displayName}" (styleId: "${styleId}")`);
       }
 
       // Check for other notable styles
@@ -598,7 +601,8 @@ export class TemplateAnalyzer {
       title: result.title.exists,
       subtitle: result.subtitle.exists,
       tocHeading: result.tocHeading.exists,
-      tableStyles: result.tableStyles.styleIds.length,
+      tableStyles: result.tableStyles.styleIds,
+      tableStyleDefault: result.tableStyles.defaultStyle,
       otherStyles: result.otherStyles.length,
     });
 

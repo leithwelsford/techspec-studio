@@ -207,7 +207,9 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         // Override table style if user selected one
         const roleMap = { ...markdownGuidance?.pandocStyleRoleMap };
         if (selectedTableStyle) {
-          roleMap.tableStyle = selectedTableStyle;
+          // Resolve display name to XML styleId if we have the mapping
+          const styleIdMap = docxTemplateAnalysis?.specialStyles?.tableStyles?.styleIdMap;
+          roleMap.tableStyle = styleIdMap?.[selectedTableStyle] || selectedTableStyle;
         }
         const pandocExportOpts = {
           ...exportOpts,

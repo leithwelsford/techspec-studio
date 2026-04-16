@@ -917,7 +917,9 @@ export interface SpecialStylesInfo {
   };
   tableStyles: {
     exists: boolean;
-    styleIds: string[]; // List of table style IDs found
+    styleIds: string[]; // Display names for UI dropdown
+    /** Map of display name → XML styleId (for DOCX post-processing) */
+    styleIdMap?: Record<string, string>;
     defaultStyle?: string;
   };
   // Other commonly used styles
