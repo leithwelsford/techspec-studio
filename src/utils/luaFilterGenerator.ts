@@ -77,11 +77,15 @@ end
   }
 
   // --- Table style remapping ---
+  // Set custom-style directly on the Table element's attributes rather than
+  // wrapping in a Div, since table styles in Word are applied at the table
+  // level (<w:tblStyle>), not as paragraph styles.
   if (roleMap.tableStyle) {
     hasFunctions = true;
     sections.push(`-- Apply table style: "${roleMap.tableStyle}"
 function Table(el)
-  return styled({el}, "${luaEscape(roleMap.tableStyle)}")
+  el.attr.attributes["custom-style"] = "${luaEscape(roleMap.tableStyle)}"
+  return el
 end
 `);
   }

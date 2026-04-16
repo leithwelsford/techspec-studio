@@ -22,6 +22,11 @@ interface DocumentMetadataEditorProps {
   onLogoAssigned: (role: 'vendor' | 'customer', candidate: LogoCandidate | null) => void;
   vendorLogoFilename?: string;
   customerLogoFilename?: string;
+  /** Table style names detected from template */
+  tableStyleNames?: string[];
+  /** Currently selected table style */
+  selectedTableStyle?: string;
+  onTableStyleChanged?: (styleName: string) => void;
 }
 
 const DOC_TYPE_SUGGESTIONS = [
@@ -41,6 +46,9 @@ export default function DocumentMetadataEditor({
   onLogoAssigned,
   vendorLogoFilename,
   customerLogoFilename,
+  tableStyleNames,
+  selectedTableStyle,
+  onTableStyleChanged,
 }: DocumentMetadataEditorProps) {
   const specTitle = useProjectStore((state) => state.project?.specification.title);
   const metadata = useProjectStore((state) => state.project?.specification.metadata);
@@ -284,6 +292,28 @@ export default function DocumentMetadataEditor({
                 />
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Table Style */}
+      {tableStyleNames && tableStyleNames.length > 0 && (
+        <div className={sectionClass}>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-1">
+            Table Style
+          </h3>
+          <div>
+            <label className={labelClass}>Style for tables in exported document</label>
+            <select
+              value={selectedTableStyle || ''}
+              onChange={(e) => onTableStyleChanged?.(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Default (from template)</option>
+              {tableStyleNames.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
           </div>
         </div>
       )}

@@ -53,6 +53,8 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   // Front matter options
   const [includeCoverPage, setIncludeCoverPage] = useState(true);
   const [includeDocControl, setIncludeDocControl] = useState(true);
+  // Table style override (user-selected from template's table styles)
+  const [selectedTableStyle, setSelectedTableStyle] = useState<string>('');
 
   // DOCX options
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
@@ -202,10 +204,15 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         }
 
         // Pass pandocStyles from template analysis for custom style mapping
+        // Override table style if user selected one
+        const roleMap = { ...markdownGuidance?.pandocStyleRoleMap };
+        if (selectedTableStyle) {
+          roleMap.tableStyle = selectedTableStyle;
+        }
         const pandocExportOpts = {
           ...exportOpts,
           pandocStyles: markdownGuidance?.pandocStyles,
-          pandocStyleRoleMap: markdownGuidance?.pandocStyleRoleMap,
+          pandocStyleRoleMap: roleMap,
           numberingMode,
           includeCoverPage,
           includeDocControl,
@@ -668,6 +675,9 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                 }}
                 vendorLogoFilename={vendorLogoFilename}
                 customerLogoFilename={customerLogoFilename}
+                tableStyleNames={docxTemplateAnalysis?.specialStyles?.tableStyles?.styleIds || []}
+                selectedTableStyle={selectedTableStyle}
+                onTableStyleChanged={setSelectedTableStyle}
               />
             </div>
           )}
