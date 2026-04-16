@@ -5,6 +5,7 @@
  * Provides professional DOCX export with corporate branding preservation.
  */
 
+import PizZip from 'pizzip';
 import type { Project, MarkdownGenerationGuidance, PandocStyleRoleMap } from '../types';
 import { resolveAllLinks } from './linkResolver';
 import {
@@ -751,8 +752,15 @@ abstract: |
     }
 
     console.log('[Pandoc Export] Export successful');
-    const blob = await response.blob();
+    let blob = await response.blob();
     console.log('[Pandoc Export] Received blob:', blob.size, 'bytes');
+
+    // Post-process: apply table style by modifying the DOCX XML directly
+    // Pandoc's custom-style doesn't work for table styles — it only handles
+    // paragraph/character styles. We need to inject <w:tblStyle> into the XML.
+    if (options.pandocStyleRoleMap?.tableStyle) {
+      blob = await applyTableStyleToDocx(blob, options.pandocStyleRoleMap.tableStyle);
+    }
 
     return blob;
 
@@ -761,6 +769,58 @@ abstract: |
     throw new Error(
       `Failed to export with Pandoc: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
+  }
+}
+
+/**
+ * Post-process a DOCX blob to apply a table style to all tables.
+ * Opens the DOCX with PizZip, parses document.xml, and replaces/injects
+ * <w:tblStyle> elements in each table's <w:tblPr>.
+ */
+async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Blob> {
+  try {
+    console.log(`[Pandoc Export] Post-processing: applying table style "${tableStyle}"`);
+
+    const arrayBuffer = await blob.arrayBuffer();
+    const zip = new PizZip(arrayBuffer);
+
+    const docFile = zip.file('word/document.xml');
+    if (!docFile) {
+      console.warn('[Pandoc Export] No document.xml found in DOCX');
+      return blob;
+    }
+
+    let docXml = docFile.asText();
+    let replacements = 0;
+
+    // Replace existing <w:tblStyle w:val="..."/> with our style
+    const existingPattern = /<w:tblStyle\s+w:val="[^"]*"\s*\/>/g;
+    if (existingPattern.test(docXml)) {
+      docXml = docXml.replace(existingPattern, () => {
+        replacements++;
+        return `<w:tblStyle w:val="${tableStyle}"/>`;
+      });
+    }
+
+    // For tables that have <w:tblPr> but no <w:tblStyle>, inject one
+    // Match <w:tblPr> that doesn't already contain <w:tblStyle>
+    const tblPrWithoutStyle = /<w:tblPr>((?:(?!<w:tblStyle)(?!<\/w:tblPr>)[\s\S])*?)<\/w:tblPr>/g;
+    docXml = docXml.replace(tblPrWithoutStyle, (_match, inner) => {
+      replacements++;
+      return `<w:tblPr><w:tblStyle w:val="${tableStyle}"/>${inner}</w:tblPr>`;
+    });
+
+    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s)`);
+
+    zip.file('word/document.xml', docXml);
+    const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+
+    console.log(`[Pandoc Export] Post-processed DOCX: ${modifiedBlob.size} bytes`);
+    return modifiedBlob;
+
+  } catch (error) {
+    console.error('[Pandoc Export] Table style post-processing failed:', error);
+    return blob; // Return original on failure
   }
 }
 
