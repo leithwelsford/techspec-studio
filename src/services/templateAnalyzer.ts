@@ -147,6 +147,54 @@ export class TemplateAnalyzer {
     return guidance;
   }
 
+  /**
+   * Extract logo/image candidates from the template's word/media/ folder.
+   * Returns images sorted by size descending (logos are typically the largest).
+   * Skips very small files (< 1KB) which are usually bullets or icons.
+   */
+  async extractLogos(file: File | string): Promise<Array<{
+    filename: string;
+    mimeType: string;
+    data: Uint8Array;
+    size: number;
+  }>> {
+    const zip = await this.loadDocx(file);
+    const allFiles = Object.keys(zip.files);
+    const logos: Array<{ filename: string; mimeType: string; data: Uint8Array; size: number }> = [];
+
+    const mimeMap: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      svg: 'image/svg+xml',
+    };
+
+    for (const filePath of allFiles) {
+      if (!filePath.startsWith('word/media/')) continue;
+      const zipEntry = zip.files[filePath];
+      if (zipEntry.dir) continue;
+
+      const ext = filePath.toLowerCase().split('.').pop() || '';
+      const mimeType = mimeMap[ext];
+      if (!mimeType) continue; // Skip EMF, WMF, etc.
+
+      const data = zipEntry.asUint8Array();
+      if (data.length < 1024) continue; // Skip tiny icons/bullets
+
+      const filename = filePath.replace('word/media/', '');
+      logos.push({ filename, mimeType, data, size: data.length });
+    }
+
+    // Sort by size descending — logos are typically the largest images
+    logos.sort((a, b) => b.size - a.size);
+
+    console.log(`[Template Analyzer] Extracted ${logos.length} logo candidate(s):`,
+      logos.map(l => `${l.filename} (${(l.size / 1024).toFixed(1)}KB)`));
+
+    return logos;
+  }
+
   // ===== Private Methods =====
 
   private async loadDocx(file: File | string): Promise<PizZip> {

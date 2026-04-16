@@ -789,10 +789,23 @@ export const useProjectStore = create<ProjectState>()(
         const uploadedAt = new Date();
         set((state) => {
           if (!state.project) return state;
+          // Auto-populate spec metadata from BRS metadata (non-destructive)
+          const specMeta = state.project.specification.metadata;
+          const updatedMeta = { ...specMeta };
+          if (brs.metadata.customer && !specMeta.customer) {
+            updatedMeta.customer = brs.metadata.customer;
+          }
+          if (brs.metadata.author && !specMeta.author) {
+            updatedMeta.author = brs.metadata.author;
+          }
           return {
             project: {
               ...state.project,
               brsDocument: { ...brs, id, uploadedAt },
+              specification: {
+                ...state.project.specification,
+                metadata: updatedMeta,
+              },
               updatedAt: new Date(),
             },
           };

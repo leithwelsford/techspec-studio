@@ -9,6 +9,7 @@ import {
   transformMarkdownWithImages,
 } from '../utils/diagramImageExporter';
 import { templateAnalyzer } from '../services/templateAnalyzer';
+import DocumentMetadataEditor, { type LogoCandidate } from './DocumentMetadataEditor';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -27,7 +28,7 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const clearTemplateAnalysis = useProjectStore((state) => state.clearTemplateAnalysis);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'template' | 'export'>('template');
+  const [activeTab, setActiveTab] = useState<'template' | 'metadata' | 'export'>('template');
 
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<'markdown' | 'docx'>('docx');
@@ -41,6 +42,17 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const [analyzingTemplate, setAnalyzingTemplate] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showAllStyles, setShowAllStyles] = useState(false);
+
+  // Logo extraction state
+  const [logoCandidates, setLogoCandidates] = useState<LogoCandidate[]>([]);
+  const [vendorLogoFilename, setVendorLogoFilename] = useState<string | undefined>();
+  const [customerLogoFilename, setCustomerLogoFilename] = useState<string | undefined>();
+  // Logo binary data for export (kept in memory, not IndexedDB, for simplicity)
+  const [logoBlobs, setLogoBlobs] = useState<Map<string, Blob>>(new Map());
+
+  // Front matter options
+  const [includeCoverPage, setIncludeCoverPage] = useState(true);
+  const [includeDocControl, setIncludeDocControl] = useState(true);
 
   // DOCX options
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
@@ -80,6 +92,31 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
 
       console.log('[Template] Analysis complete');
 
+      // Extract logos from template
+      try {
+        const rawLogos = await templateAnalyzer.extractLogos(file);
+        const candidates: LogoCandidate[] = rawLogos.map(logo => {
+          const blob = new Blob([new Uint8Array(logo.data)], { type: logo.mimeType });
+          const dataUrl = URL.createObjectURL(blob);
+          return { filename: logo.filename, mimeType: logo.mimeType, dataUrl, size: logo.size };
+        });
+        setLogoCandidates(candidates);
+
+        // Store blobs for export
+        const blobMap = new Map<string, Blob>();
+        rawLogos.forEach(logo => {
+          blobMap.set(logo.filename, new Blob([new Uint8Array(logo.data)], { type: logo.mimeType }));
+        });
+        setLogoBlobs(blobMap);
+
+        // Auto-assign: largest image as vendor logo, second as customer logo
+        if (candidates.length >= 1) setVendorLogoFilename(candidates[0].filename);
+        if (candidates.length >= 2) setCustomerLogoFilename(candidates[1].filename);
+        console.log(`[Template] Extracted ${candidates.length} logo candidate(s)`);
+      } catch (logoErr) {
+        console.warn('[Template] Logo extraction failed:', logoErr);
+      }
+
       // Store as base64 for browser-based export
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -107,6 +144,10 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
     setTemplateFile(null);
     setAnalysisError(null);
     setUsePandoc(false);
+    setLogoCandidates([]);
+    setVendorLogoFilename(undefined);
+    setCustomerLogoFilename(undefined);
+    setLogoBlobs(new Map());
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -151,15 +192,30 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         }
         console.log('[Export] Using Pandoc...');
 
+        // Build logo blobs array for front matter
+        const exportLogoBlobs: Array<{ filename: string; blob: Blob }> = [];
+        if (vendorLogoFilename && logoBlobs.has(vendorLogoFilename)) {
+          exportLogoBlobs.push({ filename: vendorLogoFilename, blob: logoBlobs.get(vendorLogoFilename)! });
+        }
+        if (customerLogoFilename && logoBlobs.has(customerLogoFilename)) {
+          exportLogoBlobs.push({ filename: customerLogoFilename, blob: logoBlobs.get(customerLogoFilename)! });
+        }
+
         // Pass pandocStyles from template analysis for custom style mapping
         const pandocExportOpts = {
           ...exportOpts,
           pandocStyles: markdownGuidance?.pandocStyles,
           pandocStyleRoleMap: markdownGuidance?.pandocStyleRoleMap,
           numberingMode,
+          includeCoverPage,
+          includeDocControl,
+          vendorLogoFilename,
+          customerLogoFilename,
+          logoBlobs: exportLogoBlobs,
         };
         console.log('[Export] Pandoc styles:', markdownGuidance?.pandocStyles);
         console.log('[Export] Numbering mode:', numberingMode);
+        console.log('[Export] Front matter:', { includeCoverPage, includeDocControl, vendorLogoFilename, customerLogoFilename });
 
         blob = await exportWithPandoc(project, templateFileForPandoc, pandocExportOpts);
         downloadPandocDocx(blob, filename);
@@ -304,6 +360,17 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
               {docxTemplateAnalysis && (
                 <span className="text-green-500 dark:text-green-400">✓</span>
               )}
+            </button>
+            <button
+              onClick={() => setActiveTab('metadata')}
+              className={`py-4 px-4 text-sm font-medium border-b-2 flex items-center gap-2 ${
+                activeTab === 'metadata'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+              }`}
+            >
+              <span>📋</span>
+              Document Info
             </button>
             <button
               onClick={() => setActiveTab('export')}
@@ -587,6 +654,24 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
             </div>
           )}
 
+          {/* Document Info Tab */}
+          {activeTab === 'metadata' && (
+            <div className="p-6">
+              <DocumentMetadataEditor
+                logoCandidates={logoCandidates}
+                onLogoAssigned={(role, candidate) => {
+                  if (role === 'vendor') {
+                    setVendorLogoFilename(candidate?.filename);
+                  } else {
+                    setCustomerLogoFilename(candidate?.filename);
+                  }
+                }}
+                vendorLogoFilename={vendorLogoFilename}
+                customerLogoFilename={customerLogoFilename}
+              />
+            </div>
+          )}
+
           {/* Export Document Tab */}
           {activeTab === 'export' && (
             <div className="p-6 space-y-6">
@@ -672,6 +757,24 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                       Options
                     </label>
                     <div className="space-y-2">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={includeCoverPage}
+                          onChange={(e) => setIncludeCoverPage(e.target.checked)}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Include Cover Page</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={includeDocControl}
+                          onChange={(e) => setIncludeDocControl(e.target.checked)}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Include Document Control</span>
+                      </label>
                       <label className="flex items-center">
                         <input
                           type="checkbox"

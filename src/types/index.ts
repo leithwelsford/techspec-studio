@@ -47,6 +47,19 @@ export interface DocumentMetadata {
   abstract?: string;      // Brief summary for Pandoc YAML front matter
   approvers?: Approver[];
   revisions?: Revision[];
+  // Front matter fields
+  documentType?: string;        // e.g., "SPD", "Technical Specification", "HLD"
+  versionStatus?: string;       // e.g., "DRAFT", "FOR REVIEW", "RELEASED"
+  documentRelease?: DocumentReleaseEntry[];  // Author/reviewer entries for Document Control
+  vendorLogoRef?: string;       // IndexedDB key for vendor logo image
+  customerLogoRef?: string;     // IndexedDB key for customer logo image
+}
+
+export interface DocumentReleaseEntry {
+  role: 'Author' | 'Reviewer';
+  name: string;
+  title: string;
+  date?: string;
 }
 
 export interface Approver {

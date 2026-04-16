@@ -13,6 +13,7 @@ import {
   type DiagramImage,
 } from './diagramImageExporter';
 import { generateLuaFilter } from './luaFilterGenerator';
+import { generateFrontMatter } from './frontMatterGenerator';
 
 const PANDOC_API_URL = import.meta.env.VITE_PANDOC_API_URL || 'http://localhost:3001/api';
 
@@ -34,6 +35,12 @@ export interface PandocExportOptions {
   // Style role map for Lua filter generation — maps Pandoc's hard-coded
   // style names to the template's actual style names
   pandocStyleRoleMap?: PandocStyleRoleMap;
+  // Front matter options
+  includeCoverPage?: boolean;
+  includeDocControl?: boolean;
+  vendorLogoFilename?: string;
+  customerLogoFilename?: string;
+  logoBlobs?: Array<{ filename: string; blob: Blob }>;
 }
 
 // ========== Markdown Transformation for Pandoc Custom Styles ==========
@@ -464,17 +471,30 @@ export async function exportWithPandoc(
 
   // Add YAML front matter for title page metadata
   // This ensures title, subtitle, version, etc. are handled as metadata, not content
+  const specMeta = project.specification.metadata;
   const yamlFrontMatter = `---
 title: "${project.specification.title || 'Technical Specification'}"
-${project.specification.subtitle ? `subtitle: "${project.specification.subtitle}"` : ''}
-author: "${options.author || project.specification.author || 'TechSpec Studio'}"
-date: "${new Date().toISOString().split('T')[0]}"
-version: "${project.specification.metadata?.version || project.version}"
+${specMeta?.subtitle ? `subtitle: "${specMeta.subtitle}"` : ''}
+author: "${options.author || specMeta?.author || 'TechSpec Studio'}"
+date: "${specMeta?.date || new Date().toISOString().split('T')[0]}"
+version: "${specMeta?.version || project.version}"
 abstract: |
-  ${project.specification.metadata?.abstract || 'This document provides a comprehensive technical specification.'}
+  ${specMeta?.abstract || 'This document provides a comprehensive technical specification.'}
 ---
 
 `;
+
+  // Generate cover page and document control front matter
+  const coverAndDocControl = generateFrontMatter(
+    project.specification.metadata,
+    {
+      includeCoverPage: options.includeCoverPage,
+      includeDocControl: options.includeDocControl,
+      specTitle: project.specification.title,
+      vendorLogoFilename: options.vendorLogoFilename,
+      customerLogoFilename: options.customerLogoFilename,
+    }
+  );
 
   // Build front matter sections (TOC, LoF, LoT)
   // Use styled paragraphs instead of headings to avoid template's auto-numbering
@@ -581,7 +601,7 @@ abstract: |
 `;
   }
 
-  const markdownWithMetadata = yamlFrontMatter + frontMatterSections + resolvedMarkdown;
+  const markdownWithMetadata = yamlFrontMatter + coverAndDocControl + frontMatterSections + resolvedMarkdown;
 
   console.log('[Pandoc Export] Markdown resolved:', markdownWithMetadata.length, 'characters');
 
@@ -606,9 +626,17 @@ abstract: |
 
   // Add diagram images if embedding is enabled
   if (options.embedDiagrams && diagramImages.length > 0) {
-    console.log(`[Pandoc Export] Adding ${diagramImages.length} images to form data`);
+    console.log(`[Pandoc Export] Adding ${diagramImages.length} diagram images to form data`);
     for (const image of diagramImages) {
       formData.append('images', image.blob, image.filename);
+    }
+  }
+
+  // Add logo images for front matter cover page
+  if (options.logoBlobs && options.logoBlobs.length > 0) {
+    console.log(`[Pandoc Export] Adding ${options.logoBlobs.length} logo images to form data`);
+    for (const logo of options.logoBlobs) {
+      formData.append('images', logo.blob, logo.filename);
     }
   }
 
@@ -633,7 +661,7 @@ abstract: |
     embedDiagrams: options.embedDiagrams,
     metadata: {
       title: project.specification.title || 'Technical Specification',
-      author: options.author || project.specification.author || 'TechSpec Studio',
+      author: options.author || project.specification.metadata?.author || 'TechSpec Studio',
       date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
     }
   };
