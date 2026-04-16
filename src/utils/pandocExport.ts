@@ -561,9 +561,11 @@ abstract: |
 
 \`\`\`{=openxml}
 <w:p>
-  <w:r>
-    <w:br w:type="page"/>
-  </w:r>
+  <w:pPr>
+    <w:sectPr>
+      <w:type w:val="nextPage"/>
+    </w:sectPr>
+  </w:pPr>
 </w:p>
 \`\`\`
 
@@ -600,9 +602,11 @@ abstract: |
 
 \`\`\`{=openxml}
 <w:p>
-  <w:r>
-    <w:br w:type="page"/>
-  </w:r>
+  <w:pPr>
+    <w:sectPr>
+      <w:type w:val="nextPage"/>
+    </w:sectPr>
+  </w:pPr>
 </w:p>
 \`\`\`
 
@@ -639,9 +643,11 @@ abstract: |
 
 \`\`\`{=openxml}
 <w:p>
-  <w:r>
-    <w:br w:type="page"/>
-  </w:r>
+  <w:pPr>
+    <w:sectPr>
+      <w:type w:val="nextPage"/>
+    </w:sectPr>
+  </w:pPr>
 </w:p>
 \`\`\`
 

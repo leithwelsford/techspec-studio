@@ -21,18 +21,19 @@ export interface FrontMatterOptions {
 }
 
 /**
- * Raw OOXML page break (not section break).
- * Uses <w:br w:type="page"/> which creates a page break without resetting
- * the template's heading numbering counter.
- * \newpage doesn't work reliably for DOCX output.
+ * Raw OOXML section break (next page).
+ * Creates a new Word section, allowing different headers/footers per section
+ * (e.g., cover page vs. main content).
  */
-const PAGE_BREAK = `
+const SECTION_BREAK = `
 
 \`\`\`{=openxml}
 <w:p>
-  <w:r>
-    <w:br w:type="page"/>
-  </w:r>
+  <w:pPr>
+    <w:sectPr>
+      <w:type w:val="nextPage"/>
+    </w:sectPr>
+  </w:pPr>
 </w:p>
 \`\`\`
 
@@ -152,7 +153,7 @@ ${date}
 
 
   // Section break
-  parts.push(PAGE_BREAK);
+  parts.push(SECTION_BREAK);
 
   return parts.join('\n\n');
 }
@@ -214,7 +215,7 @@ function generateDocumentControl(metadata: DocumentMetadata): string {
   }
 
   // Section break
-  parts.push(PAGE_BREAK);
+  parts.push(SECTION_BREAK);
 
   return parts.join('\n');
 }
