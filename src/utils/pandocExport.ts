@@ -682,13 +682,15 @@ abstract: |
   console.log('[Pandoc Export] Pandoc --number-sections:', shouldNumberSections, '(mode:', numberingMode, ')',
     numberingMode === 'template' ? '(disabled - template has its own numbering)' : '');
 
-  const exportOptions = {
+  const exportOptions: Record<string, unknown> = {
     // Don't use Pandoc's --toc flag - we generate our own TOC with unnumbered heading
     // This prevents the TOC title from consuming numbering (e.g., "1 Contents")
     includeTOC: false,
     includeNumberSections: shouldNumberSections,
     embedDiagrams: options.embedDiagrams,
-    metadata: {
+    // When custom cover page is enabled, suppress Pandoc's auto title page
+    // by omitting metadata (title/author/date generate a title block)
+    metadata: options.includeCoverPage ? undefined : {
       title: project.specification.title || 'Technical Specification',
       author: options.author || project.specification.metadata?.author || 'TechSpec Studio',
       date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
