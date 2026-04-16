@@ -27,6 +27,10 @@ export interface FrontMatterOptions {
  */
 const SECTION_BREAK = `
 
+&nbsp;
+
+&nbsp;
+
 \`\`\`{=openxml}
 <w:p>
   <w:pPr>
