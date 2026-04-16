@@ -54,6 +54,9 @@ const upload = multer({
     if (file.fieldname === 'images' && !file.originalname.match(/\.(png|jpg|jpeg|gif|svg)$/i)) {
       return cb(new Error('Image files must be PNG, JPG, GIF, or SVG'));
     }
+    if (file.fieldname === 'luaFilter' && !file.originalname.endsWith('.lua')) {
+      return cb(new Error('Lua filter file must have .lua extension'));
+    }
     cb(null, true);
   }
 });
@@ -103,7 +106,8 @@ app.get('/api/health', (req, res) => {
 app.post('/api/export-pandoc', upload.fields([
   { name: 'markdown', maxCount: 1 },
   { name: 'template', maxCount: 1 },
-  { name: 'images', maxCount: 50 }
+  { name: 'images', maxCount: 50 },
+  { name: 'luaFilter', maxCount: 1 }
 ]), async (req, res) => {
   const sessionId = crypto.randomBytes(16).toString('hex');
   const workDir = path.join(TEMP_DIR, sessionId);
@@ -153,6 +157,15 @@ app.post('/api/export-pandoc', upload.fields([
     const firstLines = afterYaml.split('\n').slice(0, 10).join('\n');
     console.log(`[${sessionId}] First 10 lines of content:\n${firstLines}`);
 
+    // Copy Lua filter if provided (for style remapping)
+    const luaFilterFiles = req.files.luaFilter || [];
+    let luaFilterPath = null;
+    if (luaFilterFiles.length > 0) {
+      luaFilterPath = path.join(workDir, 'style-remap.lua');
+      await fs.copyFile(luaFilterFiles[0].path, luaFilterPath);
+      console.log(`[${sessionId}] Lua filter copied for style remapping`);
+    }
+
     // Copy images to working directory if provided
     const imageFiles = req.files.images || [];
     if (imageFiles.length > 0) {
@@ -174,6 +187,12 @@ app.post('/api/export-pandoc', upload.fields([
       '--from=markdown+fenced_divs+pipe_tables+strikeout+task_lists',
       '--standalone'
     ];
+
+    // Add Lua filter for style remapping if provided
+    if (luaFilterPath) {
+      pandocArgs.push(`--lua-filter="${luaFilterPath}"`);
+      console.log(`[${sessionId}] Using Lua filter for style remapping`);
+    }
 
     // Add optional features
     if (options.includeTOC) {
@@ -228,6 +247,9 @@ app.post('/api/export-pandoc', upload.fields([
     const uploadedPaths = [markdownFile.path, templateFile.path];
     for (const imageFile of imageFiles) {
       uploadedPaths.push(imageFile.path);
+    }
+    for (const luaFile of luaFilterFiles) {
+      uploadedPaths.push(luaFile.path);
     }
 
     // Send file back to client

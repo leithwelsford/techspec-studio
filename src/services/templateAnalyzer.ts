@@ -19,6 +19,7 @@ import type {
   CompatibilityIssue,
   TemplateWarning,
   MarkdownGenerationGuidance,
+  PandocStyleRoleMap,
 } from '../types';
 
 export class TemplateAnalyzer {
@@ -138,6 +139,8 @@ export class TemplateAnalyzer {
       },
       // Pandoc custom-style attributes - derived from template special styles
       pandocStyles: this.derivePandocStyles(analysis),
+      // Pandoc style role map - maps Pandoc's hard-coded style names to template's actual names
+      pandocStyleRoleMap: this.derivePandocStyleRoleMap(analysis),
     };
 
     console.log('[Template Analyzer] Guidance generated:', guidance);
@@ -420,30 +423,44 @@ export class TemplateAnalyzer {
     const tocLevels = new Set<number>();
 
     // Notable style names to capture in otherStyles
-    // Extended patterns to capture code, quote, note, warning, and other useful styles
+    // Extended patterns to capture all styles that might be relevant for export mapping
     const notableStylePatterns = [
-      /^caption$/i,
-      /quote/i,              // Quote, BlockQuote, PullQuote
-      /^footnote/i,
+      /caption/i,            // Caption, FigureCaption, TableCaption, ImageCaption
+      /quote/i,              // Quote, BlockQuote, PullQuote, IntenseQuote
+      /footnote/i,           // FootnoteText, FootnoteReference
       /^header$/i,
       /^footer$/i,
       /code/i,               // Code, SourceCode, InlineCode
-      /^source/i,            // Source, SourceCode
-      /^listing/i,           // Listing, CodeListing
-      /^preformat/i,         // Preformatted
-      /^mono/i,              // Monospace
-      /^list/i,
-      /^note$/i,
-      /^info$/i,             // Info style
-      /^tip$/i,              // Tip style
-      /^warning$/i,
-      /^caution$/i,          // Caution style
-      /^important$/i,        // Important style
-      /^alert$/i,            // Alert style
-      /^figure/i,
-      /^table\s*caption/i,
+      /source/i,             // Source, SourceCode
+      /listing/i,            // Listing, CodeListing
+      /preformat/i,          // Preformatted, HTMLPreformatted
+      /mono/i,               // Monospace
+      /list/i,               // List Bullet, List Number, List Paragraph, ListContinue
+      /bullet/i,             // Bullet, BulletList
+      /^note/i,              // Note, NoteText
+      /^info/i,              // Info style
+      /^tip/i,               // Tip style
+      /warning/i,            // Warning
+      /caution/i,            // Caution style
+      /important/i,          // Important style
+      /^alert/i,             // Alert style
+      /figure/i,             // Figure, FigureCaption
       /block\s*text/i,       // Block Text, BlockText
-      /^excerpt/i,           // Excerpt style
+      /excerpt/i,            // Excerpt style
+      /body\s*text/i,        // Body Text, Body Text 2, Body Text 3
+      /^normal/i,            // Normal, NormalIndent, NormalWeb
+      /no\s*spacing/i,       // No Spacing
+      /subtitle/i,           // Subtitle
+      /strong/i,             // Strong
+      /emphasis/i,           // Emphasis, IntenseEmphasis
+      /definition/i,         // Definition, DefinitionTerm
+      /biblio/i,             // Bibliography
+      /^toc/i,               // TOC1-9, TOCHeading
+      /compact/i,            // Compact
+      /^abstract/i,          // Abstract
+      /appendix/i,           // Appendix, AppendixHeading
+      /normative/i,          // Normative language styles
+      /requirement/i,        // Requirement ID styles
     ];
 
     styleElements.forEach((styleEl) => {
@@ -929,6 +946,164 @@ export class TemplateAnalyzer {
       return 'Table {section}-{number}: {title}';
     }
     return 'Table {number}: {title}';
+  }
+
+  /**
+   * Derive Pandoc style role map from template analysis.
+   * Maps Pandoc's hard-coded internal style names to the template's actual
+   * style names. Used to generate a Lua filter at export time.
+   */
+  private derivePandocStyleRoleMap(
+    analysis: DocxTemplateAnalysis
+  ): PandocStyleRoleMap {
+    const { paragraphStyles, specialStyles } = analysis;
+    const roleMap: PandocStyleRoleMap = {};
+
+    // Pandoc's expected style names — if the template uses these, no remap needed
+    const PANDOC_BODY_NAMES = ['body text', 'first paragraph', 'normal'];
+    const PANDOC_BLOCK_TEXT_NAMES = ['block text'];
+    const PANDOC_SOURCE_CODE_NAMES = ['source code'];
+
+    // Helper: find a style by role patterns, searching both otherStyles and paragraphStyles
+    const findStyleName = (
+      patterns: RegExp[],
+      skipNames?: string[]
+    ): string | undefined => {
+      const skip = new Set((skipNames || []).map(n => n.toLowerCase()));
+
+      // Search specialStyles.otherStyles first (curated notable styles)
+      for (const pattern of patterns) {
+        const match = specialStyles?.otherStyles.find(s =>
+          (pattern.test(s.name) || pattern.test(s.styleId)) &&
+          !skip.has(s.name.toLowerCase())
+        );
+        if (match) return match.name;
+      }
+
+      // Fall back to all paragraph styles
+      for (const pattern of patterns) {
+        const match = paragraphStyles?.find(s =>
+          (pattern.test(s.name) || pattern.test(s.styleId)) &&
+          !skip.has(s.name.toLowerCase())
+        );
+        if (match) return match.name;
+      }
+
+      return undefined;
+    };
+
+    // --- Body text ---
+    // Only map if template uses a non-standard name for body text
+    const bodyTextName = findStyleName([
+      /^body\s*text$/i,
+      /^body$/i,
+      /^normal\s*text$/i,
+    ]);
+    if (bodyTextName && !PANDOC_BODY_NAMES.includes(bodyTextName.toLowerCase())) {
+      roleMap.bodyText = bodyTextName;
+      console.log(`[Template Analyzer] Role map bodyText: "${bodyTextName}"`);
+    }
+
+    // --- First paragraph (after heading) ---
+    const firstParaName = findStyleName([
+      /^first\s*paragraph$/i,
+    ]);
+    if (firstParaName && firstParaName.toLowerCase() !== 'first paragraph') {
+      roleMap.firstParagraph = firstParaName;
+      console.log(`[Template Analyzer] Role map firstParagraph: "${firstParaName}"`);
+    }
+
+    // --- Block text (blockquotes) ---
+    const blockTextName = findStyleName([
+      /^block\s*text$/i,
+      /^block\s*quote$/i,
+      /^blockquote$/i,
+      /^quote$/i,
+      /^pull\s*quote$/i,
+      /^excerpt$/i,
+    ]);
+    if (blockTextName && !PANDOC_BLOCK_TEXT_NAMES.includes(blockTextName.toLowerCase())) {
+      roleMap.blockText = blockTextName;
+      console.log(`[Template Analyzer] Role map blockText: "${blockTextName}"`);
+    }
+
+    // --- Source code (code blocks) ---
+    const sourceCodeName = findStyleName([
+      /^source\s*code$/i,
+      /^code$/i,
+      /^code\s*block$/i,
+      /^listing$/i,
+      /^preformatted$/i,
+      /^monospace$/i,
+    ]);
+    if (sourceCodeName && !PANDOC_SOURCE_CODE_NAMES.includes(sourceCodeName.toLowerCase())) {
+      roleMap.sourceCode = sourceCodeName;
+      console.log(`[Template Analyzer] Role map sourceCode: "${sourceCodeName}"`);
+    }
+
+    // --- Bullet list ---
+    // Search broadly: "List Bullet", "Bullet List", "ListBullet", "List Paragraph" (if no explicit bullet style)
+    const bulletName = findStyleName([
+      /^list\s*bullet\s*\d*$/i,        // List Bullet, List Bullet 2, List Bullet 3
+      /^bullet\s*list\s*\d*$/i,        // Bullet List, Bullet List 2
+      /^listbullet\d*$/i,              // ListBullet, ListBullet2
+    ]);
+    if (bulletName) {
+      roleMap.listBullet = bulletName;
+      console.log(`[Template Analyzer] Role map listBullet: "${bulletName}"`);
+    }
+
+    // --- Numbered list ---
+    const numberName = findStyleName([
+      /^list\s*number\s*\d*$/i,        // List Number, List Number 2
+      /^number\s*list\s*\d*$/i,        // Number List
+      /^numbered\s*list\s*\d*$/i,      // Numbered List
+      /^listnumber\d*$/i,              // ListNumber, ListNumber2
+      /^ordered\s*list\s*\d*$/i,       // Ordered List
+      /^list\s*continue\s*\d*$/i,      // List Continue (continuation of numbered list)
+    ]);
+    if (numberName) {
+      roleMap.listNumber = numberName;
+      console.log(`[Template Analyzer] Role map listNumber: "${numberName}"`);
+    }
+
+    // --- Table style ---
+    // Find the table style name from the specialStyles analysis.
+    // Table styles have a display name in the XML (w:name) that may differ from the styleId.
+    // We search the otherStyles bag first (which captures table styles), then fall back to
+    // converting the styleId to a display name.
+    if (specialStyles?.tableStyles.exists) {
+      const tableStyleId = specialStyles.tableStyles.defaultStyle
+        || specialStyles.tableStyles.styleIds[0];
+      if (tableStyleId) {
+        // Check if this table style was captured in otherStyles with its display name
+        const tableFromOther = specialStyles.otherStyles.find(s =>
+          s.styleId === tableStyleId && s.type === 'table'
+        );
+        const tableName = tableFromOther?.name
+          || tableStyleId.replace(/([a-z])([A-Z])/g, '$1 $2');
+        roleMap.tableStyle = tableName;
+        console.log(`[Template Analyzer] Role map tableStyle: "${tableName}" (id: ${tableStyleId})`);
+      }
+    }
+
+    // --- Appendix heading ---
+    const appendixName = findStyleName([
+      /^appendix/i,
+    ]);
+    if (appendixName) {
+      roleMap.appendixHeading = appendixName;
+      console.log(`[Template Analyzer] Role map appendixHeading: "${appendixName}"`);
+    }
+
+    const mappingCount = Object.keys(roleMap).length;
+    if (mappingCount > 0) {
+      console.log(`[Template Analyzer] Style role map: ${mappingCount} mappings`, roleMap);
+    } else {
+      console.log('[Template Analyzer] Style role map: no remappings needed (template uses standard Pandoc names)');
+    }
+
+    return roleMap;
   }
 
   /**

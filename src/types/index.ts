@@ -1035,6 +1035,35 @@ export interface MarkdownGenerationGuidance {
     codeStyle?: string; // Style name for code blocks (e.g., "Code", "Source Code")
     otherStyles?: Record<string, string>; // Map of content type → style name
   };
+  // Pandoc style role map — maps Pandoc's hard-coded style names to the
+  // template's actual style names. Used to generate a Lua filter at export time.
+  pandocStyleRoleMap?: PandocStyleRoleMap;
+}
+
+/**
+ * Maps Pandoc's hard-coded internal style names to the actual style names
+ * found in the uploaded template. Used to generate a Lua filter that remaps
+ * styles at Pandoc processing time.
+ *
+ * Only populated roles get a Lua filter function — unpopulated roles
+ * fall back to Pandoc's default behavior (no regression).
+ */
+export interface PandocStyleRoleMap {
+  // Paragraph styles (Pandoc default → template actual)
+  bodyText?: string;        // Pandoc uses "Body Text" / "First Paragraph"
+  firstParagraph?: string;  // Pandoc uses "First Paragraph" (first para after heading)
+  blockText?: string;       // Pandoc uses "Block Text" for blockquotes
+  sourceCode?: string;      // Pandoc uses "Source Code" for code blocks
+
+  // List styles — Pandoc uses "Compact" for all list items
+  listBullet?: string;      // e.g., "List Bullet"
+  listNumber?: string;      // e.g., "List Number"
+
+  // Table style
+  tableStyle?: string;      // e.g., "Grid Table Light" or corporate table style
+
+  // Appendix heading style
+  appendixHeading?: string; // e.g., "AppendixHeading"
 }
 
 // ========== AI Structure Discovery ==========

@@ -5,13 +5,14 @@
  * Provides professional DOCX export with corporate branding preservation.
  */
 
-import type { Project, MarkdownGenerationGuidance } from '../types';
+import type { Project, MarkdownGenerationGuidance, PandocStyleRoleMap } from '../types';
 import { resolveAllLinks } from './linkResolver';
 import {
   generateReferencedDiagramImages,
   transformMarkdownWithImages,
   type DiagramImage,
 } from './diagramImageExporter';
+import { generateLuaFilter } from './luaFilterGenerator';
 
 const PANDOC_API_URL = import.meta.env.VITE_PANDOC_API_URL || 'http://localhost:3001/api';
 
@@ -30,6 +31,9 @@ export interface PandocExportOptions {
   // Numbering mode: 'template' strips manual numbers (use template's auto-numbering),
   // 'markdown' keeps manual numbers (requires template without auto-numbering)
   numberingMode?: 'template' | 'markdown';
+  // Style role map for Lua filter generation — maps Pandoc's hard-coded
+  // style names to the template's actual style names
+  pandocStyleRoleMap?: PandocStyleRoleMap;
 }
 
 // ========== Markdown Transformation for Pandoc Custom Styles ==========
@@ -635,6 +639,14 @@ abstract: |
   };
 
   formData.append('options', JSON.stringify(exportOptions));
+
+  // Generate and attach Lua filter for style remapping if we have role mappings
+  const luaFilter = generateLuaFilter(options.pandocStyleRoleMap);
+  if (luaFilter) {
+    const filterBlob = new Blob([luaFilter], { type: 'text/x-lua' });
+    formData.append('luaFilter', filterBlob, 'style-remap.lua');
+    console.log('[Pandoc Export] Lua filter attached for style remapping');
+  }
 
   try {
     console.log('[Pandoc Export] Sending request to backend...');

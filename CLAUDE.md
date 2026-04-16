@@ -27,7 +27,9 @@ cd server && npm run dev                    # With --watch hot reload
 docker-compose up                           # Both frontend + pandoc via Docker
 ```
 
-**Note**: Dev server uses `strictPort: true` on port 3000. If port is in use, it will fail rather than try another port.
+**Note**: Dev server uses `strictPort: true` on port 3000 and binds `0.0.0.0` (for Docker). If port is in use, it will fail rather than try another port.
+
+**Dev Server Logging**: A custom Vite plugin (`vite.config.ts`) exposes `/api/log` — the browser POSTs cache hit/miss stats, fix progress, and generation events, which print to the terminal with color-coded output. This is how you monitor AI cost and caching during development.
 
 ## Critical Rules
 
