@@ -310,7 +310,7 @@ export default function DocumentMetadataEditor({
               className={inputClass}
             >
               <option value="">Default (from template)</option>
-              {tableStyleNames.map((name) => (
+              {[...tableStyleNames].sort((a, b) => a.localeCompare(b)).map((name) => (
                 <option key={name} value={name}>{name}</option>
               ))}
             </select>
