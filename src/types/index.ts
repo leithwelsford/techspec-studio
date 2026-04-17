@@ -968,6 +968,8 @@ export interface DocumentStructureInfo {
   sectionBreaks: number;
   pageOrientation: 'portrait' | 'landscape';
   pageSize: 'A4' | 'Letter' | 'Legal' | 'Custom';
+  /** Most common paragraph style used inside table cells (e.g., "CellBodyLeft") */
+  detectedCellParagraphStyle?: string;
 }
 
 /**

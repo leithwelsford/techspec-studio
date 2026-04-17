@@ -94,6 +94,13 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
       const guidance = templateAnalyzer.generateMarkdownGuidance(analysis);
       setMarkdownGuidance(guidance);
 
+      // Auto-populate cell paragraph style from detected template usage
+      const detectedCellStyle = analysis.documentStructure?.detectedCellParagraphStyle;
+      if (detectedCellStyle && !cellParagraphStyle) {
+        setCellParagraphStyle(detectedCellStyle);
+        console.log(`[Template] Auto-selected cell paragraph style: "${detectedCellStyle}"`);
+      }
+
       console.log('[Template] Analysis complete');
 
       // Extract logos from template
@@ -152,6 +159,8 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
     setVendorLogoFilename(undefined);
     setCustomerLogoFilename(undefined);
     setLogoBlobs(new Map());
+    setCellParagraphStyle('');
+    setSelectedTableStyle('');
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';

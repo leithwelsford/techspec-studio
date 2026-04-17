@@ -702,6 +702,37 @@ export class TemplateAnalyzer {
       }
     }
 
+    // Detect the most common paragraph style used inside table cells.
+    // Walk every <w:tc>, count pStyle occurrences on paragraphs inside.
+    const cellParagraphStyles = new Map<string, number>();
+    const tableCells: Element[] = [];
+    for (let i = 0; i < allElements.length; i++) {
+      if (allElements[i].localName === 'tc') {
+        tableCells.push(allElements[i]);
+      }
+    }
+    for (const tc of tableCells) {
+      const paragraphs = tc.getElementsByTagName('*');
+      for (let j = 0; j < paragraphs.length; j++) {
+        const el = paragraphs[j];
+        if (el.localName === 'pStyle') {
+          const val = el.getAttribute('w:val') || el.getAttribute('val');
+          if (val) {
+            cellParagraphStyles.set(val, (cellParagraphStyles.get(val) || 0) + 1);
+          }
+        }
+      }
+    }
+    let detectedCellParagraphStyle: string | undefined;
+    if (cellParagraphStyles.size > 0) {
+      // Pick the most common one
+      const sorted = Array.from(cellParagraphStyles.entries()).sort((a, b) => b[1] - a[1]);
+      detectedCellParagraphStyle = sorted[0][0];
+      console.log(`[Template Analyzer] Detected cell paragraph style: "${detectedCellParagraphStyle}" (${sorted[0][1]} occurrences, candidates:`, sorted, ')');
+    } else {
+      console.log('[Template Analyzer] No cell paragraph styles detected in template');
+    }
+
     // Basic structure detection
     // More sophisticated detection would parse actual content
     return {
@@ -718,6 +749,7 @@ export class TemplateAnalyzer {
       sectionBreaks,
       pageOrientation: 'portrait',
       pageSize: 'A4',
+      detectedCellParagraphStyle,
     };
   }
 
