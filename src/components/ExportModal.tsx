@@ -55,6 +55,8 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const [includeDocControl, setIncludeDocControl] = useState(true);
   // Table style override (user-selected from template's table styles)
   const [selectedTableStyle, setSelectedTableStyle] = useState<string>('');
+  // Paragraph style for table cell contents
+  const [cellParagraphStyle, setCellParagraphStyle] = useState<string>('');
 
   // DOCX options
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
@@ -221,6 +223,7 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
           vendorLogoFilename,
           customerLogoFilename,
           logoBlobs: exportLogoBlobs,
+          cellParagraphStyle: cellParagraphStyle || undefined,
         };
         console.log('[Export] Pandoc styles:', markdownGuidance?.pandocStyles);
         console.log('[Export] Numbering mode:', numberingMode);
@@ -680,6 +683,8 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                 tableStyleNames={docxTemplateAnalysis?.specialStyles?.tableStyles?.styleIds || []}
                 selectedTableStyle={selectedTableStyle}
                 onTableStyleChanged={setSelectedTableStyle}
+                cellParagraphStyle={cellParagraphStyle}
+                onCellParagraphStyleChanged={setCellParagraphStyle}
               />
             </div>
           )}

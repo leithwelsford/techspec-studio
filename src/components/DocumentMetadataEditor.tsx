@@ -27,6 +27,9 @@ interface DocumentMetadataEditorProps {
   /** Currently selected table style */
   selectedTableStyle?: string;
   onTableStyleChanged?: (styleName: string) => void;
+  /** Paragraph style to apply to cell contents (e.g., "CellBodyLeft") */
+  cellParagraphStyle?: string;
+  onCellParagraphStyleChanged?: (styleName: string) => void;
 }
 
 const DOC_TYPE_SUGGESTIONS = [
@@ -49,6 +52,8 @@ export default function DocumentMetadataEditor({
   tableStyleNames,
   selectedTableStyle,
   onTableStyleChanged,
+  cellParagraphStyle,
+  onCellParagraphStyleChanged,
 }: DocumentMetadataEditorProps) {
   const specTitle = useProjectStore((state) => state.project?.specification.title);
   const metadata = useProjectStore((state) => state.project?.specification.metadata);
@@ -321,6 +326,19 @@ export default function DocumentMetadataEditor({
                 value={selectedTableStyle || ''}
                 onChange={(e) => onTableStyleChanged?.(e.target.value)}
                 placeholder="e.g., Table-AllotGrey"
+                className={inputClass}
+              />
+            </div>
+            <div className="mt-3">
+              <label className={labelClass}>Cell paragraph style</label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                Style applied to text inside table cells (overrides default Normal inheritance)
+              </p>
+              <input
+                type="text"
+                value={cellParagraphStyle || ''}
+                onChange={(e) => onCellParagraphStyleChanged?.(e.target.value)}
+                placeholder="e.g., CellBodyLeft"
                 className={inputClass}
               />
             </div>

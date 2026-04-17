@@ -42,6 +42,8 @@ export interface PandocExportOptions {
   vendorLogoFilename?: string;
   customerLogoFilename?: string;
   logoBlobs?: Array<{ filename: string; blob: Blob }>;
+  // Paragraph style to apply to text inside table cells (e.g., "CellBodyLeft")
+  cellParagraphStyle?: string;
 }
 
 // ========== Markdown Transformation for Pandoc Custom Styles ==========
@@ -762,6 +764,13 @@ abstract: |
       blob = await applyTableStyleToDocx(blob, options.pandocStyleRoleMap.tableStyle);
     }
 
+    // Post-process: apply paragraph style to all paragraphs inside table cells
+    // (e.g., "CellBodyLeft") so cell text uses the template's cell style
+    // instead of inheriting from Normal.
+    if (options.cellParagraphStyle) {
+      blob = await applyCellParagraphStyleToDocx(blob, options.cellParagraphStyle);
+    }
+
     return blob;
 
   } catch (error) {
@@ -845,23 +854,7 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
       }
     });
 
-    // Strip leading <w:tab/> from paragraphs inside table cells.
-    // Pandoc sometimes inherits list/indent formatting into cell paragraphs,
-    // causing a leading tab character in each cell.
-    let cellTabsRemoved = 0;
-    const cellPattern = /<w:tc>([\s\S]*?)<\/w:tc>/g;
-    docXml = docXml.replace(cellPattern, (_cellMatch, cellContent: string) => {
-      const updated = cellContent.replace(
-        /(<w:p(?:\s[^>]*)?>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?)(<w:r(?:\s[^>]*)?>\s*<w:tab\s*\/>\s*<\/w:r>)/g,
-        (_match, paragraphStart) => {
-          cellTabsRemoved++;
-          return paragraphStart;
-        }
-      );
-      return `<w:tc>${updated}</w:tc>`;
-    });
-
-    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), added cantSplit to ${cantSplitCount} row(s), removed ${cellTabsRemoved} leading tab(s) from cells`);
+    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), added cantSplit to ${cantSplitCount} row(s)`);
 
     zip.file('word/document.xml', docXml);
     const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
@@ -872,6 +865,71 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
   } catch (error) {
     console.error('[Pandoc Export] Table style post-processing failed:', error);
     return blob; // Return original on failure
+  }
+}
+
+/**
+ * Post-process a DOCX to apply a paragraph style (e.g., "CellBodyLeft") to
+ * every paragraph inside a table cell. This replaces the default Normal style
+ * inheritance that causes leading tabs and wrong indentation in cells.
+ */
+async function applyCellParagraphStyleToDocx(blob: Blob, styleName: string): Promise<Blob> {
+  try {
+    console.log(`[Pandoc Export] Post-processing: applying cell paragraph style "${styleName}"`);
+    const arrayBuffer = await blob.arrayBuffer();
+    const zip = new PizZip(arrayBuffer);
+    const docFile = zip.file('word/document.xml');
+    if (!docFile) {
+      console.warn('[Pandoc Export] No document.xml found');
+      return blob;
+    }
+
+    let docXml = docFile.asText();
+    let paragraphsStyled = 0;
+
+    // Walk every <w:tc>, find every <w:p> inside, set/replace pStyle
+    const cellPattern = /<w:tc>([\s\S]*?)<\/w:tc>/g;
+    docXml = docXml.replace(cellPattern, (_cellMatch, cellContent: string) => {
+      const updated = cellContent.replace(
+        /<w:p(\s[^>]*)?>([\s\S]*?)<\/w:p>/g,
+        (_pMatch, pAttrs: string | undefined, pInner: string) => {
+          paragraphsStyled++;
+          const attrs = pAttrs || '';
+          // If <w:pPr> exists, replace or insert pStyle inside it
+          if (/<w:pPr>/.test(pInner)) {
+            let newInner = pInner;
+            if (/<w:pStyle\s+w:val="[^"]*"\s*\/>/.test(pInner)) {
+              // Replace existing pStyle
+              newInner = pInner.replace(
+                /<w:pStyle\s+w:val="[^"]*"\s*\/>/,
+                `<w:pStyle w:val="${styleName}"/>`
+              );
+            } else {
+              // Insert pStyle at start of pPr
+              newInner = pInner.replace(
+                /<w:pPr>/,
+                `<w:pPr><w:pStyle w:val="${styleName}"/>`
+              );
+            }
+            return `<w:p${attrs}>${newInner}</w:p>`;
+          } else {
+            // No pPr — add one with just pStyle at start of paragraph
+            return `<w:p${attrs}><w:pPr><w:pStyle w:val="${styleName}"/></w:pPr>${pInner}</w:p>`;
+          }
+        }
+      );
+      return `<w:tc>${updated}</w:tc>`;
+    });
+
+    console.log(`[Pandoc Export] Styled ${paragraphsStyled} cell paragraph(s) with "${styleName}"`);
+
+    zip.file('word/document.xml', docXml);
+    const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    return modifiedBlob;
+
+  } catch (error) {
+    console.error('[Pandoc Export] Cell paragraph style post-processing failed:', error);
+    return blob;
   }
 }
 
