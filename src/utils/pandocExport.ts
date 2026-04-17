@@ -794,16 +794,38 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
     let replacements = 0;
 
     // Replace existing <w:tblStyle w:val="..."/> with our style.
-    // Pandoc always emits a tblStyle for every table (typically "TableGrid"),
-    // so we only need to replace — never inject. Injection risks breaking
-    // OOXML schema order and causing Word "unreadable content" warnings.
     const existingPattern = /<w:tblStyle\s+w:val="[^"]*"\s*\/>/g;
     docXml = docXml.replace(existingPattern, () => {
       replacements++;
       return `<w:tblStyle w:val="${tableStyle}"/>`;
     });
 
-    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s)`);
+    // Enable the "first row" (header) conditional formatting for all tables.
+    // Without w:firstRow="1", the table style's "Header Row" formatting never
+    // applies — the "Whole Table" formatting applies to every row instead.
+    // Pandoc's default tblLook has firstRow="0" which disables this.
+    let tblLookReplacements = 0;
+    const tblLookPattern = /<w:tblLook\s+([^/]*?)\/>/g;
+    docXml = docXml.replace(tblLookPattern, (_match, attrs) => {
+      tblLookReplacements++;
+      // Remove any existing firstRow/lastRow/firstColumn/lastColumn/noHBand/noVBand attributes
+      let cleaned = attrs
+        .replace(/w:firstRow="[01]"\s*/g, '')
+        .replace(/w:lastRow="[01]"\s*/g, '')
+        .replace(/w:firstColumn="[01]"\s*/g, '')
+        .replace(/w:lastColumn="[01]"\s*/g, '')
+        .replace(/w:noHBand="[01]"\s*/g, '')
+        .replace(/w:noVBand="[01]"\s*/g, '')
+        .replace(/w:val="[0-9A-Fa-f]+"\s*/g, '') // remove old hex val
+        .trim();
+      // Build new attributes: enable first row header, keep banded rows
+      const newAttrs = 'w:firstRow="1" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="1"';
+      return cleaned
+        ? `<w:tblLook ${cleaned} ${newAttrs}/>`
+        : `<w:tblLook ${newAttrs}/>`;
+    });
+
+    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s)`);
 
     zip.file('word/document.xml', docXml);
     const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
