@@ -825,7 +825,17 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
         : `<w:tblLook ${newAttrs}/>`;
     });
 
-    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s)`);
+    // Strip <w:tblHeader/> from all rows so "Repeat Header Rows" is off
+    // by default. Pandoc automatically adds this flag because markdown
+    // tables always have a header row, but we want header repeat disabled
+    // to avoid styling issues across page breaks.
+    let removedHeaderCount = 0;
+    docXml = docXml.replace(/<w:tblHeader\s*\/>/g, () => {
+      removedHeaderCount++;
+      return '';
+    });
+
+    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), stripped ${removedHeaderCount} tblHeader flag(s)`);
 
     zip.file('word/document.xml', docXml);
     const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
