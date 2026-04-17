@@ -771,6 +771,10 @@ abstract: |
       blob = await applyCellParagraphStyleToDocx(blob, options.cellParagraphStyle);
     }
 
+    // Post-process: inject SEQ fields into Figure/Table captions so Word's
+    // List of Figures and List of Tables can find them.
+    blob = await injectCaptionSeqFields(blob);
+
     return blob;
 
   } catch (error) {
@@ -931,6 +935,85 @@ async function applyCellParagraphStyleToDocx(blob: Blob, styleName: string): Pro
     console.error('[Pandoc Export] Cell paragraph style post-processing failed:', error);
     return blob;
   }
+}
+
+/**
+ * Post-process a DOCX to inject SEQ fields into Figure/Table caption paragraphs.
+ *
+ * Word's List of Figures/Tables field codes look for paragraphs with caption
+ * style AND containing a SEQ Figure/Table field. Pandoc writes captions as
+ * plain text like "Figure 1-1: Title" without the SEQ field, so the lists
+ * stay empty. This function rewrites caption paragraphs to include the SEQ
+ * field around the number.
+ *
+ * Pattern matched: "Figure N:" or "Table N:" at the start of the paragraph's
+ * text content (where N is a number, possibly with dashes or dots).
+ */
+async function injectCaptionSeqFields(blob: Blob): Promise<Blob> {
+  try {
+    console.log('[Pandoc Export] Post-processing: injecting SEQ fields into captions');
+    const arrayBuffer = await blob.arrayBuffer();
+    const zip = new PizZip(arrayBuffer);
+    const docFile = zip.file('word/document.xml');
+    if (!docFile) return blob;
+
+    let docXml = docFile.asText();
+    let figureCount = 0;
+    let tableCount = 0;
+
+    // Find paragraphs and inspect their text content
+    const paragraphPattern = /<w:p(\s[^>]*)?>([\s\S]*?)<\/w:p>/g;
+
+    docXml = docXml.replace(paragraphPattern, (match, pAttrs: string | undefined, pInner: string) => {
+      // Concatenate all visible text from the paragraph's runs
+      const textMatches = Array.from(pInner.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g));
+      const fullText = textMatches.map(m => m[1]).join('');
+
+      // Check if it starts with "Figure N:" or "Table N:"
+      const figureMatch = fullText.match(/^(Figure\s+)([\d\-\.]+)(:\s*.*)$/);
+      const tableMatch = fullText.match(/^(Table\s+)([\d\-\.]+)(:\s*.*)$/);
+
+      const captionMatch = figureMatch || tableMatch;
+      if (!captionMatch) return match;
+
+      const captionType = figureMatch ? 'Figure' : 'Table';
+      if (figureMatch) figureCount++; else tableCount++;
+
+      const [, prefix, numberText, suffix] = captionMatch;
+
+      // Extract the pPr (paragraph properties) as-is
+      const pPrMatch = pInner.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+      const pPr = pPrMatch ? pPrMatch[0] : '';
+
+      // Build new paragraph content:
+      // - prefix text ("Figure " / "Table ")
+      // - SEQ field with number as separator text
+      // - suffix text (": Title")
+      const newInner = `${pPr}<w:r><w:t xml:space="preserve">${escapeXml(prefix)}</w:t></w:r>` +
+        `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+        `<w:r><w:instrText xml:space="preserve"> SEQ ${captionType} \\* ARABIC </w:instrText></w:r>` +
+        `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
+        `<w:r><w:t>${escapeXml(numberText)}</w:t></w:r>` +
+        `<w:r><w:fldChar w:fldCharType="end"/></w:r>` +
+        `<w:r><w:t xml:space="preserve">${escapeXml(suffix)}</w:t></w:r>`;
+
+      const attrs = pAttrs || '';
+      return `<w:p${attrs}>${newInner}</w:p>`;
+    });
+
+    console.log(`[Pandoc Export] Injected SEQ fields: ${figureCount} figure(s), ${tableCount} table(s)`);
+
+    zip.file('word/document.xml', docXml);
+    return zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+
+  } catch (error) {
+    console.error('[Pandoc Export] Caption SEQ field injection failed:', error);
+    return blob;
+  }
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**
