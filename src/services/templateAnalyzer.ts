@@ -784,12 +784,22 @@ export class TemplateAnalyzer {
         }
       }
 
-      // Walk paragraphs in document.xml, find those with numPr, tally pStyle per list type
+      // Walk paragraphs in document.xml, find those with numPr, tally pStyle per list type.
+      // Exclude paragraphs inside table cells — those use cell styles, not list styles.
       const bulletStyles = new Map<string, number>();
       const numberedStyles = new Map<string, number>();
       const paragraphs: Element[] = [];
       for (let i = 0; i < allElements.length; i++) {
-        if (allElements[i].localName === 'p') paragraphs.push(allElements[i]);
+        if (allElements[i].localName === 'p') {
+          // Skip if this paragraph is inside a <w:tc> (table cell)
+          let parent: Element | null = allElements[i].parentElement;
+          let insideCell = false;
+          while (parent) {
+            if (parent.localName === 'tc') { insideCell = true; break; }
+            parent = parent.parentElement;
+          }
+          if (!insideCell) paragraphs.push(allElements[i]);
+        }
       }
       for (const p of paragraphs) {
         // Find pPr
