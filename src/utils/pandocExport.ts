@@ -825,17 +825,27 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
         : `<w:tblLook ${newAttrs}/>`;
     });
 
-    // Strip <w:tblHeader/> from all rows so "Repeat Header Rows" is off
-    // by default. Pandoc automatically adds this flag because markdown
-    // tables always have a header row, but we want header repeat disabled
-    // to avoid styling issues across page breaks.
-    let removedHeaderCount = 0;
-    docXml = docXml.replace(/<w:tblHeader\s*\/>/g, () => {
-      removedHeaderCount++;
-      return '';
+    // Add <w:cantSplit/> to every table row so rows don't break across pages.
+    // Header row repeat (<w:tblHeader/>) is already emitted by Pandoc on the
+    // first row of each markdown table, so we leave that alone.
+    let cantSplitCount = 0;
+    const rowPattern = /<w:tr(\s[^>]*)?>([\s\S]*?)<\/w:tr>/g;
+    docXml = docXml.replace(rowPattern, (_rowMatch, rowAttrs: string | undefined, rowInner: string) => {
+      // Skip if row already has cantSplit
+      if (/<w:cantSplit\s*\/>/.test(rowInner)) return _rowMatch;
+      cantSplitCount++;
+      const attrs = rowAttrs || '';
+      if (/<w:trPr>/.test(rowInner)) {
+        // Inject into existing trPr
+        const newInner = rowInner.replace(/<w:trPr>/, '<w:trPr><w:cantSplit/>');
+        return `<w:tr${attrs}>${newInner}</w:tr>`;
+      } else {
+        // No trPr — add one at the start of row content
+        return `<w:tr${attrs}><w:trPr><w:cantSplit/></w:trPr>${rowInner}</w:tr>`;
+      }
     });
 
-    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), stripped ${removedHeaderCount} tblHeader flag(s)`);
+    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), added cantSplit to ${cantSplitCount} row(s)`);
 
     zip.file('word/document.xml', docXml);
     const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
