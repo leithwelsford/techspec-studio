@@ -97,25 +97,25 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
       const guidance = templateAnalyzer.generateMarkdownGuidance(analysis);
       setMarkdownGuidance(guidance);
 
-      // Auto-populate cell paragraph style from detected template usage
+      // Auto-populate style fields from the new template — always overwrite
+      // so each upload gets fresh detection (user can still edit manually after)
       const detectedCellStyle = analysis.documentStructure?.detectedCellParagraphStyle;
-      if (detectedCellStyle && !cellParagraphStyle) {
+      if (detectedCellStyle) {
         setCellParagraphStyle(detectedCellStyle);
         console.log(`[Template] Auto-selected cell paragraph style: "${detectedCellStyle}"`);
       }
 
-      // Auto-populate list styles — prefer regex-detected role map (which matches
-      // style names like "List Bullet 2", "List1Num"), fall back to document-usage
-      // detection only if regex didn't find anything
+      // Prefer regex-detected role map (matches names like "List Bullet 2", "List1Num"),
+      // fall back to document-usage detection only if regex found nothing
       const detectedBullet = guidance.pandocStyleRoleMap?.listBullet
         || analysis.documentStructure?.detectedBulletListStyle;
-      if (detectedBullet && !bulletListStyle) {
+      if (detectedBullet) {
         setBulletListStyle(detectedBullet);
         console.log(`[Template] Auto-selected bullet list style: "${detectedBullet}"`);
       }
       const detectedNumber = guidance.pandocStyleRoleMap?.listNumber
         || analysis.documentStructure?.detectedNumberedListStyle;
-      if (detectedNumber && !numberedListStyle) {
+      if (detectedNumber) {
         setNumberedListStyle(detectedNumber);
         console.log(`[Template] Auto-selected numbered list style: "${detectedNumber}"`);
       }
