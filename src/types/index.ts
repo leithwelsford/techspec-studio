@@ -970,6 +970,10 @@ export interface DocumentStructureInfo {
   pageSize: 'A4' | 'Letter' | 'Legal' | 'Custom';
   /** Most common paragraph style used inside table cells (e.g., "CellBodyLeft") */
   detectedCellParagraphStyle?: string;
+  /** Most common paragraph style used on bullet list items (e.g., "ListBullet2") */
+  detectedBulletListStyle?: string;
+  /** Most common paragraph style used on numbered list items (e.g., "List1Num") */
+  detectedNumberedListStyle?: string;
 }
 
 /**

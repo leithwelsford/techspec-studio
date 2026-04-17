@@ -104,13 +104,15 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         console.log(`[Template] Auto-selected cell paragraph style: "${detectedCellStyle}"`);
       }
 
-      // Auto-populate list styles from the role map (if detected)
-      const detectedBullet = guidance.pandocStyleRoleMap?.listBullet;
+      // Auto-populate list styles — prefer document-usage detection over regex role map
+      const detectedBullet = analysis.documentStructure?.detectedBulletListStyle
+        || guidance.pandocStyleRoleMap?.listBullet;
       if (detectedBullet && !bulletListStyle) {
         setBulletListStyle(detectedBullet);
         console.log(`[Template] Auto-selected bullet list style: "${detectedBullet}"`);
       }
-      const detectedNumber = guidance.pandocStyleRoleMap?.listNumber;
+      const detectedNumber = analysis.documentStructure?.detectedNumberedListStyle
+        || guidance.pandocStyleRoleMap?.listNumber;
       if (detectedNumber && !numberedListStyle) {
         setNumberedListStyle(detectedNumber);
         console.log(`[Template] Auto-selected numbered list style: "${detectedNumber}"`);
@@ -256,6 +258,8 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
           customerLogoFilename,
           logoBlobs: exportLogoBlobs,
           cellParagraphStyle: cellParagraphStyle || undefined,
+          bulletListStyle: bulletListStyle || undefined,
+          numberedListStyle: numberedListStyle || undefined,
         };
         console.log('[Export] Pandoc styles:', markdownGuidance?.pandocStyles);
         console.log('[Export] Numbering mode:', numberingMode);

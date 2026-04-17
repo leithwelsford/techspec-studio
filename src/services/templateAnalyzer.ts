@@ -50,7 +50,7 @@ export class TemplateAnalyzer {
     const specialStyles = this.analyzeSpecialStyles(stylesDoc);
     const sectionNumbering = this.analyzeSectionNumbering(numberingDoc);
     const listNumbering = this.analyzeListNumbering(numberingDoc);
-    const documentStructure = this.analyzeDocumentStructure(documentDoc);
+    const documentStructure = this.analyzeDocumentStructure(documentDoc, numberingDoc);
 
     // Compatibility check
     const compatibility = this.checkCompatibility({
@@ -689,7 +689,8 @@ export class TemplateAnalyzer {
   }
 
   private analyzeDocumentStructure(
-    documentDoc: Document
+    documentDoc: Document,
+    numberingDoc?: Document
   ): DocumentStructureInfo {
     console.log('[Template Analyzer] Analyzing document structure...');
 
@@ -733,6 +734,106 @@ export class TemplateAnalyzer {
       console.log('[Template Analyzer] No cell paragraph styles detected in template');
     }
 
+    // Detect bullet and numbered list styles by scanning list item paragraphs.
+    // A paragraph is a list item if it has <w:numPr> referencing a numId.
+    // The numId maps to an abstractNum whose first level's numFmt tells us
+    // whether it's a bullet list or a numbered list.
+    let detectedBulletListStyle: string | undefined;
+    let detectedNumberedListStyle: string | undefined;
+    if (numberingDoc) {
+      // Build numId → list type (bullet/numbered) map
+      const abstractNumFormats = new Map<string, string>();
+      const allNumEls = numberingDoc.getElementsByTagName('*');
+      for (let i = 0; i < allNumEls.length; i++) {
+        const el = allNumEls[i];
+        if (el.localName === 'abstractNum') {
+          const absId = el.getAttribute('w:abstractNumId') || el.getAttribute('abstractNumId') || '';
+          // Find level 0 numFmt
+          for (let j = 0; j < el.children.length; j++) {
+            const lvl = el.children[j];
+            if (lvl.localName === 'lvl') {
+              const ilvl = lvl.getAttribute('w:ilvl') || lvl.getAttribute('ilvl');
+              if (ilvl === '0') {
+                for (let k = 0; k < lvl.children.length; k++) {
+                  if (lvl.children[k].localName === 'numFmt') {
+                    const val = lvl.children[k].getAttribute('w:val') || lvl.children[k].getAttribute('val');
+                    if (val) abstractNumFormats.set(absId, val);
+                  }
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
+      const numIdToType = new Map<string, 'bullet' | 'numbered'>();
+      for (let i = 0; i < allNumEls.length; i++) {
+        const el = allNumEls[i];
+        if (el.localName === 'num') {
+          const numId = el.getAttribute('w:numId') || el.getAttribute('numId') || '';
+          for (let j = 0; j < el.children.length; j++) {
+            if (el.children[j].localName === 'abstractNumId') {
+              const absId = el.children[j].getAttribute('w:val') || el.children[j].getAttribute('val');
+              if (absId) {
+                const fmt = abstractNumFormats.get(absId);
+                if (fmt === 'bullet') numIdToType.set(numId, 'bullet');
+                else if (fmt) numIdToType.set(numId, 'numbered');
+              }
+            }
+          }
+        }
+      }
+
+      // Walk paragraphs in document.xml, find those with numPr, tally pStyle per list type
+      const bulletStyles = new Map<string, number>();
+      const numberedStyles = new Map<string, number>();
+      const paragraphs: Element[] = [];
+      for (let i = 0; i < allElements.length; i++) {
+        if (allElements[i].localName === 'p') paragraphs.push(allElements[i]);
+      }
+      for (const p of paragraphs) {
+        // Find pPr
+        let pPr: Element | null = null;
+        for (let j = 0; j < p.children.length; j++) {
+          if (p.children[j].localName === 'pPr') { pPr = p.children[j]; break; }
+        }
+        if (!pPr) continue;
+        // Find numPr + numId and pStyle
+        let numId: string | undefined;
+        let pStyle: string | undefined;
+        for (let j = 0; j < pPr.children.length; j++) {
+          const child = pPr.children[j];
+          if (child.localName === 'numPr') {
+            for (let k = 0; k < child.children.length; k++) {
+              if (child.children[k].localName === 'numId') {
+                numId = child.children[k].getAttribute('w:val') || child.children[k].getAttribute('val') || undefined;
+              }
+            }
+          } else if (child.localName === 'pStyle') {
+            pStyle = child.getAttribute('w:val') || child.getAttribute('val') || undefined;
+          }
+        }
+        if (!numId || !pStyle) continue;
+        const type = numIdToType.get(numId);
+        if (type === 'bullet') {
+          bulletStyles.set(pStyle, (bulletStyles.get(pStyle) || 0) + 1);
+        } else if (type === 'numbered') {
+          numberedStyles.set(pStyle, (numberedStyles.get(pStyle) || 0) + 1);
+        }
+      }
+
+      if (bulletStyles.size > 0) {
+        const sorted = Array.from(bulletStyles.entries()).sort((a, b) => b[1] - a[1]);
+        detectedBulletListStyle = sorted[0][0];
+        console.log(`[Template Analyzer] Detected bullet list style: "${detectedBulletListStyle}" (${sorted[0][1]} occurrences)`);
+      }
+      if (numberedStyles.size > 0) {
+        const sorted = Array.from(numberedStyles.entries()).sort((a, b) => b[1] - a[1]);
+        detectedNumberedListStyle = sorted[0][0];
+        console.log(`[Template Analyzer] Detected numbered list style: "${detectedNumberedListStyle}" (${sorted[0][1]} occurrences)`);
+      }
+    }
+
     // Basic structure detection
     // More sophisticated detection would parse actual content
     return {
@@ -750,6 +851,8 @@ export class TemplateAnalyzer {
       pageOrientation: 'portrait',
       pageSize: 'A4',
       detectedCellParagraphStyle,
+      detectedBulletListStyle,
+      detectedNumberedListStyle,
     };
   }
 
