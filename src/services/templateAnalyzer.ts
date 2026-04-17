@@ -1262,11 +1262,13 @@ export class TemplateAnalyzer {
     // --- Numbered list ---
     const numberName = findStyleName([
       /^list\s*number\s*\d*$/i,        // List Number, List Number 2
+      /^list\s*\d+\s*num$/i,           // List 1 Num, List2Num
       /^number\s*list\s*\d*$/i,        // Number List
       /^numbered\s*list\s*\d*$/i,      // Numbered List
       /^listnumber\d*$/i,              // ListNumber, ListNumber2
       /^ordered\s*list\s*\d*$/i,       // Ordered List
       /^list\s*continue\s*\d*$/i,      // List Continue (continuation of numbered list)
+      /num(bered)?\s*requirement/i,    // Numbered Requirement
     ]);
     if (numberName) {
       roleMap.listNumber = numberName;

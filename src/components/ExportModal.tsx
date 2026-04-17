@@ -104,15 +104,17 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         console.log(`[Template] Auto-selected cell paragraph style: "${detectedCellStyle}"`);
       }
 
-      // Auto-populate list styles — prefer document-usage detection over regex role map
-      const detectedBullet = analysis.documentStructure?.detectedBulletListStyle
-        || guidance.pandocStyleRoleMap?.listBullet;
+      // Auto-populate list styles — prefer regex-detected role map (which matches
+      // style names like "List Bullet 2", "List1Num"), fall back to document-usage
+      // detection only if regex didn't find anything
+      const detectedBullet = guidance.pandocStyleRoleMap?.listBullet
+        || analysis.documentStructure?.detectedBulletListStyle;
       if (detectedBullet && !bulletListStyle) {
         setBulletListStyle(detectedBullet);
         console.log(`[Template] Auto-selected bullet list style: "${detectedBullet}"`);
       }
-      const detectedNumber = analysis.documentStructure?.detectedNumberedListStyle
-        || guidance.pandocStyleRoleMap?.listNumber;
+      const detectedNumber = guidance.pandocStyleRoleMap?.listNumber
+        || analysis.documentStructure?.detectedNumberedListStyle;
       if (detectedNumber && !numberedListStyle) {
         setNumberedListStyle(detectedNumber);
         console.log(`[Template] Auto-selected numbered list style: "${detectedNumber}"`);
