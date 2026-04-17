@@ -845,7 +845,23 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
       }
     });
 
-    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), added cantSplit to ${cantSplitCount} row(s)`);
+    // Strip leading <w:tab/> from paragraphs inside table cells.
+    // Pandoc sometimes inherits list/indent formatting into cell paragraphs,
+    // causing a leading tab character in each cell.
+    let cellTabsRemoved = 0;
+    const cellPattern = /<w:tc>([\s\S]*?)<\/w:tc>/g;
+    docXml = docXml.replace(cellPattern, (_cellMatch, cellContent: string) => {
+      const updated = cellContent.replace(
+        /(<w:p(?:\s[^>]*)?>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?)(<w:r(?:\s[^>]*)?>\s*<w:tab\s*\/>\s*<\/w:r>)/g,
+        (_match, paragraphStart) => {
+          cellTabsRemoved++;
+          return paragraphStart;
+        }
+      );
+      return `<w:tc>${updated}</w:tc>`;
+    });
+
+    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), added cantSplit to ${cantSplitCount} row(s), removed ${cellTabsRemoved} leading tab(s) from cells`);
 
     zip.file('word/document.xml', docXml);
     const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
