@@ -825,41 +825,18 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
         : `<w:tblLook ${newAttrs}/>`;
     });
 
-    // Mark the first <w:tr> of every table with <w:tblHeader/> so Word
-    // repeats the header row at the top of each page when the table spans
-    // pages. Pandoc doesn't emit this by default.
-    let headerRowCount = 0;
-    const tablePattern = /<w:tbl>([\s\S]*?)<\/w:tbl>/g;
-    docXml = docXml.replace(tablePattern, (_tableMatch, tableContent) => {
-      let hasReplacedFirstRow = false;
-      const updated = tableContent.replace(
-        /<w:tr(\s[^>]*)?>([\s\S]*?)<\/w:tr>/,
-        (_rowMatch: string, rowAttrs: string | undefined, rowInner: string) => {
-          if (hasReplacedFirstRow) return _rowMatch;
-          hasReplacedFirstRow = true;
-          headerRowCount++;
-          const attrs = rowAttrs || '';
-          // Check if <w:trPr> already exists
-          if (/<w:trPr>/.test(rowInner)) {
-            // Inject <w:tblHeader/> inside existing trPr (if not already there)
-            if (/<w:tblHeader\s*\/>/.test(rowInner)) {
-              return _rowMatch; // Already has it
-            }
-            const newInner = rowInner.replace(
-              /<w:trPr>/,
-              '<w:trPr><w:tblHeader/>'
-            );
-            return `<w:tr${attrs}>${newInner}</w:tr>`;
-          } else {
-            // No trPr — add one right at the start of the row content
-            return `<w:tr${attrs}><w:trPr><w:tblHeader/></w:trPr>${rowInner}</w:tr>`;
-          }
-        }
-      );
-      return `<w:tbl>${updated}</w:tbl>`;
+    // Remove <w:tblHeader/> from all rows so Word doesn't repeat header rows
+    // on page breaks. Some table styles have "Repeat as header row" set in
+    // their definition, but we want header rows to NOT repeat (to avoid
+    // messing with the table styling across page breaks).
+    let removedHeaderCount = 0;
+    const headerRemovalPattern = /<w:tblHeader\s*\/>/g;
+    docXml = docXml.replace(headerRemovalPattern, () => {
+      removedHeaderCount++;
+      return '';
     });
 
-    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), marked ${headerRowCount} header row(s)`);
+    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), removed ${removedHeaderCount} tblHeader flag(s)`);
 
     zip.file('word/document.xml', docXml);
     const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
