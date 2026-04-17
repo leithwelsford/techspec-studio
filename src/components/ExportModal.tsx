@@ -57,6 +57,9 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const [selectedTableStyle, setSelectedTableStyle] = useState<string>('');
   // Paragraph style for table cell contents
   const [cellParagraphStyle, setCellParagraphStyle] = useState<string>('');
+  // List style overrides (user-specified template style names)
+  const [bulletListStyle, setBulletListStyle] = useState<string>('');
+  const [numberedListStyle, setNumberedListStyle] = useState<string>('');
 
   // DOCX options
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
@@ -99,6 +102,18 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
       if (detectedCellStyle && !cellParagraphStyle) {
         setCellParagraphStyle(detectedCellStyle);
         console.log(`[Template] Auto-selected cell paragraph style: "${detectedCellStyle}"`);
+      }
+
+      // Auto-populate list styles from the role map (if detected)
+      const detectedBullet = guidance.pandocStyleRoleMap?.listBullet;
+      if (detectedBullet && !bulletListStyle) {
+        setBulletListStyle(detectedBullet);
+        console.log(`[Template] Auto-selected bullet list style: "${detectedBullet}"`);
+      }
+      const detectedNumber = guidance.pandocStyleRoleMap?.listNumber;
+      if (detectedNumber && !numberedListStyle) {
+        setNumberedListStyle(detectedNumber);
+        console.log(`[Template] Auto-selected numbered list style: "${detectedNumber}"`);
       }
 
       console.log('[Template] Analysis complete');
@@ -161,6 +176,8 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
     setLogoBlobs(new Map());
     setCellParagraphStyle('');
     setSelectedTableStyle('');
+    setBulletListStyle('');
+    setNumberedListStyle('');
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -221,6 +238,12 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
           // Resolve display name to XML styleId if we have the mapping
           const styleIdMap = docxTemplateAnalysis?.specialStyles?.tableStyles?.styleIdMap;
           roleMap.tableStyle = styleIdMap?.[selectedTableStyle] || selectedTableStyle;
+        }
+        if (bulletListStyle) {
+          roleMap.listBullet = bulletListStyle;
+        }
+        if (numberedListStyle) {
+          roleMap.listNumber = numberedListStyle;
         }
         const pandocExportOpts = {
           ...exportOpts,
@@ -694,6 +717,10 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                 onTableStyleChanged={setSelectedTableStyle}
                 cellParagraphStyle={cellParagraphStyle}
                 onCellParagraphStyleChanged={setCellParagraphStyle}
+                bulletListStyle={bulletListStyle}
+                onBulletListStyleChanged={setBulletListStyle}
+                numberedListStyle={numberedListStyle}
+                onNumberedListStyleChanged={setNumberedListStyle}
               />
             </div>
           )}

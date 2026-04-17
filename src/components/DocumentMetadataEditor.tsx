@@ -30,6 +30,12 @@ interface DocumentMetadataEditorProps {
   /** Paragraph style to apply to cell contents (e.g., "CellBodyLeft") */
   cellParagraphStyle?: string;
   onCellParagraphStyleChanged?: (styleName: string) => void;
+  /** Style to apply to bullet list items (e.g., "List Bullet 2") */
+  bulletListStyle?: string;
+  onBulletListStyleChanged?: (styleName: string) => void;
+  /** Style to apply to numbered list items (e.g., "List1Num") */
+  numberedListStyle?: string;
+  onNumberedListStyleChanged?: (styleName: string) => void;
 }
 
 const DOC_TYPE_SUGGESTIONS = [
@@ -54,6 +60,10 @@ export default function DocumentMetadataEditor({
   onTableStyleChanged,
   cellParagraphStyle,
   onCellParagraphStyleChanged,
+  bulletListStyle,
+  onBulletListStyleChanged,
+  numberedListStyle,
+  onNumberedListStyleChanged,
 }: DocumentMetadataEditorProps) {
   const specTitle = useProjectStore((state) => state.project?.specification.title);
   const metadata = useProjectStore((state) => state.project?.specification.metadata);
@@ -345,6 +355,35 @@ export default function DocumentMetadataEditor({
           </div>
         </div>
       )}
+
+      {/* List Styles */}
+      <div className={sectionClass}>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-1">
+          List Styles
+        </h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelClass}>Bullet list style</label>
+            <input
+              type="text"
+              value={bulletListStyle || ''}
+              onChange={(e) => onBulletListStyleChanged?.(e.target.value)}
+              placeholder="e.g., List Bullet 2"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Numbered list style</label>
+            <input
+              type="text"
+              value={numberedListStyle || ''}
+              onChange={(e) => onNumberedListStyleChanged?.(e.target.value)}
+              placeholder="e.g., List1Num"
+              className={inputClass}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Document Release */}
       <div className={sectionClass}>
