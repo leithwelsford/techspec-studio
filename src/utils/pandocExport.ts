@@ -793,21 +793,14 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
     let docXml = docFile.asText();
     let replacements = 0;
 
-    // Replace existing <w:tblStyle w:val="..."/> with our style
+    // Replace existing <w:tblStyle w:val="..."/> with our style.
+    // Pandoc always emits a tblStyle for every table (typically "TableGrid"),
+    // so we only need to replace — never inject. Injection risks breaking
+    // OOXML schema order and causing Word "unreadable content" warnings.
     const existingPattern = /<w:tblStyle\s+w:val="[^"]*"\s*\/>/g;
-    if (existingPattern.test(docXml)) {
-      docXml = docXml.replace(existingPattern, () => {
-        replacements++;
-        return `<w:tblStyle w:val="${tableStyle}"/>`;
-      });
-    }
-
-    // For tables that have <w:tblPr> but no <w:tblStyle>, inject one
-    // Match <w:tblPr> that doesn't already contain <w:tblStyle>
-    const tblPrWithoutStyle = /<w:tblPr>((?:(?!<w:tblStyle)(?!<\/w:tblPr>)[\s\S])*?)<\/w:tblPr>/g;
-    docXml = docXml.replace(tblPrWithoutStyle, (_match, inner) => {
+    docXml = docXml.replace(existingPattern, () => {
       replacements++;
-      return `<w:tblPr><w:tblStyle w:val="${tableStyle}"/>${inner}</w:tblPr>`;
+      return `<w:tblStyle w:val="${tableStyle}"/>`;
     });
 
     console.log(`[Pandoc Export] Applied table style to ${replacements} table(s)`);
