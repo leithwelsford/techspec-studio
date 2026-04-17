@@ -44,6 +44,10 @@ export interface PandocExportOptions {
   logoBlobs?: Array<{ filename: string; blob: Blob }>;
   // Paragraph style to apply to text inside table cells (e.g., "CellBodyLeft")
   cellParagraphStyle?: string;
+  // Paragraph style to apply to bullet list items (e.g., "List Bullet 2")
+  bulletListStyle?: string;
+  // Paragraph style to apply to numbered list items (e.g., "List1Num")
+  numberedListStyle?: string;
 }
 
 // ========== Markdown Transformation for Pandoc Custom Styles ==========
@@ -775,6 +779,14 @@ abstract: |
     // List of Figures and List of Tables can find them.
     blob = await injectCaptionSeqFields(blob);
 
+    // Post-process: apply template's list styles to list items
+    if (options.bulletListStyle || options.numberedListStyle) {
+      blob = await applyListStylesToDocx(blob, {
+        bulletStyle: options.bulletListStyle,
+        numberedStyle: options.numberedListStyle,
+      });
+    }
+
     return blob;
 
   } catch (error) {
@@ -1014,6 +1026,126 @@ async function injectCaptionSeqFields(blob: Blob): Promise<Blob> {
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Apply list paragraph styles to every list item in the document.
+ *
+ * Identifies list items by the presence of <w:numPr> in the paragraph
+ * properties. Determines bullet vs numbered by looking up the numId in
+ * numbering.xml — bullets have numFmt="bullet", numbered lists use
+ * decimal/upperRoman/lowerRoman/etc.
+ */
+async function applyListStylesToDocx(
+  blob: Blob,
+  styles: { bulletStyle?: string; numberedStyle?: string }
+): Promise<Blob> {
+  try {
+    console.log('[Pandoc Export] Post-processing: applying list styles', styles);
+    const arrayBuffer = await blob.arrayBuffer();
+    const zip = new PizZip(arrayBuffer);
+    const docFile = zip.file('word/document.xml');
+    const numFile = zip.file('word/numbering.xml');
+    if (!docFile || !numFile) {
+      console.warn('[Pandoc Export] Missing document.xml or numbering.xml');
+      return blob;
+    }
+
+    const numXml = numFile.asText();
+    let docXml = docFile.asText();
+
+    // Build numId → 'bullet' | 'numbered' map
+    // numbering.xml structure: <w:num w:numId="N"><w:abstractNumId w:val="M"/></w:num>
+    // abstractNum defines the format: <w:abstractNum w:abstractNumId="M"><w:lvl ...><w:numFmt w:val="..."/></w:lvl>
+    const abstractNumFormats = new Map<string, string>(); // abstractNumId → numFmt of level 0
+    const abstractNumPattern = /<w:abstractNum\s+w:abstractNumId="([^"]+)"[^>]*>([\s\S]*?)<\/w:abstractNum>/g;
+    let abstractMatch;
+    while ((abstractMatch = abstractNumPattern.exec(numXml)) !== null) {
+      const absId = abstractMatch[1];
+      const content = abstractMatch[2];
+      // Get numFmt of first level (ilvl=0)
+      const lvlMatch = content.match(/<w:lvl[^>]*w:ilvl="0"[^>]*>([\s\S]*?)<\/w:lvl>/);
+      if (lvlMatch) {
+        const fmtMatch = lvlMatch[1].match(/<w:numFmt\s+w:val="([^"]+)"/);
+        if (fmtMatch) {
+          abstractNumFormats.set(absId, fmtMatch[1]);
+        }
+      }
+    }
+
+    const numIdToType = new Map<string, 'bullet' | 'numbered'>();
+    const numPattern = /<w:num\s+w:numId="([^"]+)"[^>]*>([\s\S]*?)<\/w:num>/g;
+    let numMatch;
+    while ((numMatch = numPattern.exec(numXml)) !== null) {
+      const numId = numMatch[1];
+      const content = numMatch[2];
+      const absIdMatch = content.match(/<w:abstractNumId\s+w:val="([^"]+)"/);
+      if (absIdMatch) {
+        const fmt = abstractNumFormats.get(absIdMatch[1]);
+        if (fmt === 'bullet') {
+          numIdToType.set(numId, 'bullet');
+        } else if (fmt) {
+          numIdToType.set(numId, 'numbered');
+        }
+      }
+    }
+
+    console.log(`[Pandoc Export] Parsed ${numIdToType.size} list numbering definitions`);
+
+    // Walk each <w:p> with <w:numPr>, determine type, apply style
+    let bulletsStyled = 0;
+    let numbersStyled = 0;
+    docXml = docXml.replace(
+      /<w:p(\s[^>]*)?>([\s\S]*?)<\/w:p>/g,
+      (match, pAttrs: string | undefined, pInner: string) => {
+        // Check if paragraph has numPr (is a list item)
+        const numPrMatch = pInner.match(/<w:numPr>[\s\S]*?<\/w:numPr>/);
+        if (!numPrMatch) return match;
+
+        // Extract numId from numPr
+        const numIdMatch = numPrMatch[0].match(/<w:numId\s+w:val="([^"]+)"/);
+        if (!numIdMatch) return match;
+
+        const listType = numIdToType.get(numIdMatch[1]);
+        if (!listType) return match;
+
+        const targetStyle = listType === 'bullet' ? styles.bulletStyle : styles.numberedStyle;
+        if (!targetStyle) return match;
+
+        if (listType === 'bullet') bulletsStyled++;
+        else numbersStyled++;
+
+        // Apply pStyle inside pPr
+        const attrs = pAttrs || '';
+        let newInner = pInner;
+        if (/<w:pPr>/.test(newInner)) {
+          if (/<w:pStyle\s+w:val="[^"]*"\s*\/>/.test(newInner)) {
+            newInner = newInner.replace(
+              /<w:pStyle\s+w:val="[^"]*"\s*\/>/,
+              `<w:pStyle w:val="${targetStyle}"/>`
+            );
+          } else {
+            newInner = newInner.replace(
+              /<w:pPr>/,
+              `<w:pPr><w:pStyle w:val="${targetStyle}"/>`
+            );
+          }
+        } else {
+          newInner = `<w:pPr><w:pStyle w:val="${targetStyle}"/></w:pPr>${newInner}`;
+        }
+        return `<w:p${attrs}>${newInner}</w:p>`;
+      }
+    );
+
+    console.log(`[Pandoc Export] Applied list styles: ${bulletsStyled} bullet(s), ${numbersStyled} numbered item(s)`);
+
+    zip.file('word/document.xml', docXml);
+    return zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+
+  } catch (error) {
+    console.error('[Pandoc Export] List style post-processing failed:', error);
+    return blob;
+  }
 }
 
 /**
