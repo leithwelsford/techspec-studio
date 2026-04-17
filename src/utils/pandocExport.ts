@@ -825,18 +825,7 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
         : `<w:tblLook ${newAttrs}/>`;
     });
 
-    // Remove <w:tblHeader/> from all rows so Word doesn't repeat header rows
-    // on page breaks. Some table styles have "Repeat as header row" set in
-    // their definition, but we want header rows to NOT repeat (to avoid
-    // messing with the table styling across page breaks).
-    let removedHeaderCount = 0;
-    const headerRemovalPattern = /<w:tblHeader\s*\/>/g;
-    docXml = docXml.replace(headerRemovalPattern, () => {
-      removedHeaderCount++;
-      return '';
-    });
-
-    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), removed ${removedHeaderCount} tblHeader flag(s)`);
+    console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s)`);
 
     zip.file('word/document.xml', docXml);
     const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
