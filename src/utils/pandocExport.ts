@@ -1092,6 +1092,26 @@ async function applyListStylesToDocx(
 
     console.log(`[Pandoc Export] Parsed ${numIdToType.size} list numbering definitions`);
 
+    // Build styleId → numId map by parsing styles.xml. When we apply a list
+    // style to a paragraph, we'll also redirect its numId so the paragraph
+    // uses the template's list definition (with correct indents per level)
+    // instead of Pandoc's default.
+    const stylesFile = zip.file('word/styles.xml');
+    const styleNumIdMap = new Map<string, string>();
+    if (stylesFile) {
+      const stylesXml = stylesFile.asText();
+      const styleBlockPattern = /<w:style\s+w:type="paragraph"\s+w:styleId="([^"]+)"[^>]*>([\s\S]*?)<\/w:style>/g;
+      let styleMatch;
+      while ((styleMatch = styleBlockPattern.exec(stylesXml)) !== null) {
+        const styleId = styleMatch[1];
+        const numIdInStyle = styleMatch[2].match(/<w:numId\s+w:val="([^"]+)"/);
+        if (numIdInStyle) {
+          styleNumIdMap.set(styleId, numIdInStyle[1]);
+        }
+      }
+      console.log(`[Pandoc Export] Template has ${styleNumIdMap.size} list-enabled paragraph styles`);
+    }
+
     // Walk each <w:p> with <w:numPr>, determine type, apply style
     let bulletsStyled = 0;
     let numbersStyled = 0;
@@ -1115,12 +1135,22 @@ async function applyListStylesToDocx(
         if (listType === 'bullet') bulletsStyled++;
         else numbersStyled++;
 
-        // Apply pStyle inside pPr; also strip Pandoc's paragraph-level <w:ind>
-        // so the template style's own indentation takes effect.
+        // Apply pStyle inside pPr; strip Pandoc's paragraph-level <w:ind>;
+        // redirect the paragraph's numId to the template style's numId so
+        // indentation and numbering format come from the template.
         const attrs = pAttrs || '';
         let newInner = pInner;
-        // Remove Pandoc's explicit indent override
+        // Strip explicit paragraph-level indent (Pandoc's default overrides style)
         newInner = newInner.replace(/<w:ind\s+[^/]*\/>/g, '');
+
+        // Redirect numId to the template's style numId (if known)
+        const templateNumId = styleNumIdMap.get(targetStyle);
+        if (templateNumId) {
+          newInner = newInner.replace(
+            /<w:numId\s+w:val="[^"]+"\s*\/>/,
+            `<w:numId w:val="${templateNumId}"/>`
+          );
+        }
 
         if (/<w:pPr>/.test(newInner)) {
           if (/<w:pStyle\s+w:val="[^"]*"\s*\/>/.test(newInner)) {
