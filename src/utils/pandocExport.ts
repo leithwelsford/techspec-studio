@@ -1115,9 +1115,13 @@ async function applyListStylesToDocx(
         if (listType === 'bullet') bulletsStyled++;
         else numbersStyled++;
 
-        // Apply pStyle inside pPr
+        // Apply pStyle inside pPr; also strip Pandoc's paragraph-level <w:ind>
+        // so the template style's own indentation takes effect.
         const attrs = pAttrs || '';
         let newInner = pInner;
+        // Remove Pandoc's explicit indent override
+        newInner = newInner.replace(/<w:ind\s+[^/]*\/>/g, '');
+
         if (/<w:pPr>/.test(newInner)) {
           if (/<w:pStyle\s+w:val="[^"]*"\s*\/>/.test(newInner)) {
             newInner = newInner.replace(
