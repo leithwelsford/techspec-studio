@@ -105,16 +105,18 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         console.log(`[Template] Auto-selected cell paragraph style: "${detectedCellStyle}"`);
       }
 
-      // Prefer regex-detected role map (matches names like "List Bullet 2", "List1Num"),
-      // fall back to document-usage detection only if regex found nothing
-      const detectedBullet = guidance.pandocStyleRoleMap?.listBullet
-        || analysis.documentStructure?.detectedBulletListStyle;
+      // Prefer document-usage detection (what the template ACTUALLY uses),
+      // fall back to regex-matched style names. Document-usage is more reliable
+      // because Word often attaches multi-level lists to generic "List Paragraph"
+      // style rather than named "List Number" styles.
+      const detectedBullet = analysis.documentStructure?.detectedBulletListStyle
+        || guidance.pandocStyleRoleMap?.listBullet;
       if (detectedBullet) {
         setBulletListStyle(detectedBullet);
         console.log(`[Template] Auto-selected bullet list style: "${detectedBullet}"`);
       }
-      const detectedNumber = guidance.pandocStyleRoleMap?.listNumber
-        || analysis.documentStructure?.detectedNumberedListStyle;
+      const detectedNumber = analysis.documentStructure?.detectedNumberedListStyle
+        || guidance.pandocStyleRoleMap?.listNumber;
       if (detectedNumber) {
         setNumberedListStyle(detectedNumber);
         console.log(`[Template] Auto-selected numbered list style: "${detectedNumber}"`);
