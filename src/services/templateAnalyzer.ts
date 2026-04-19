@@ -50,7 +50,7 @@ export class TemplateAnalyzer {
     const specialStyles = this.analyzeSpecialStyles(stylesDoc);
     const sectionNumbering = this.analyzeSectionNumbering(numberingDoc);
     const listNumbering = this.analyzeListNumbering(numberingDoc);
-    const documentStructure = this.analyzeDocumentStructure(documentDoc, numberingDoc);
+    const documentStructure = this.analyzeDocumentStructure(documentDoc, numberingDoc, stylesDoc);
 
     // Compatibility check
     const compatibility = this.checkCompatibility({
@@ -690,7 +690,8 @@ export class TemplateAnalyzer {
 
   private analyzeDocumentStructure(
     documentDoc: Document,
-    numberingDoc?: Document
+    numberingDoc?: Document,
+    stylesDoc?: Document
   ): DocumentStructureInfo {
     console.log('[Template Analyzer] Analyzing document structure...');
 
@@ -784,8 +785,34 @@ export class TemplateAnalyzer {
         }
       }
 
-      // Walk paragraphs in document.xml, find those with numPr, tally pStyle per list type.
-      // Exclude paragraphs inside table cells — those use cell styles, not list styles.
+      // Build styleId → numId map from styles.xml: styles whose definition
+      // includes <w:numPr><w:numId>. This catches multi-level list styles like
+      // "List Paragraph" where paragraphs don't have their own numPr.
+      const styleIdToNumId = new Map<string, string>();
+      if (stylesDoc) {
+        const styleEls = stylesDoc.getElementsByTagName('*');
+        for (let i = 0; i < styleEls.length; i++) {
+          const el = styleEls[i];
+          if (el.localName !== 'style') continue;
+          const styleId = el.getAttribute('w:styleId') || el.getAttribute('styleId');
+          if (!styleId) continue;
+          // Find nested pPr > numPr > numId
+          const numIdEls = el.getElementsByTagName('*');
+          for (let j = 0; j < numIdEls.length; j++) {
+            if (numIdEls[j].localName === 'numId') {
+              const val = numIdEls[j].getAttribute('w:val') || numIdEls[j].getAttribute('val');
+              if (val) {
+                styleIdToNumId.set(styleId, val);
+                break;
+              }
+            }
+          }
+        }
+        console.log(`[Template Analyzer] Found ${styleIdToNumId.size} styles with list numbering in their definition`);
+      }
+
+      // Walk paragraphs, find those that are list items (via direct numPr OR
+      // via their pStyle referencing a list-enabled style). Tally pStyle per list type.
       const bulletStyles = new Map<string, number>();
       const numberedStyles = new Map<string, number>();
       const paragraphs: Element[] = [];
@@ -808,23 +835,29 @@ export class TemplateAnalyzer {
           if (p.children[j].localName === 'pPr') { pPr = p.children[j]; break; }
         }
         if (!pPr) continue;
-        // Find numPr + numId and pStyle
-        let numId: string | undefined;
+
+        // Extract numId (direct on paragraph) and pStyle
+        let directNumId: string | undefined;
         let pStyle: string | undefined;
         for (let j = 0; j < pPr.children.length; j++) {
           const child = pPr.children[j];
           if (child.localName === 'numPr') {
             for (let k = 0; k < child.children.length; k++) {
               if (child.children[k].localName === 'numId') {
-                numId = child.children[k].getAttribute('w:val') || child.children[k].getAttribute('val') || undefined;
+                directNumId = child.children[k].getAttribute('w:val') || child.children[k].getAttribute('val') || undefined;
               }
             }
           } else if (child.localName === 'pStyle') {
             pStyle = child.getAttribute('w:val') || child.getAttribute('val') || undefined;
           }
         }
-        if (!numId || !pStyle) continue;
-        const type = numIdToType.get(numId);
+        if (!pStyle) continue;
+
+        // Resolve effective numId: direct first, else from style definition
+        const effectiveNumId = directNumId || styleIdToNumId.get(pStyle);
+        if (!effectiveNumId) continue;
+
+        const type = numIdToType.get(effectiveNumId);
         if (type === 'bullet') {
           bulletStyles.set(pStyle, (bulletStyles.get(pStyle) || 0) + 1);
         } else if (type === 'numbered') {
