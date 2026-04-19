@@ -873,7 +873,7 @@ async function applyTableStyleToDocx(blob: Blob, tableStyle: string): Promise<Bl
     console.log(`[Pandoc Export] Applied table style to ${replacements} table(s), updated ${tblLookReplacements} tblLook element(s), added cantSplit to ${cantSplitCount} row(s)`);
 
     zip.file('word/document.xml', docXml);
-    const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const modifiedBlob = zip.generate({ type: 'blob', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 
     console.log(`[Pandoc Export] Post-processed DOCX: ${modifiedBlob.size} bytes`);
     return modifiedBlob;
@@ -940,7 +940,7 @@ async function applyCellParagraphStyleToDocx(blob: Blob, styleName: string): Pro
     console.log(`[Pandoc Export] Styled ${paragraphsStyled} cell paragraph(s) with "${styleName}"`);
 
     zip.file('word/document.xml', docXml);
-    const modifiedBlob = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const modifiedBlob = zip.generate({ type: 'blob', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     return modifiedBlob;
 
   } catch (error) {
@@ -1016,7 +1016,7 @@ async function injectCaptionSeqFields(blob: Blob): Promise<Blob> {
     console.log(`[Pandoc Export] Injected SEQ fields: ${figureCount} figure(s), ${tableCount} table(s)`);
 
     zip.file('word/document.xml', docXml);
-    return zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    return zip.generate({ type: 'blob', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 
   } catch (error) {
     console.error('[Pandoc Export] Caption SEQ field injection failed:', error);
@@ -1174,7 +1174,7 @@ async function applyListStylesToDocx(
     console.log(`[Pandoc Export] Applied list styles: ${bulletsStyled} bullet(s), ${numbersStyled} numbered item(s)`);
 
     zip.file('word/document.xml', docXml);
-    return zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    return zip.generate({ type: 'blob', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 
   } catch (error) {
     console.error('[Pandoc Export] List style post-processing failed:', error);
