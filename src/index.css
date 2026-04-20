@@ -126,7 +126,11 @@ body {
    rectangles by default. Override to white fill + black stroke so
    the label text is visible. */
 .er.relationshipLabelBox,
-[class*="relationshipLabelBox"] {
+[class*="relationshipLabelBox"],
+[id^="mermaid"] .er .relationshipLabelBox,
+[id^="mermaid"] g.relationshipLabel > rect,
+[id^="mermaid"] [aria-roledescription="er"] rect[stroke="#000000"][fill*="0"],
+[id^="mermaid"] [aria-roledescription="er"] g[class*="label"] > rect {
   fill: #ffffff !important;
   stroke: #000000 !important;
 }
@@ -134,7 +138,9 @@ body {
 /* Ensure ER diagram relationship label text is black */
 .er.relationshipLabel,
 [class*="relationshipLabel"] text,
-.er.relationshipLabel text {
+.er.relationshipLabel text,
+[id^="mermaid"] [aria-roledescription="er"] g[class*="label"] text,
+[id^="mermaid"] [aria-roledescription="er"] g[class*="label"] tspan {
   fill: #000000 !important;
 }
 
