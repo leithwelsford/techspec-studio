@@ -19,6 +19,7 @@ import type {
   CompatibilityIssue,
   TemplateWarning,
   MarkdownGenerationGuidance,
+  PandocStyleRoleMap,
 } from '../types';
 
 export class TemplateAnalyzer {
@@ -49,7 +50,7 @@ export class TemplateAnalyzer {
     const specialStyles = this.analyzeSpecialStyles(stylesDoc);
     const sectionNumbering = this.analyzeSectionNumbering(numberingDoc);
     const listNumbering = this.analyzeListNumbering(numberingDoc);
-    const documentStructure = this.analyzeDocumentStructure(documentDoc);
+    const documentStructure = this.analyzeDocumentStructure(documentDoc, numberingDoc, stylesDoc);
 
     // Compatibility check
     const compatibility = this.checkCompatibility({
@@ -138,10 +139,60 @@ export class TemplateAnalyzer {
       },
       // Pandoc custom-style attributes - derived from template special styles
       pandocStyles: this.derivePandocStyles(analysis),
+      // Pandoc style role map - maps Pandoc's hard-coded style names to template's actual names
+      pandocStyleRoleMap: this.derivePandocStyleRoleMap(analysis),
     };
 
     console.log('[Template Analyzer] Guidance generated:', guidance);
     return guidance;
+  }
+
+  /**
+   * Extract logo/image candidates from the template's word/media/ folder.
+   * Returns images sorted by size descending (logos are typically the largest).
+   * Skips very small files (< 1KB) which are usually bullets or icons.
+   */
+  async extractLogos(file: File | string): Promise<Array<{
+    filename: string;
+    mimeType: string;
+    data: Uint8Array;
+    size: number;
+  }>> {
+    const zip = await this.loadDocx(file);
+    const allFiles = Object.keys(zip.files);
+    const logos: Array<{ filename: string; mimeType: string; data: Uint8Array; size: number }> = [];
+
+    const mimeMap: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      svg: 'image/svg+xml',
+    };
+
+    for (const filePath of allFiles) {
+      if (!filePath.startsWith('word/media/')) continue;
+      const zipEntry = zip.files[filePath];
+      if (zipEntry.dir) continue;
+
+      const ext = filePath.toLowerCase().split('.').pop() || '';
+      const mimeType = mimeMap[ext];
+      if (!mimeType) continue; // Skip EMF, WMF, etc.
+
+      const data = zipEntry.asUint8Array();
+      if (data.length < 1024) continue; // Skip tiny icons/bullets
+
+      const filename = filePath.replace('word/media/', '');
+      logos.push({ filename, mimeType, data, size: data.length });
+    }
+
+    // Sort by size descending — logos are typically the largest images
+    logos.sort((a, b) => b.size - a.size);
+
+    console.log(`[Template Analyzer] Extracted ${logos.length} logo candidate(s):`,
+      logos.map(l => `${l.filename} (${(l.size / 1024).toFixed(1)}KB)`));
+
+    return logos;
   }
 
   // ===== Private Methods =====
@@ -420,30 +471,44 @@ export class TemplateAnalyzer {
     const tocLevels = new Set<number>();
 
     // Notable style names to capture in otherStyles
-    // Extended patterns to capture code, quote, note, warning, and other useful styles
+    // Extended patterns to capture all styles that might be relevant for export mapping
     const notableStylePatterns = [
-      /^caption$/i,
-      /quote/i,              // Quote, BlockQuote, PullQuote
-      /^footnote/i,
+      /caption/i,            // Caption, FigureCaption, TableCaption, ImageCaption
+      /quote/i,              // Quote, BlockQuote, PullQuote, IntenseQuote
+      /footnote/i,           // FootnoteText, FootnoteReference
       /^header$/i,
       /^footer$/i,
       /code/i,               // Code, SourceCode, InlineCode
-      /^source/i,            // Source, SourceCode
-      /^listing/i,           // Listing, CodeListing
-      /^preformat/i,         // Preformatted
-      /^mono/i,              // Monospace
-      /^list/i,
-      /^note$/i,
-      /^info$/i,             // Info style
-      /^tip$/i,              // Tip style
-      /^warning$/i,
-      /^caution$/i,          // Caution style
-      /^important$/i,        // Important style
-      /^alert$/i,            // Alert style
-      /^figure/i,
-      /^table\s*caption/i,
+      /source/i,             // Source, SourceCode
+      /listing/i,            // Listing, CodeListing
+      /preformat/i,          // Preformatted, HTMLPreformatted
+      /mono/i,               // Monospace
+      /list/i,               // List Bullet, List Number, List Paragraph, ListContinue
+      /bullet/i,             // Bullet, BulletList
+      /^note/i,              // Note, NoteText
+      /^info/i,              // Info style
+      /^tip/i,               // Tip style
+      /warning/i,            // Warning
+      /caution/i,            // Caution style
+      /important/i,          // Important style
+      /^alert/i,             // Alert style
+      /figure/i,             // Figure, FigureCaption
       /block\s*text/i,       // Block Text, BlockText
-      /^excerpt/i,           // Excerpt style
+      /excerpt/i,            // Excerpt style
+      /body\s*text/i,        // Body Text, Body Text 2, Body Text 3
+      /^normal/i,            // Normal, NormalIndent, NormalWeb
+      /no\s*spacing/i,       // No Spacing
+      /subtitle/i,           // Subtitle
+      /strong/i,             // Strong
+      /emphasis/i,           // Emphasis, IntenseEmphasis
+      /definition/i,         // Definition, DefinitionTerm
+      /biblio/i,             // Bibliography
+      /^toc/i,               // TOC1-9, TOCHeading
+      /compact/i,            // Compact
+      /^abstract/i,          // Abstract
+      /appendix/i,           // Appendix, AppendixHeading
+      /normative/i,          // Normative language styles
+      /requirement/i,        // Requirement ID styles
     ];
 
     styleElements.forEach((styleEl) => {
@@ -492,14 +557,22 @@ export class TemplateAnalyzer {
       // Check for table styles (type="table")
       if (styleType === 'table') {
         result.tableStyles.exists = true;
-        result.tableStyles.styleIds.push(styleId);
+        const displayName = name || styleId;
+        if (!result.tableStyles.styleIds.includes(displayName)) {
+          result.tableStyles.styleIds.push(displayName);
+        }
+        // Map display name → XML styleId (they often differ)
+        if (!result.tableStyles.styleIdMap) {
+          result.tableStyles.styleIdMap = {};
+        }
+        result.tableStyles.styleIdMap[displayName] = styleId;
 
         // Check if it's the default table style
         const defaultAttr = styleEl.getAttribute('w:default') || styleEl.getAttribute('default');
         if (defaultAttr === '1' || defaultAttr === 'true') {
-          result.tableStyles.defaultStyle = styleId;
+          result.tableStyles.defaultStyle = displayName;
         }
-        console.log(`[Template Analyzer] Found table style: ${styleId}`);
+        console.log(`[Template Analyzer] Found table style: "${displayName}" (styleId: "${styleId}")`);
       }
 
       // Check for other notable styles
@@ -521,6 +594,10 @@ export class TemplateAnalyzer {
       }
     });
 
+    // Note: We intentionally do NOT scan latent styles (w:lsdException) for table
+    // styles because they contain 150+ built-in Word defaults that flood the dropdown.
+    // Custom table styles that aren't in styles.xml can be typed manually in the text input.
+
     // Set TOC levels count
     result.tocHeading.levels = tocLevels.size > 0 ? Math.max(...tocLevels) : 0;
 
@@ -528,7 +605,8 @@ export class TemplateAnalyzer {
       title: result.title.exists,
       subtitle: result.subtitle.exists,
       tocHeading: result.tocHeading.exists,
-      tableStyles: result.tableStyles.styleIds.length,
+      tableStyles: result.tableStyles.styleIds,
+      tableStyleDefault: result.tableStyles.defaultStyle,
       otherStyles: result.otherStyles.length,
     });
 
@@ -611,7 +689,9 @@ export class TemplateAnalyzer {
   }
 
   private analyzeDocumentStructure(
-    documentDoc: Document
+    documentDoc: Document,
+    numberingDoc?: Document,
+    stylesDoc?: Document
   ): DocumentStructureInfo {
     console.log('[Template Analyzer] Analyzing document structure...');
 
@@ -621,6 +701,179 @@ export class TemplateAnalyzer {
     for (let i = 0; i < allElements.length; i++) {
       if (allElements[i].localName === 'sectPr') {
         sectionBreaks++;
+      }
+    }
+
+    // Detect the most common paragraph style used inside table cells.
+    // Walk every <w:tc>, count pStyle occurrences on paragraphs inside.
+    const cellParagraphStyles = new Map<string, number>();
+    const tableCells: Element[] = [];
+    for (let i = 0; i < allElements.length; i++) {
+      if (allElements[i].localName === 'tc') {
+        tableCells.push(allElements[i]);
+      }
+    }
+    for (const tc of tableCells) {
+      const paragraphs = tc.getElementsByTagName('*');
+      for (let j = 0; j < paragraphs.length; j++) {
+        const el = paragraphs[j];
+        if (el.localName === 'pStyle') {
+          const val = el.getAttribute('w:val') || el.getAttribute('val');
+          if (val) {
+            cellParagraphStyles.set(val, (cellParagraphStyles.get(val) || 0) + 1);
+          }
+        }
+      }
+    }
+    let detectedCellParagraphStyle: string | undefined;
+    if (cellParagraphStyles.size > 0) {
+      // Pick the most common one
+      const sorted = Array.from(cellParagraphStyles.entries()).sort((a, b) => b[1] - a[1]);
+      detectedCellParagraphStyle = sorted[0][0];
+      console.log(`[Template Analyzer] Detected cell paragraph style: "${detectedCellParagraphStyle}" (${sorted[0][1]} occurrences, candidates:`, sorted, ')');
+    } else {
+      console.log('[Template Analyzer] No cell paragraph styles detected in template');
+    }
+
+    // Detect bullet and numbered list styles by scanning list item paragraphs.
+    // A paragraph is a list item if it has <w:numPr> referencing a numId.
+    // The numId maps to an abstractNum whose first level's numFmt tells us
+    // whether it's a bullet list or a numbered list.
+    let detectedBulletListStyle: string | undefined;
+    let detectedNumberedListStyle: string | undefined;
+    if (numberingDoc) {
+      // Build numId → list type (bullet/numbered) map
+      const abstractNumFormats = new Map<string, string>();
+      const allNumEls = numberingDoc.getElementsByTagName('*');
+      for (let i = 0; i < allNumEls.length; i++) {
+        const el = allNumEls[i];
+        if (el.localName === 'abstractNum') {
+          const absId = el.getAttribute('w:abstractNumId') || el.getAttribute('abstractNumId') || '';
+          // Find level 0 numFmt
+          for (let j = 0; j < el.children.length; j++) {
+            const lvl = el.children[j];
+            if (lvl.localName === 'lvl') {
+              const ilvl = lvl.getAttribute('w:ilvl') || lvl.getAttribute('ilvl');
+              if (ilvl === '0') {
+                for (let k = 0; k < lvl.children.length; k++) {
+                  if (lvl.children[k].localName === 'numFmt') {
+                    const val = lvl.children[k].getAttribute('w:val') || lvl.children[k].getAttribute('val');
+                    if (val) abstractNumFormats.set(absId, val);
+                  }
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
+      const numIdToType = new Map<string, 'bullet' | 'numbered'>();
+      for (let i = 0; i < allNumEls.length; i++) {
+        const el = allNumEls[i];
+        if (el.localName === 'num') {
+          const numId = el.getAttribute('w:numId') || el.getAttribute('numId') || '';
+          for (let j = 0; j < el.children.length; j++) {
+            if (el.children[j].localName === 'abstractNumId') {
+              const absId = el.children[j].getAttribute('w:val') || el.children[j].getAttribute('val');
+              if (absId) {
+                const fmt = abstractNumFormats.get(absId);
+                if (fmt === 'bullet') numIdToType.set(numId, 'bullet');
+                else if (fmt) numIdToType.set(numId, 'numbered');
+              }
+            }
+          }
+        }
+      }
+
+      // Build styleId → numId map from styles.xml: styles whose definition
+      // includes <w:numPr><w:numId>. This catches multi-level list styles like
+      // "List Paragraph" where paragraphs don't have their own numPr.
+      const styleIdToNumId = new Map<string, string>();
+      if (stylesDoc) {
+        const styleEls = stylesDoc.getElementsByTagName('*');
+        for (let i = 0; i < styleEls.length; i++) {
+          const el = styleEls[i];
+          if (el.localName !== 'style') continue;
+          const styleId = el.getAttribute('w:styleId') || el.getAttribute('styleId');
+          if (!styleId) continue;
+          // Find nested pPr > numPr > numId
+          const numIdEls = el.getElementsByTagName('*');
+          for (let j = 0; j < numIdEls.length; j++) {
+            if (numIdEls[j].localName === 'numId') {
+              const val = numIdEls[j].getAttribute('w:val') || numIdEls[j].getAttribute('val');
+              if (val) {
+                styleIdToNumId.set(styleId, val);
+                break;
+              }
+            }
+          }
+        }
+        console.log(`[Template Analyzer] Found ${styleIdToNumId.size} styles with list numbering in their definition`);
+      }
+
+      // Walk paragraphs, find those that are list items (via direct numPr OR
+      // via their pStyle referencing a list-enabled style). Tally pStyle per list type.
+      const bulletStyles = new Map<string, number>();
+      const numberedStyles = new Map<string, number>();
+      const paragraphs: Element[] = [];
+      for (let i = 0; i < allElements.length; i++) {
+        if (allElements[i].localName === 'p') {
+          // Skip if this paragraph is inside a <w:tc> (table cell)
+          let parent: Element | null = allElements[i].parentElement;
+          let insideCell = false;
+          while (parent) {
+            if (parent.localName === 'tc') { insideCell = true; break; }
+            parent = parent.parentElement;
+          }
+          if (!insideCell) paragraphs.push(allElements[i]);
+        }
+      }
+      for (const p of paragraphs) {
+        // Find pPr
+        let pPr: Element | null = null;
+        for (let j = 0; j < p.children.length; j++) {
+          if (p.children[j].localName === 'pPr') { pPr = p.children[j]; break; }
+        }
+        if (!pPr) continue;
+
+        // Extract numId (direct on paragraph) and pStyle
+        let directNumId: string | undefined;
+        let pStyle: string | undefined;
+        for (let j = 0; j < pPr.children.length; j++) {
+          const child = pPr.children[j];
+          if (child.localName === 'numPr') {
+            for (let k = 0; k < child.children.length; k++) {
+              if (child.children[k].localName === 'numId') {
+                directNumId = child.children[k].getAttribute('w:val') || child.children[k].getAttribute('val') || undefined;
+              }
+            }
+          } else if (child.localName === 'pStyle') {
+            pStyle = child.getAttribute('w:val') || child.getAttribute('val') || undefined;
+          }
+        }
+        if (!pStyle) continue;
+
+        // Resolve effective numId: direct first, else from style definition
+        const effectiveNumId = directNumId || styleIdToNumId.get(pStyle);
+        if (!effectiveNumId) continue;
+
+        const type = numIdToType.get(effectiveNumId);
+        if (type === 'bullet') {
+          bulletStyles.set(pStyle, (bulletStyles.get(pStyle) || 0) + 1);
+        } else if (type === 'numbered') {
+          numberedStyles.set(pStyle, (numberedStyles.get(pStyle) || 0) + 1);
+        }
+      }
+
+      if (bulletStyles.size > 0) {
+        const sorted = Array.from(bulletStyles.entries()).sort((a, b) => b[1] - a[1]);
+        detectedBulletListStyle = sorted[0][0];
+        console.log(`[Template Analyzer] Detected bullet list style: "${detectedBulletListStyle}" (${sorted[0][1]} occurrences)`);
+      }
+      if (numberedStyles.size > 0) {
+        const sorted = Array.from(numberedStyles.entries()).sort((a, b) => b[1] - a[1]);
+        detectedNumberedListStyle = sorted[0][0];
+        console.log(`[Template Analyzer] Detected numbered list style: "${detectedNumberedListStyle}" (${sorted[0][1]} occurrences)`);
       }
     }
 
@@ -640,6 +893,9 @@ export class TemplateAnalyzer {
       sectionBreaks,
       pageOrientation: 'portrait',
       pageSize: 'A4',
+      detectedCellParagraphStyle,
+      detectedBulletListStyle,
+      detectedNumberedListStyle,
     };
   }
 
@@ -929,6 +1185,166 @@ export class TemplateAnalyzer {
       return 'Table {section}-{number}: {title}';
     }
     return 'Table {number}: {title}';
+  }
+
+  /**
+   * Derive Pandoc style role map from template analysis.
+   * Maps Pandoc's hard-coded internal style names to the template's actual
+   * style names. Used to generate a Lua filter at export time.
+   */
+  private derivePandocStyleRoleMap(
+    analysis: DocxTemplateAnalysis
+  ): PandocStyleRoleMap {
+    const { paragraphStyles, specialStyles } = analysis;
+    const roleMap: PandocStyleRoleMap = {};
+
+    // Pandoc's expected style names — if the template uses these, no remap needed
+    const PANDOC_BODY_NAMES = ['body text', 'first paragraph', 'normal'];
+    const PANDOC_BLOCK_TEXT_NAMES = ['block text'];
+    const PANDOC_SOURCE_CODE_NAMES = ['source code'];
+
+    // Helper: find a style by role patterns, searching both otherStyles and paragraphStyles
+    const findStyleName = (
+      patterns: RegExp[],
+      skipNames?: string[]
+    ): string | undefined => {
+      const skip = new Set((skipNames || []).map(n => n.toLowerCase()));
+
+      // Search specialStyles.otherStyles first (curated notable styles)
+      for (const pattern of patterns) {
+        const match = specialStyles?.otherStyles.find(s =>
+          (pattern.test(s.name) || pattern.test(s.styleId)) &&
+          !skip.has(s.name.toLowerCase())
+        );
+        if (match) return match.name;
+      }
+
+      // Fall back to all paragraph styles
+      for (const pattern of patterns) {
+        const match = paragraphStyles?.find(s =>
+          (pattern.test(s.name) || pattern.test(s.styleId)) &&
+          !skip.has(s.name.toLowerCase())
+        );
+        if (match) return match.name;
+      }
+
+      return undefined;
+    };
+
+    // --- Body text ---
+    // Only map if template uses a non-standard name for body text
+    const bodyTextName = findStyleName([
+      /^body\s*text$/i,
+      /^body$/i,
+      /^normal\s*text$/i,
+    ]);
+    if (bodyTextName && !PANDOC_BODY_NAMES.includes(bodyTextName.toLowerCase())) {
+      roleMap.bodyText = bodyTextName;
+      console.log(`[Template Analyzer] Role map bodyText: "${bodyTextName}"`);
+    }
+
+    // --- First paragraph (after heading) ---
+    const firstParaName = findStyleName([
+      /^first\s*paragraph$/i,
+    ]);
+    if (firstParaName && firstParaName.toLowerCase() !== 'first paragraph') {
+      roleMap.firstParagraph = firstParaName;
+      console.log(`[Template Analyzer] Role map firstParagraph: "${firstParaName}"`);
+    }
+
+    // --- Block text (blockquotes) ---
+    const blockTextName = findStyleName([
+      /^block\s*text$/i,
+      /^block\s*quote$/i,
+      /^blockquote$/i,
+      /^quote$/i,
+      /^pull\s*quote$/i,
+      /^excerpt$/i,
+    ]);
+    if (blockTextName && !PANDOC_BLOCK_TEXT_NAMES.includes(blockTextName.toLowerCase())) {
+      roleMap.blockText = blockTextName;
+      console.log(`[Template Analyzer] Role map blockText: "${blockTextName}"`);
+    }
+
+    // --- Source code (code blocks) ---
+    const sourceCodeName = findStyleName([
+      /^source\s*code$/i,
+      /^code$/i,
+      /^code\s*block$/i,
+      /^listing$/i,
+      /^preformatted$/i,
+      /^monospace$/i,
+    ]);
+    if (sourceCodeName && !PANDOC_SOURCE_CODE_NAMES.includes(sourceCodeName.toLowerCase())) {
+      roleMap.sourceCode = sourceCodeName;
+      console.log(`[Template Analyzer] Role map sourceCode: "${sourceCodeName}"`);
+    }
+
+    // --- Bullet list ---
+    // Search broadly: "List Bullet", "Bullet List", "ListBullet", "List Paragraph" (if no explicit bullet style)
+    const bulletName = findStyleName([
+      /^list\s*bullet\s*\d*$/i,        // List Bullet, List Bullet 2, List Bullet 3
+      /^bullet\s*list\s*\d*$/i,        // Bullet List, Bullet List 2
+      /^listbullet\d*$/i,              // ListBullet, ListBullet2
+    ]);
+    if (bulletName) {
+      roleMap.listBullet = bulletName;
+      console.log(`[Template Analyzer] Role map listBullet: "${bulletName}"`);
+    }
+
+    // --- Numbered list ---
+    const numberName = findStyleName([
+      /^list\s*number\s*\d*$/i,        // List Number, List Number 2
+      /^list\s*\d+\s*num$/i,           // List 1 Num, List2Num
+      /^number\s*list\s*\d*$/i,        // Number List
+      /^numbered\s*list\s*\d*$/i,      // Numbered List
+      /^listnumber\d*$/i,              // ListNumber, ListNumber2
+      /^ordered\s*list\s*\d*$/i,       // Ordered List
+      /^list\s*continue\s*\d*$/i,      // List Continue (continuation of numbered list)
+      /num(bered)?\s*requirement/i,    // Numbered Requirement
+    ]);
+    if (numberName) {
+      roleMap.listNumber = numberName;
+      console.log(`[Template Analyzer] Role map listNumber: "${numberName}"`);
+    }
+
+    // --- Table style ---
+    // Find the table style name from the specialStyles analysis.
+    // Table styles have a display name in the XML (w:name) that may differ from the styleId.
+    // We search the otherStyles bag first (which captures table styles), then fall back to
+    // converting the styleId to a display name.
+    if (specialStyles?.tableStyles.exists) {
+      const tableStyleId = specialStyles.tableStyles.defaultStyle
+        || specialStyles.tableStyles.styleIds[0];
+      if (tableStyleId) {
+        // Check if this table style was captured in otherStyles with its display name
+        const tableFromOther = specialStyles.otherStyles.find(s =>
+          s.styleId === tableStyleId && s.type === 'table'
+        );
+        const tableName = tableFromOther?.name
+          || tableStyleId.replace(/([a-z])([A-Z])/g, '$1 $2');
+        roleMap.tableStyle = tableName;
+        console.log(`[Template Analyzer] Role map tableStyle: "${tableName}" (id: ${tableStyleId})`);
+      }
+    }
+
+    // --- Appendix heading ---
+    const appendixName = findStyleName([
+      /^appendix/i,
+    ]);
+    if (appendixName) {
+      roleMap.appendixHeading = appendixName;
+      console.log(`[Template Analyzer] Role map appendixHeading: "${appendixName}"`);
+    }
+
+    const mappingCount = Object.keys(roleMap).length;
+    if (mappingCount > 0) {
+      console.log(`[Template Analyzer] Style role map: ${mappingCount} mappings`, roleMap);
+    } else {
+      console.log('[Template Analyzer] Style role map: no remappings needed (template uses standard Pandoc names)');
+    }
+
+    return roleMap;
   }
 
   /**

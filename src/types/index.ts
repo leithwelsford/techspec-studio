@@ -47,6 +47,19 @@ export interface DocumentMetadata {
   abstract?: string;      // Brief summary for Pandoc YAML front matter
   approvers?: Approver[];
   revisions?: Revision[];
+  // Front matter fields
+  documentType?: string;        // e.g., "SPD", "Technical Specification", "HLD"
+  versionStatus?: string;       // e.g., "DRAFT", "FOR REVIEW", "RELEASED"
+  documentRelease?: DocumentReleaseEntry[];  // Author/reviewer entries for Document Control
+  vendorLogoRef?: string;       // IndexedDB key for vendor logo image
+  customerLogoRef?: string;     // IndexedDB key for customer logo image
+}
+
+export interface DocumentReleaseEntry {
+  role: 'Author' | 'Reviewer';
+  name: string;
+  title: string;
+  date?: string;
 }
 
 export interface Approver {
@@ -904,7 +917,9 @@ export interface SpecialStylesInfo {
   };
   tableStyles: {
     exists: boolean;
-    styleIds: string[]; // List of table style IDs found
+    styleIds: string[]; // Display names for UI dropdown
+    /** Map of display name → XML styleId (for DOCX post-processing) */
+    styleIdMap?: Record<string, string>;
     defaultStyle?: string;
   };
   // Other commonly used styles
@@ -953,6 +968,12 @@ export interface DocumentStructureInfo {
   sectionBreaks: number;
   pageOrientation: 'portrait' | 'landscape';
   pageSize: 'A4' | 'Letter' | 'Legal' | 'Custom';
+  /** Most common paragraph style used inside table cells (e.g., "CellBodyLeft") */
+  detectedCellParagraphStyle?: string;
+  /** Most common paragraph style used on bullet list items (e.g., "ListBullet2") */
+  detectedBulletListStyle?: string;
+  /** Most common paragraph style used on numbered list items (e.g., "List1Num") */
+  detectedNumberedListStyle?: string;
 }
 
 /**
@@ -1035,6 +1056,35 @@ export interface MarkdownGenerationGuidance {
     codeStyle?: string; // Style name for code blocks (e.g., "Code", "Source Code")
     otherStyles?: Record<string, string>; // Map of content type → style name
   };
+  // Pandoc style role map — maps Pandoc's hard-coded style names to the
+  // template's actual style names. Used to generate a Lua filter at export time.
+  pandocStyleRoleMap?: PandocStyleRoleMap;
+}
+
+/**
+ * Maps Pandoc's hard-coded internal style names to the actual style names
+ * found in the uploaded template. Used to generate a Lua filter that remaps
+ * styles at Pandoc processing time.
+ *
+ * Only populated roles get a Lua filter function — unpopulated roles
+ * fall back to Pandoc's default behavior (no regression).
+ */
+export interface PandocStyleRoleMap {
+  // Paragraph styles (Pandoc default → template actual)
+  bodyText?: string;        // Pandoc uses "Body Text" / "First Paragraph"
+  firstParagraph?: string;  // Pandoc uses "First Paragraph" (first para after heading)
+  blockText?: string;       // Pandoc uses "Block Text" for blockquotes
+  sourceCode?: string;      // Pandoc uses "Source Code" for code blocks
+
+  // List styles — Pandoc uses "Compact" for all list items
+  listBullet?: string;      // e.g., "List Bullet"
+  listNumber?: string;      // e.g., "List Number"
+
+  // Table style
+  tableStyle?: string;      // e.g., "Grid Table Light" or corporate table style
+
+  // Appendix heading style
+  appendixHeading?: string; // e.g., "AppendixHeading"
 }
 
 // ========== AI Structure Discovery ==========

@@ -9,6 +9,7 @@ import {
   transformMarkdownWithImages,
 } from '../utils/diagramImageExporter';
 import { templateAnalyzer } from '../services/templateAnalyzer';
+import DocumentMetadataEditor, { type LogoCandidate } from './DocumentMetadataEditor';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -27,7 +28,7 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const clearTemplateAnalysis = useProjectStore((state) => state.clearTemplateAnalysis);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'template' | 'export'>('template');
+  const [activeTab, setActiveTab] = useState<'template' | 'metadata' | 'export'>('template');
 
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<'markdown' | 'docx'>('docx');
@@ -40,6 +41,25 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
   // Template analysis state
   const [analyzingTemplate, setAnalyzingTemplate] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [showAllStyles, setShowAllStyles] = useState(false);
+
+  // Logo extraction state
+  const [logoCandidates, setLogoCandidates] = useState<LogoCandidate[]>([]);
+  const [vendorLogoFilename, setVendorLogoFilename] = useState<string | undefined>();
+  const [customerLogoFilename, setCustomerLogoFilename] = useState<string | undefined>();
+  // Logo binary data for export (kept in memory, not IndexedDB, for simplicity)
+  const [logoBlobs, setLogoBlobs] = useState<Map<string, Blob>>(new Map());
+
+  // Front matter options
+  const [includeCoverPage, setIncludeCoverPage] = useState(true);
+  const [includeDocControl, setIncludeDocControl] = useState(true);
+  // Table style override (user-selected from template's table styles)
+  const [selectedTableStyle, setSelectedTableStyle] = useState<string>('');
+  // Paragraph style for table cell contents
+  const [cellParagraphStyle, setCellParagraphStyle] = useState<string>('');
+  // List style overrides (user-specified template style names)
+  const [bulletListStyle, setBulletListStyle] = useState<string>('');
+  const [numberedListStyle, setNumberedListStyle] = useState<string>('');
 
   // DOCX options
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
@@ -77,7 +97,57 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
       const guidance = templateAnalyzer.generateMarkdownGuidance(analysis);
       setMarkdownGuidance(guidance);
 
+      // Auto-populate style fields from the new template — always overwrite
+      // so each upload gets fresh detection (user can still edit manually after)
+      const detectedCellStyle = analysis.documentStructure?.detectedCellParagraphStyle;
+      if (detectedCellStyle) {
+        setCellParagraphStyle(detectedCellStyle);
+        console.log(`[Template] Auto-selected cell paragraph style: "${detectedCellStyle}"`);
+      }
+
+      // Prefer document-usage detection (what the template ACTUALLY uses),
+      // fall back to regex-matched style names. Document-usage is more reliable
+      // because Word often attaches multi-level lists to generic "List Paragraph"
+      // style rather than named "List Number" styles.
+      const detectedBullet = analysis.documentStructure?.detectedBulletListStyle
+        || guidance.pandocStyleRoleMap?.listBullet;
+      if (detectedBullet) {
+        setBulletListStyle(detectedBullet);
+        console.log(`[Template] Auto-selected bullet list style: "${detectedBullet}"`);
+      }
+      const detectedNumber = analysis.documentStructure?.detectedNumberedListStyle
+        || guidance.pandocStyleRoleMap?.listNumber;
+      if (detectedNumber) {
+        setNumberedListStyle(detectedNumber);
+        console.log(`[Template] Auto-selected numbered list style: "${detectedNumber}"`);
+      }
+
       console.log('[Template] Analysis complete');
+
+      // Extract logos from template
+      try {
+        const rawLogos = await templateAnalyzer.extractLogos(file);
+        const candidates: LogoCandidate[] = rawLogos.map(logo => {
+          const blob = new Blob([new Uint8Array(logo.data)], { type: logo.mimeType });
+          const dataUrl = URL.createObjectURL(blob);
+          return { filename: logo.filename, mimeType: logo.mimeType, dataUrl, size: logo.size };
+        });
+        setLogoCandidates(candidates);
+
+        // Store blobs for export
+        const blobMap = new Map<string, Blob>();
+        rawLogos.forEach(logo => {
+          blobMap.set(logo.filename, new Blob([new Uint8Array(logo.data)], { type: logo.mimeType }));
+        });
+        setLogoBlobs(blobMap);
+
+        // Auto-assign: largest image as vendor logo, second as customer logo
+        if (candidates.length >= 1) setVendorLogoFilename(candidates[0].filename);
+        if (candidates.length >= 2) setCustomerLogoFilename(candidates[1].filename);
+        console.log(`[Template] Extracted ${candidates.length} logo candidate(s)`);
+      } catch (logoErr) {
+        console.warn('[Template] Logo extraction failed:', logoErr);
+      }
 
       // Store as base64 for browser-based export
       const reader = new FileReader();
@@ -106,6 +176,14 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
     setTemplateFile(null);
     setAnalysisError(null);
     setUsePandoc(false);
+    setLogoCandidates([]);
+    setVendorLogoFilename(undefined);
+    setCustomerLogoFilename(undefined);
+    setLogoBlobs(new Map());
+    setCellParagraphStyle('');
+    setSelectedTableStyle('');
+    setBulletListStyle('');
+    setNumberedListStyle('');
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -150,14 +228,46 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
         }
         console.log('[Export] Using Pandoc...');
 
+        // Build logo blobs array for front matter
+        const exportLogoBlobs: Array<{ filename: string; blob: Blob }> = [];
+        if (vendorLogoFilename && logoBlobs.has(vendorLogoFilename)) {
+          exportLogoBlobs.push({ filename: vendorLogoFilename, blob: logoBlobs.get(vendorLogoFilename)! });
+        }
+        if (customerLogoFilename && logoBlobs.has(customerLogoFilename)) {
+          exportLogoBlobs.push({ filename: customerLogoFilename, blob: logoBlobs.get(customerLogoFilename)! });
+        }
+
         // Pass pandocStyles from template analysis for custom style mapping
+        // Override table style if user selected one
+        const roleMap = { ...markdownGuidance?.pandocStyleRoleMap };
+        if (selectedTableStyle) {
+          // Resolve display name to XML styleId if we have the mapping
+          const styleIdMap = docxTemplateAnalysis?.specialStyles?.tableStyles?.styleIdMap;
+          roleMap.tableStyle = styleIdMap?.[selectedTableStyle] || selectedTableStyle;
+        }
+        if (bulletListStyle) {
+          roleMap.listBullet = bulletListStyle;
+        }
+        if (numberedListStyle) {
+          roleMap.listNumber = numberedListStyle;
+        }
         const pandocExportOpts = {
           ...exportOpts,
           pandocStyles: markdownGuidance?.pandocStyles,
+          pandocStyleRoleMap: roleMap,
           numberingMode,
+          includeCoverPage,
+          includeDocControl,
+          vendorLogoFilename,
+          customerLogoFilename,
+          logoBlobs: exportLogoBlobs,
+          cellParagraphStyle: cellParagraphStyle || undefined,
+          bulletListStyle: bulletListStyle || undefined,
+          numberedListStyle: numberedListStyle || undefined,
         };
         console.log('[Export] Pandoc styles:', markdownGuidance?.pandocStyles);
         console.log('[Export] Numbering mode:', numberingMode);
+        console.log('[Export] Front matter:', { includeCoverPage, includeDocControl, vendorLogoFilename, customerLogoFilename });
 
         blob = await exportWithPandoc(project, templateFileForPandoc, pandocExportOpts);
         downloadPandocDocx(blob, filename);
@@ -304,6 +414,17 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
               )}
             </button>
             <button
+              onClick={() => setActiveTab('metadata')}
+              className={`py-4 px-4 text-sm font-medium border-b-2 flex items-center gap-2 ${
+                activeTab === 'metadata'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+              }`}
+            >
+              <span>📋</span>
+              Document Info
+            </button>
+            <button
               onClick={() => setActiveTab('export')}
               className={`py-4 px-4 text-sm font-medium border-b-2 flex items-center gap-2 ${
                 activeTab === 'export'
@@ -378,51 +499,186 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                     <span>✓</span> Template Analysis Complete
                   </h3>
 
-                  {/* Detected Styles Grid */}
-                  <div className="grid grid-cols-2 gap-4 mb-3">
-                    {/* Heading Styles */}
-                    <div className="text-sm">
-                      <div className="font-medium text-green-900 dark:text-green-300 mb-1">Heading Styles</div>
-                      <ul className="text-green-800 dark:text-green-400 space-y-0.5">
-                        {docxTemplateAnalysis.headingStyles?.slice(0, 3).map((h, i) => (
-                          <li key={i} className="text-xs">• Heading {h.level} ({h.fontSize}pt, {h.font})</li>
+                  {/* Style Mapping Table */}
+                  <div className="mb-3">
+                    <div className="text-sm font-medium text-green-900 dark:text-green-300 mb-2">Style Mapping</div>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-green-700 dark:text-green-400 border-b border-green-200 dark:border-green-700">
+                          <th className="pb-1 pr-2 font-medium">Spec Element</th>
+                          <th className="pb-1 pr-2 font-medium">Template Style</th>
+                          <th className="pb-1 font-medium">Method</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-green-800 dark:text-green-400">
+                        {/* Headings */}
+                        {docxTemplateAnalysis.headingStyles?.slice(0, 4).map((h, i) => (
+                          <tr key={`h-${i}`} className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Heading {h.level}</td>
+                            <td className="py-0.5 pr-2 font-mono">{h.styleId}</td>
+                            <td className="py-0.5 text-green-600 dark:text-green-500">auto</td>
+                          </tr>
                         ))}
-                        {(docxTemplateAnalysis.headingStyles?.length || 0) > 3 && (
-                          <li className="text-xs text-green-600 dark:text-green-500">
-                            +{(docxTemplateAnalysis.headingStyles?.length || 0) - 3} more
-                          </li>
+                        {(docxTemplateAnalysis.headingStyles?.length || 0) > 4 && (
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2 text-green-600 dark:text-green-500" colSpan={3}>
+                              +{(docxTemplateAnalysis.headingStyles?.length || 0) - 4} more heading levels
+                            </td>
+                          </tr>
                         )}
-                      </ul>
-                    </div>
 
-                    {/* Special Styles */}
-                    <div className="text-sm">
-                      <div className="font-medium text-green-900 dark:text-green-300 mb-1">Special Styles</div>
-                      <ul className="text-green-800 dark:text-green-400 space-y-0.5">
-                        {docxTemplateAnalysis.captionStyles?.figureCaption?.exists && (
-                          <li className="text-xs">• Figure Caption</li>
+                        {/* Content styles from pandocStyles */}
+                        {markdownGuidance?.pandocStyles?.figureCaption && (
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Figure captions</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyles.figureCaption}</td>
+                            <td className="py-0.5 text-green-600 dark:text-green-500">custom-style</td>
+                          </tr>
                         )}
-                        {docxTemplateAnalysis.captionStyles?.tableCaption?.exists && (
-                          <li className="text-xs">• Table Caption</li>
+                        {markdownGuidance?.pandocStyles?.tableCaption && markdownGuidance.pandocStyles.tableCaption !== markdownGuidance.pandocStyles.figureCaption && (
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Table captions</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyles.tableCaption}</td>
+                            <td className="py-0.5 text-green-600 dark:text-green-500">custom-style</td>
+                          </tr>
                         )}
                         {markdownGuidance?.pandocStyles?.codeStyle && (
-                          <li className="text-xs">• Code Style</li>
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Code blocks</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyles.codeStyle}</td>
+                            <td className="py-0.5 text-green-600 dark:text-green-500">custom-style</td>
+                          </tr>
                         )}
                         {markdownGuidance?.pandocStyles?.quoteStyle && (
-                          <li className="text-xs">• Quote Style</li>
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Blockquotes</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyles.quoteStyle}</td>
+                            <td className="py-0.5 text-green-600 dark:text-green-500">custom-style</td>
+                          </tr>
                         )}
                         {markdownGuidance?.pandocStyles?.noteStyle && (
-                          <li className="text-xs">• Note Style</li>
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Notes</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyles.noteStyle}</td>
+                            <td className="py-0.5 text-green-600 dark:text-green-500">custom-style</td>
+                          </tr>
                         )}
-                      </ul>
-                    </div>
+                        {markdownGuidance?.pandocStyles?.warningStyle && (
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Warnings</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyles.warningStyle}</td>
+                            <td className="py-0.5 text-green-600 dark:text-green-500">custom-style</td>
+                          </tr>
+                        )}
+
+                        {/* Lua filter remappings */}
+                        {markdownGuidance?.pandocStyleRoleMap?.listBullet && (
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Bullet lists</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyleRoleMap.listBullet}</td>
+                            <td className="py-0.5 text-blue-600 dark:text-blue-400">lua filter</td>
+                          </tr>
+                        )}
+                        {markdownGuidance?.pandocStyleRoleMap?.listNumber && (
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Numbered lists</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyleRoleMap.listNumber}</td>
+                            <td className="py-0.5 text-blue-600 dark:text-blue-400">lua filter</td>
+                          </tr>
+                        )}
+                        {markdownGuidance?.pandocStyleRoleMap?.tableStyle && (
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Tables</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyleRoleMap.tableStyle}</td>
+                            <td className="py-0.5 text-blue-600 dark:text-blue-400">lua filter</td>
+                          </tr>
+                        )}
+                        {markdownGuidance?.pandocStyleRoleMap?.bodyText && (
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Body text</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyleRoleMap.bodyText}</td>
+                            <td className="py-0.5 text-blue-600 dark:text-blue-400">lua filter</td>
+                          </tr>
+                        )}
+                        {markdownGuidance?.pandocStyleRoleMap?.sourceCode && (
+                          <tr className="border-b border-green-100 dark:border-green-800/50">
+                            <td className="py-0.5 pr-2">Source code</td>
+                            <td className="py-0.5 pr-2 font-mono">{markdownGuidance.pandocStyleRoleMap.sourceCode}</td>
+                            <td className="py-0.5 text-blue-600 dark:text-blue-400">lua filter</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
 
                   {/* Status Summary */}
-                  <div className="text-xs text-green-700 dark:text-green-400 pt-2 border-t border-green-200 dark:border-green-700">
-                    ✓ {docxTemplateAnalysis.headingStyles?.length || 0} heading levels •
-                    ✓ {docxTemplateAnalysis.specialStyles?.otherStyles?.length || 0} special styles •
-                    ✓ Template ready for export
+                  <div className="text-xs text-green-700 dark:text-green-400 pt-2 border-t border-green-200 dark:border-green-700 flex flex-wrap gap-x-2">
+                    <span>✓ {docxTemplateAnalysis.headingStyles?.length || 0} heading levels</span>
+                    <span>•</span>
+                    <span>✓ {docxTemplateAnalysis.paragraphStyles?.length || 0} paragraph styles</span>
+                    <span>•</span>
+                    <span>✓ {docxTemplateAnalysis.specialStyles?.tableStyles?.styleIds?.length || 0} table styles</span>
+                    {markdownGuidance?.pandocStyleRoleMap && Object.keys(markdownGuidance.pandocStyleRoleMap).length > 0 && (
+                      <>
+                        <span>•</span>
+                        <span className="text-blue-600 dark:text-blue-400">
+                          ✓ {Object.keys(markdownGuidance.pandocStyleRoleMap).length} lua filter remap(s)
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* All Template Styles (collapsible) */}
+                  <div className="mt-2 pt-2 border-t border-green-200 dark:border-green-700">
+                    <button
+                      onClick={() => setShowAllStyles(!showAllStyles)}
+                      className="text-xs text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200 flex items-center gap-1"
+                    >
+                      <svg className={`w-3 h-3 transition-transform ${showAllStyles ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      Show all {docxTemplateAnalysis.paragraphStyles?.length || 0} paragraph styles in template
+                    </button>
+                    {showAllStyles && (
+                      <div className="mt-2 max-h-48 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-left text-green-700 dark:text-green-400 border-b border-green-200 dark:border-green-700 sticky top-0 bg-green-50 dark:bg-green-900/20">
+                              <th className="pb-1 pr-2 font-medium">Style Name</th>
+                              <th className="pb-1 pr-2 font-medium">Style ID</th>
+                              <th className="pb-1 pr-2 font-medium">Font</th>
+                              <th className="pb-1 font-medium">Size</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-green-800 dark:text-green-400">
+                            {docxTemplateAnalysis.paragraphStyles?.map((s, i) => (
+                              <tr key={i} className="border-b border-green-100 dark:border-green-800/50">
+                                <td className="py-0.5 pr-2">{s.name}</td>
+                                <td className="py-0.5 pr-2 font-mono">{s.styleId}</td>
+                                <td className="py-0.5 pr-2">{s.font || '—'}</td>
+                                <td className="py-0.5">{s.fontSize ? `${s.fontSize}pt` : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {/* Table styles */}
+                        {docxTemplateAnalysis.specialStyles?.tableStyles?.styleIds?.length > 0 && (
+                          <div className="mt-2 pt-2 border-t border-green-200 dark:border-green-700">
+                            <div className="font-medium text-green-700 dark:text-green-400 mb-1">Table Styles</div>
+                            <ul className="space-y-0.5">
+                              {docxTemplateAnalysis.specialStyles.tableStyles.styleIds.map((id, i) => (
+                                <li key={i} className="font-mono">
+                                  {id}
+                                  {id === docxTemplateAnalysis.specialStyles?.tableStyles?.defaultStyle && (
+                                    <span className="ml-1 text-green-600 dark:text-green-500">(default)</span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -447,6 +703,33 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Document Info Tab */}
+          {activeTab === 'metadata' && (
+            <div className="p-6">
+              <DocumentMetadataEditor
+                logoCandidates={logoCandidates}
+                onLogoAssigned={(role, candidate) => {
+                  if (role === 'vendor') {
+                    setVendorLogoFilename(candidate?.filename);
+                  } else {
+                    setCustomerLogoFilename(candidate?.filename);
+                  }
+                }}
+                vendorLogoFilename={vendorLogoFilename}
+                customerLogoFilename={customerLogoFilename}
+                tableStyleNames={docxTemplateAnalysis?.specialStyles?.tableStyles?.styleIds || []}
+                selectedTableStyle={selectedTableStyle}
+                onTableStyleChanged={setSelectedTableStyle}
+                cellParagraphStyle={cellParagraphStyle}
+                onCellParagraphStyleChanged={setCellParagraphStyle}
+                bulletListStyle={bulletListStyle}
+                onBulletListStyleChanged={setBulletListStyle}
+                numberedListStyle={numberedListStyle}
+                onNumberedListStyleChanged={setNumberedListStyle}
+              />
             </div>
           )}
 
@@ -535,6 +818,24 @@ export default function ExportModal({ isOpen, onClose }: ExportModalProps) {
                       Options
                     </label>
                     <div className="space-y-2">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={includeCoverPage}
+                          onChange={(e) => setIncludeCoverPage(e.target.checked)}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Include Cover Page</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={includeDocControl}
+                          onChange={(e) => setIncludeDocControl(e.target.checked)}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Include Document Control</span>
+                      </label>
                       <label className="flex items-center">
                         <input
                           type="checkbox"
