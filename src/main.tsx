@@ -50,6 +50,31 @@ mermaid.initialize({
   securityLevel: 'loose',
   fontFamily: 'Arial, Helvetica, sans-serif',
   suppressErrorRendering: true,
+  // Flowchart layout — generous spacing avoids label overlap
+  flowchart: {
+    nodeSpacing: 60,
+    rankSpacing: 80,
+    padding: 20,
+    useMaxWidth: false,
+    curve: 'basis',
+    diagramPadding: 20,
+  },
+  // State diagram layout — same reasoning; state diagrams with many
+  // transition labels benefit most from extra rank spacing
+  state: {
+    nodeSpacing: 80,
+    rankSpacing: 100,
+    padding: 20,
+    useMaxWidth: false,
+  },
+  // Sequence diagram layout
+  sequence: {
+    actorMargin: 60,
+    messageMargin: 45,
+    boxMargin: 15,
+    noteMargin: 15,
+    useMaxWidth: false,
+  },
 })
 
 // Initialize Mermaid docs cache in background (non-blocking)
