@@ -1148,22 +1148,11 @@ async function applyListStylesToDocx(
         if (listType === 'bullet') bulletsStyled++;
         else numbersStyled++;
 
-        // Apply pStyle inside pPr; strip Pandoc's paragraph-level <w:ind>;
-        // redirect the paragraph's numId to the template style's numId so
-        // indentation and numbering format come from the template.
+        // Apply pStyle inside pPr; keep Pandoc's numPr intact so lists stay
+        // their correct type (bullet vs numbered). Redirecting numId breaks
+        // list type when bullet/numbered styles share a name.
         const attrs = pAttrs || '';
         let newInner = pInner;
-        // Strip explicit paragraph-level indent (Pandoc's default overrides style)
-        newInner = newInner.replace(/<w:ind\s+[^/]*\/>/g, '');
-
-        // Redirect numId to the template's style numId (if known)
-        const templateNumId = styleNumIdMap.get(targetStyle);
-        if (templateNumId) {
-          newInner = newInner.replace(
-            /<w:numId\s+w:val="[^"]+"\s*\/>/,
-            `<w:numId w:val="${templateNumId}"/>`
-          );
-        }
 
         if (/<w:pPr>/.test(newInner)) {
           if (/<w:pStyle\s+w:val="[^"]*"\s*\/>/.test(newInner)) {
