@@ -1100,16 +1100,29 @@ async function applyListStylesToDocx(
     const styleNumIdMap = new Map<string, string>();
     if (stylesFile) {
       const stylesXml = stylesFile.asText();
-      const styleBlockPattern = /<w:style\s+w:type="paragraph"\s+w:styleId="([^"]+)"[^>]*>([\s\S]*?)<\/w:style>/g;
+      // Match ALL <w:style> blocks regardless of attribute order, then filter
+      // for paragraph styles and extract styleId + numId.
+      const styleBlockPattern = /<w:style\s+([^>]*)>([\s\S]*?)<\/w:style>/g;
       let styleMatch;
+      let scannedCount = 0;
       while ((styleMatch = styleBlockPattern.exec(stylesXml)) !== null) {
-        const styleId = styleMatch[1];
-        const numIdInStyle = styleMatch[2].match(/<w:numId\s+w:val="([^"]+)"/);
+        const attrs = styleMatch[1];
+        const content = styleMatch[2];
+        // Only consider paragraph styles
+        if (!/w:type="paragraph"/.test(attrs)) continue;
+        const styleIdMatch = attrs.match(/w:styleId="([^"]+)"/);
+        if (!styleIdMatch) continue;
+        scannedCount++;
+        const numIdInStyle = content.match(/<w:numId\s+w:val="([^"]+)"/);
         if (numIdInStyle) {
-          styleNumIdMap.set(styleId, numIdInStyle[1]);
+          styleNumIdMap.set(styleIdMatch[1], numIdInStyle[1]);
         }
       }
-      console.log(`[Pandoc Export] Template has ${styleNumIdMap.size} list-enabled paragraph styles`);
+      console.log(`[Pandoc Export] Scanned ${scannedCount} paragraph styles, ${styleNumIdMap.size} have list numbering`);
+      if (styleNumIdMap.size > 0) {
+        const sample = Array.from(styleNumIdMap.entries()).slice(0, 5);
+        console.log('[Pandoc Export] Sample style → numId:', sample);
+      }
     }
 
     // Walk each <w:p> with <w:numPr>, determine type, apply style
