@@ -58,6 +58,7 @@ mermaid.initialize({
     useMaxWidth: false,
     curve: 'basis',
     diagramPadding: 20,
+    htmlLabels: false,  // Use SVG text for labels (no foreignObject clipping)
   },
   // State diagram layout — same reasoning; state diagrams with many
   // transition labels benefit most from extra rank spacing
@@ -66,6 +67,7 @@ mermaid.initialize({
     rankSpacing: 100,
     padding: 20,
     useMaxWidth: false,
+    defaultRenderer: 'dagre-wrapper',  // Better label width handling
   },
   // Sequence diagram layout
   sequence: {

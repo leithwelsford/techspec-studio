@@ -459,6 +459,28 @@ function preprocessMermaidSvg(svgString: string): { svg: string; maxWidth: numbe
     svgEl.removeAttribute('height');
     svgEl.removeAttribute('style');
 
+    // Mermaid sometimes wraps edge labels in <foreignObject> with width="1"
+    // (or some other minimal value), causing labels to clip mid-word.
+    // Expand any tiny foreignObject widths to fit their HTML content.
+    const foreignObjects = doc.querySelectorAll('foreignObject');
+    foreignObjects.forEach((fo) => {
+      const w = parseFloat(fo.getAttribute('width') || '0');
+      // If width is suspiciously small, expand it
+      if (w > 0 && w < 200) {
+        // Measure HTML content — find first div/span with text
+        const child = fo.querySelector('div, span, p');
+        if (child) {
+          const text = child.textContent || '';
+          // Estimate width: ~7px per character (Arial 12pt)
+          // Use the longest line if there are line breaks
+          const lines = text.split(/\n|<br\s*\/?>/i);
+          const longestLine = lines.reduce((max, l) => Math.max(max, l.length), 0);
+          const estimatedWidth = Math.max(w, longestLine * 7 + 20);
+          fo.setAttribute('width', String(estimatedWidth));
+        }
+      }
+    });
+
     return { svg: new XMLSerializer().serializeToString(doc), maxWidth };
   }
 
