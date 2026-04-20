@@ -70,14 +70,15 @@ mermaid.initialize({
     diagramPadding: 20,
     htmlLabels: false,  // Use SVG text for labels (no foreignObject clipping)
   },
-  // State diagram layout — same reasoning; state diagrams with many
-  // transition labels benefit most from extra rank spacing
+  // State diagram layout — state diagrams with bi-directional transitions
+  // (A→B and B→A) stack their labels in the same space, so we need very
+  // generous rank spacing to separate them
   state: {
-    nodeSpacing: 80,
-    rankSpacing: 100,
-    padding: 20,
+    nodeSpacing: 120,
+    rankSpacing: 200,
+    padding: 30,
     useMaxWidth: false,
-    defaultRenderer: 'dagre-wrapper',  // Better label width handling
+    defaultRenderer: 'dagre-wrapper',
   },
   // Sequence diagram layout
   sequence: {
