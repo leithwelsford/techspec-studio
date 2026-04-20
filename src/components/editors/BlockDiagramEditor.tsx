@@ -23,7 +23,7 @@ interface BlockDiagramEditorProps {
 }
 
 // Constants
-const GRID = 10;
+const GRID = 20;
 const MIN_W = 60;
 const MIN_H = 28;
 const CANVAS_W = 3600;
@@ -182,6 +182,13 @@ function Node({
           x = resizing.ox + (resizing.ow - w);
           y = resizing.oy + (resizing.oh - h);
           break;
+      }
+      // Apply snap to size and position so resized blocks align to grid
+      if (snapToGrid) {
+        w = Math.max(MIN_W, snap(w));
+        h = Math.max(MIN_H, snap(h));
+        x = snap(x);
+        y = snap(y);
       }
       onResize(id, { w, h });
       onMove(id, { x, y });
