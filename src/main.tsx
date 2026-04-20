@@ -44,8 +44,18 @@ mermaid.initialize({
     clusterBorder: '#000000',
     defaultLinkColor: '#000000',
     edgeLabelBackground: '#ffffff',
+    // ER diagrams — without these the relationship labels render as
+    // filled black rectangles with invisible text
+    attributeBackgroundColorEven: '#ffffff',
+    attributeBackgroundColorOdd: '#f5f5f5',
     // Font
     fontFamily: 'Arial, Helvetica, sans-serif',
+  },
+  // ER diagram config — fill/stroke for relationship labels
+  er: {
+    useMaxWidth: false,
+    fill: '#ffffff',
+    stroke: '#000000',
   },
   securityLevel: 'loose',
   fontFamily: 'Arial, Helvetica, sans-serif',
