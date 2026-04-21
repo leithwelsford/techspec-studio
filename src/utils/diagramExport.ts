@@ -46,11 +46,11 @@ export async function renderBlockDiagramToSVG(diagram: BlockDiagram): Promise<st
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
   Object.entries(diagram.positions).forEach(([id, pos]) => {
-    const size = diagram.sizes?.[id] || { width: 120, height: 60 };
+    const size = diagram.sizes?.[id] || { w: 120, h: 60 };
     minX = Math.min(minX, pos.x);
     minY = Math.min(minY, pos.y);
-    maxX = Math.max(maxX, pos.x + (size.width || 120));
-    maxY = Math.max(maxY, pos.y + (size.height || 60));
+    maxX = Math.max(maxX, pos.x + (size.w || 120));
+    maxY = Math.max(maxY, pos.y + (size.h || 60));
   });
 
   // Handle edge case where bounding box is invalid
@@ -94,15 +94,15 @@ export async function renderBlockDiagramToSVG(diagram: BlockDiagram): Promise<st
   diagram.edges.forEach((edge, index) => {
     const fromPos = diagram.positions[edge.from];
     const toPos = diagram.positions[edge.to];
-    const fromSize = diagram.sizes?.[edge.from] || { width: 120, height: 60 };
-    const toSize = diagram.sizes?.[edge.to] || { width: 120, height: 60 };
+    const fromSize = diagram.sizes?.[edge.from] || { w: 120, h: 60 };
+    const toSize = diagram.sizes?.[edge.to] || { w: 120, h: 60 };
 
     if (!fromPos || !toPos) return;
 
-    const fromX = fromPos.x + (fromSize.width || 120) / 2;
-    const fromY = fromPos.y + (fromSize.height || 60) / 2;
-    const toX = toPos.x + (toSize.width || 120) / 2;
-    const toY = toPos.y + (toSize.height || 60) / 2;
+    const fromX = fromPos.x + (fromSize.w || 120) / 2;
+    const fromY = fromPos.y + (fromSize.h || 60) / 2;
+    const toX = toPos.x + (toSize.w || 120) / 2;
+    const toY = toPos.y + (toSize.h || 60) / 2;
 
     // Presentation attributes for different edge types (B&W theme)
     let strokeColor = THEME.lineColor;
@@ -133,12 +133,12 @@ export async function renderBlockDiagramToSVG(diagram: BlockDiagram): Promise<st
   // Render nodes with presentation attributes for canvas compatibility (B&W theme)
   Object.entries(diagram.nodes).forEach(([id, node]) => {
     const pos = diagram.positions[id];
-    const size = diagram.sizes?.[id] || { width: 120, height: 60 };
+    const size = diagram.sizes?.[id] || { w: 120, h: 60 };
 
     if (!pos) return;
 
-    const nodeWidth = size.width || 120;
-    const nodeHeight = size.height || 60;
+    const nodeWidth = size.w || 120;
+    const nodeHeight = size.h || 60;
 
     if (node.shape === 'cloud') {
       // Cloud shape (simplified as ellipse) - uses secondary color
@@ -391,6 +391,19 @@ export async function svgToPng(svgString: string, scale: number = 2): Promise<Bl
     // Remove any existing width/height that might be too small
     svgWithDimensions = svgWithDimensions.replace(/(<svg[^>]*)\s+width="[^"]*"/i, '$1');
     svgWithDimensions = svgWithDimensions.replace(/(<svg[^>]*)\s+height="[^"]*"/i, '$1');
+
+    // Inject CSS overrides for Mermaid rendering issues that normally get fixed
+    // by src/index.css in the browser but aren't present when the SVG is
+    // serialized and converted to PNG for export.
+    const exportStyleOverrides = `<style>
+      /* ER diagram relationship labels — white fill instead of default black */
+      .relationshipLabelBox, g.relationshipLabel > rect { fill: #ffffff !important; stroke: #000000 !important; }
+      .relationshipLabel text, g.relationshipLabel text, g.relationshipLabel tspan { fill: #000000 !important; }
+      /* Edge labels — ensure text visible */
+      .edgeLabel rect, .edgeLabel .label-container { fill: #ffffff !important; }
+      .edgeLabel text, .edgeLabel tspan { fill: #000000 !important; }
+    </style>`;
+    svgWithDimensions = svgWithDimensions.replace(/(<svg[^>]*>)/, `$1${exportStyleOverrides}`);
 
     // Add proper dimensions
     svgWithDimensions = svgWithDimensions.replace(

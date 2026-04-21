@@ -49,7 +49,7 @@ sequenceDiagram
 - \`participant Alice\` - Declare participant
 - \`participant A as Alice\` - With alias
 - \`actor User\` - Actor (stick figure)
-- \`participant A as Alice<br/>Smith\` - Multiline with <br/>
+- \`participant A as Alice Smith\` - Spaces allowed in aliases with quotes if needed
 
 ### Messages (Arrows)
 | Syntax | Description |
@@ -117,7 +117,7 @@ end
 - ❌ \`A-->B\` (use \`A-->>B\` for dotted)
 - ❌ Spaces in participant names without quotes
 - ❌ Unmatched activate/deactivate
-- ❌ Using \\n in labels (use <br/> instead)
+- ❌ Using \\n or <br/> for line breaks in labels — keep labels as continuous text; the renderer wraps automatically based on width
 `,
 
   flowchart: `

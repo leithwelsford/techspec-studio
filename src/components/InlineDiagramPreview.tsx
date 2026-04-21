@@ -9,6 +9,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import mermaid from 'mermaid';
 import { wrapSequencePhasesInRect } from '../services/ai/parsers/mermaidParser';
+import { stripBrTagsFromMermaidSource } from '../utils/mermaidPostprocess';
 import type { BlockDiagram, MermaidDiagram, NodeMeta, Point, Size, EdgeDef, EdgeStyle } from '../types';
 
 interface InlineDiagramPreviewProps {
@@ -459,6 +460,38 @@ function preprocessMermaidSvg(svgString: string): { svg: string; maxWidth: numbe
     svgEl.removeAttribute('height');
     svgEl.removeAttribute('style');
 
+    // Mermaid wraps edge labels in <foreignObject> that can be too narrow,
+    // causing text to wrap mid-word. Widen them based on content length.
+    const foreignObjects = doc.querySelectorAll('foreignObject');
+    foreignObjects.forEach((fo) => {
+      const w = parseFloat(fo.getAttribute('width') || '0');
+      const child = fo.querySelector('div, span, p');
+      if (!child) return;
+      const html = (child as HTMLElement).innerHTML || '';
+      const lines = html.split(/<br\s*\/?>|\n/i).map(l => {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = l;
+        return (tmp.textContent || '').trim();
+      });
+      const longestLine = lines.reduce((max, l) => Math.max(max, l.length), 0);
+      const estimatedWidth = longestLine * 8 + 24;
+      if (estimatedWidth > w) {
+        fo.setAttribute('width', String(estimatedWidth));
+        fo.querySelectorAll('div, span, p').forEach(el => {
+          const existingStyle = el.getAttribute('style') || '';
+          const newStyle = existingStyle
+            .replace(/(^|;)\s*width\s*:[^;]*/gi, '')
+            .replace(/(^|;)\s*max-width\s*:[^;]*/gi, '')
+            + ';white-space: nowrap';
+          el.setAttribute('style', newStyle);
+        });
+      }
+    });
+
+    // Mid-word tspan merging was tried but incorrectly joined across
+    // user-intentional <br> breaks. See src/utils/mermaidPostprocess.ts
+    // for the removed logic and rationale.
+
     return { svg: new XMLSerializer().serializeToString(doc), maxWidth };
   }
 
@@ -496,7 +529,9 @@ function MermaidDiagramPreview({ diagram }: { diagram: MermaidDiagram; maxWidth?
       try {
         setError('');
         const uniqueId = `inline-mermaid-${diagram.id}-${Date.now()}`;
-        const renderCode = wrapSequencePhasesInRect(diagram.mermaidCode);
+        const renderCode = stripBrTagsFromMermaidSource(
+          wrapSequencePhasesInRect(diagram.mermaidCode)
+        );
         const { svg: renderedSvg } = await mermaid.render(uniqueId, renderCode);
         // Pre-process SVG to remove width/height, but extract max-width first
         const { svg: processedSvg, maxWidth: extractedMaxWidth } = preprocessMermaidSvg(renderedSvg);

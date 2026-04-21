@@ -117,3 +117,54 @@ body {
   border-radius: 4px;
   padding: 1rem;
 }
+
+/* ============================================
+   Mermaid Diagram Label Overrides
+   ============================================ */
+
+/* ER diagram relationship labels — Mermaid renders these as black
+   rectangles by default. Override to white fill + black stroke so
+   the label text is visible. */
+.er.relationshipLabelBox,
+[class*="relationshipLabelBox"],
+[id^="mermaid"] .er .relationshipLabelBox,
+[id^="mermaid"] g.relationshipLabel > rect,
+[id^="mermaid"] [aria-roledescription="er"] rect[stroke="#000000"][fill*="0"],
+[id^="mermaid"] [aria-roledescription="er"] g[class*="label"] > rect {
+  fill: #ffffff !important;
+  stroke: #000000 !important;
+}
+
+/* Ensure ER diagram relationship label text is black */
+.er.relationshipLabel,
+[class*="relationshipLabel"] text,
+.er.relationshipLabel text,
+[id^="mermaid"] [aria-roledescription="er"] g[class*="label"] text,
+[id^="mermaid"] [aria-roledescription="er"] g[class*="label"] tspan {
+  fill: #000000 !important;
+}
+
+/* Mermaid edge labels: force white background and keep text black.
+   State diagrams with bi-directional edges can have overlapping labels;
+   opaque backgrounds help visual separation. */
+.edgeLabel rect,
+.edgeLabel .label-container {
+  fill: #ffffff !important;
+  stroke: none !important;
+}
+
+.edgeLabel text,
+.edgeLabel foreignObject div {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
+/* Don't constrain edge label text width — let text flow naturally */
+.edgeLabel foreignObject {
+  overflow: visible !important;
+}
+
+.edgeLabel foreignObject div {
+  white-space: nowrap !important;
+  display: inline-block !important;
+}

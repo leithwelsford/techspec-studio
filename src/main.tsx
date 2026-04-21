@@ -44,12 +44,58 @@ mermaid.initialize({
     clusterBorder: '#000000',
     defaultLinkColor: '#000000',
     edgeLabelBackground: '#ffffff',
+    // ER diagrams — without these the relationship labels render as
+    // filled black rectangles with invisible text
+    attributeBackgroundColorEven: '#ffffff',
+    attributeBackgroundColorOdd: '#f5f5f5',
     // Font
     fontFamily: 'Arial, Helvetica, sans-serif',
+  },
+  // ER diagram config — fill/stroke for relationship labels
+  er: {
+    useMaxWidth: false,
+    fill: '#ffffff',
+    stroke: '#000000',
   },
   securityLevel: 'loose',
   fontFamily: 'Arial, Helvetica, sans-serif',
   suppressErrorRendering: true,
+  // Flowchart layout — generous spacing avoids label overlap.
+  // wrappingWidth: how wide a label can grow before Mermaid wraps it.
+  // Default is ~200px; 500 gives labels plenty of room to breathe.
+  flowchart: {
+    nodeSpacing: 60,
+    rankSpacing: 80,
+    padding: 20,
+    useMaxWidth: false,
+    curve: 'basis',
+    diagramPadding: 20,
+    htmlLabels: false,
+    wrappingWidth: 500,
+  } as any,
+  // State diagram layout — state diagrams with bi-directional transitions
+  // (A→B and B→A) stack their labels in the same space, so we need very
+  // generous rank spacing to separate them.
+  // htmlLabels: true uses HTML <div> in <foreignObject> so text doesn't
+  // get pre-wrapped into separate SVG tspans (casting to any because this
+  // option isn't in Mermaid's TS types for state diagrams but is supported).
+  state: {
+    nodeSpacing: 120,
+    rankSpacing: 200,
+    padding: 30,
+    useMaxWidth: false,
+    defaultRenderer: 'dagre-wrapper',
+    htmlLabels: true,
+    wrappingWidth: 500,
+  } as any,
+  // Sequence diagram layout
+  sequence: {
+    actorMargin: 60,
+    messageMargin: 45,
+    boxMargin: 15,
+    noteMargin: 15,
+    useMaxWidth: false,
+  },
 })
 
 // Initialize Mermaid docs cache in background (non-blocking)
