@@ -72,14 +72,18 @@ mermaid.initialize({
   },
   // State diagram layout — state diagrams with bi-directional transitions
   // (A→B and B→A) stack their labels in the same space, so we need very
-  // generous rank spacing to separate them
+  // generous rank spacing to separate them.
+  // htmlLabels: true uses HTML <div> in <foreignObject> so text doesn't
+  // get pre-wrapped into separate SVG tspans (casting to any because this
+  // option isn't in Mermaid's TS types for state diagrams but is supported).
   state: {
     nodeSpacing: 120,
     rankSpacing: 200,
     padding: 30,
     useMaxWidth: false,
     defaultRenderer: 'dagre-wrapper',
-  },
+    htmlLabels: true,
+  } as any,
   // Sequence diagram layout
   sequence: {
     actorMargin: 60,
