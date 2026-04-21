@@ -86,6 +86,7 @@ mermaid.initialize({
     useMaxWidth: false,
     defaultRenderer: 'dagre-wrapper',
     htmlLabels: true,
+    wrappingWidth: 500,
   } as any,
   // Sequence diagram layout
   sequence: {
