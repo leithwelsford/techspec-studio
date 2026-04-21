@@ -392,6 +392,19 @@ export async function svgToPng(svgString: string, scale: number = 2): Promise<Bl
     svgWithDimensions = svgWithDimensions.replace(/(<svg[^>]*)\s+width="[^"]*"/i, '$1');
     svgWithDimensions = svgWithDimensions.replace(/(<svg[^>]*)\s+height="[^"]*"/i, '$1');
 
+    // Inject CSS overrides for Mermaid rendering issues that normally get fixed
+    // by src/index.css in the browser but aren't present when the SVG is
+    // serialized and converted to PNG for export.
+    const exportStyleOverrides = `<style>
+      /* ER diagram relationship labels — white fill instead of default black */
+      .relationshipLabelBox, g.relationshipLabel > rect { fill: #ffffff !important; stroke: #000000 !important; }
+      .relationshipLabel text, g.relationshipLabel text, g.relationshipLabel tspan { fill: #000000 !important; }
+      /* Edge labels — ensure text visible */
+      .edgeLabel rect, .edgeLabel .label-container { fill: #ffffff !important; }
+      .edgeLabel text, .edgeLabel tspan { fill: #000000 !important; }
+    </style>`;
+    svgWithDimensions = svgWithDimensions.replace(/(<svg[^>]*>)/, `$1${exportStyleOverrides}`);
+
     // Add proper dimensions
     svgWithDimensions = svgWithDimensions.replace(
       /<svg/,
