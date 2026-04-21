@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import mermaid from 'mermaid';
 import { wrapSequencePhasesInRect } from '../../services/ai/parsers/mermaidParser';
+import { mergeMidWordTspans } from '../../utils/mermaidPostprocess';
 
 interface SequenceDiagramEditorProps {
   diagramId: string;
@@ -131,7 +132,7 @@ export default function SequenceDiagramEditor({ diagramId }: SequenceDiagramEdit
       const uniqueId = `mermaid-preview-${Date.now()}`;
       const renderCode = wrapSequencePhasesInRect(mermaidCode);
       const { svg } = await mermaid.render(uniqueId, renderCode);
-      setPreviewSvg(svg);
+      setPreviewSvg(mergeMidWordTspans(svg));
     } catch (err) {
       console.error('Mermaid rendering error:', err);
       setError(err instanceof Error ? err.message : 'Failed to render diagram');

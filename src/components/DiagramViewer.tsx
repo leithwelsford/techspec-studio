@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import mermaid from 'mermaid';
 import { wrapSequencePhasesInRect } from '../services/ai/parsers/mermaidParser';
+import { mergeMidWordTspans } from '../utils/mermaidPostprocess';
 import BlockDiagramEditor from './editors/BlockDiagramEditor';
 import SequenceDiagramEditor from './editors/SequenceDiagramEditor';
 import { GenerateDiagramsModal } from './ai/GenerateDiagramsModal';
@@ -666,7 +667,7 @@ function MermaidDiagramRenderer({ diagram }: { diagram: any }) {
         const renderCode = wrapSequencePhasesInRect(diagram.mermaidCode);
         const { svg } = await mermaid.render(uniqueId, renderCode);
         if (mounted) {
-          setSvgContent(svg);
+          setSvgContent(mergeMidWordTspans(svg));
         }
       } catch (err) {
         console.error('Mermaid rendering error:', err);
