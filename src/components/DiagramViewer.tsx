@@ -8,6 +8,7 @@ import { useProjectStore } from '../store/projectStore';
 import mermaid from 'mermaid';
 import { wrapSequencePhasesInRect } from '../services/ai/parsers/mermaidParser';
 import { mergeMidWordTspans, stripBrTagsFromMermaidSource } from '../utils/mermaidPostprocess';
+import { detectMermaidType } from '../utils/mermaidTypeDetect';
 import BlockDiagramEditor from './editors/BlockDiagramEditor';
 import SequenceDiagramEditor from './editors/SequenceDiagramEditor';
 import { GenerateDiagramsModal } from './ai/GenerateDiagramsModal';
@@ -250,16 +251,22 @@ export default function DiagramViewer() {
                     className="w-full text-left p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
                     <div className="flex items-start gap-3 pr-8">
-                    {/* Type Badge */}
-                    <span className={`mt-0.5 px-2 py-0.5 text-xs font-medium rounded ${
-                      diagram.type === 'block'
+                    {/* Type Badge — for Mermaid diagrams, detect actual type from source */}
+                    {(() => {
+                      const effectiveType = diagram.type === 'block'
+                        ? 'block'
+                        : (detectMermaidType((diagram as any).mermaidCode || '') || diagram.type);
+                      const badgeClass = effectiveType === 'block'
                         ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400'
-                        : diagram.type === 'sequence'
+                        : effectiveType === 'sequence'
                         ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-400'
-                        : 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-400'
-                    }`}>
-                      {diagram.type}
-                    </span>
+                        : 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-400';
+                      return (
+                        <span className={`mt-0.5 px-2 py-0.5 text-xs font-medium rounded ${badgeClass}`}>
+                          {effectiveType}
+                        </span>
+                      );
+                    })()}
 
                     <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-gray-900 dark:text-white text-sm truncate">
