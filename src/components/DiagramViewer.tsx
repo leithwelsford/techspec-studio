@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import mermaid from 'mermaid';
 import { wrapSequencePhasesInRect } from '../services/ai/parsers/mermaidParser';
-import { mergeMidWordTspans } from '../utils/mermaidPostprocess';
+import { mergeMidWordTspans, stripBrTagsFromMermaidSource } from '../utils/mermaidPostprocess';
 import BlockDiagramEditor from './editors/BlockDiagramEditor';
 import SequenceDiagramEditor from './editors/SequenceDiagramEditor';
 import { GenerateDiagramsModal } from './ai/GenerateDiagramsModal';
@@ -664,7 +664,9 @@ function MermaidDiagramRenderer({ diagram }: { diagram: any }) {
       try {
         setError('');
         const uniqueId = `mermaid-${diagram.id}-${Date.now()}`;
-        const renderCode = wrapSequencePhasesInRect(diagram.mermaidCode);
+        const renderCode = stripBrTagsFromMermaidSource(
+          wrapSequencePhasesInRect(diagram.mermaidCode)
+        );
         const { svg } = await mermaid.render(uniqueId, renderCode);
         if (mounted) {
           setSvgContent(mergeMidWordTspans(svg));

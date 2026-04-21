@@ -60,7 +60,9 @@ mermaid.initialize({
   securityLevel: 'loose',
   fontFamily: 'Arial, Helvetica, sans-serif',
   suppressErrorRendering: true,
-  // Flowchart layout — generous spacing avoids label overlap
+  // Flowchart layout — generous spacing avoids label overlap.
+  // wrappingWidth: how wide a label can grow before Mermaid wraps it.
+  // Default is ~200px; 500 gives labels plenty of room to breathe.
   flowchart: {
     nodeSpacing: 60,
     rankSpacing: 80,
@@ -68,8 +70,9 @@ mermaid.initialize({
     useMaxWidth: false,
     curve: 'basis',
     diagramPadding: 20,
-    htmlLabels: false,  // Use SVG text for labels (no foreignObject clipping)
-  },
+    htmlLabels: false,
+    wrappingWidth: 500,
+  } as any,
   // State diagram layout — state diagrams with bi-directional transitions
   // (A→B and B→A) stack their labels in the same space, so we need very
   // generous rank spacing to separate them.

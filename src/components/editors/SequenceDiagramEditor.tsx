@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import mermaid from 'mermaid';
 import { wrapSequencePhasesInRect } from '../../services/ai/parsers/mermaidParser';
-import { mergeMidWordTspans } from '../../utils/mermaidPostprocess';
+import { mergeMidWordTspans, stripBrTagsFromMermaidSource } from '../../utils/mermaidPostprocess';
 
 interface SequenceDiagramEditorProps {
   diagramId: string;
@@ -130,7 +130,9 @@ export default function SequenceDiagramEditor({ diagramId }: SequenceDiagramEdit
     try {
       setError('');
       const uniqueId = `mermaid-preview-${Date.now()}`;
-      const renderCode = wrapSequencePhasesInRect(mermaidCode);
+      const renderCode = stripBrTagsFromMermaidSource(
+        wrapSequencePhasesInRect(mermaidCode)
+      );
       const { svg } = await mermaid.render(uniqueId, renderCode);
       setPreviewSvg(mergeMidWordTspans(svg));
     } catch (err) {
