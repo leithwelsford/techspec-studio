@@ -487,39 +487,9 @@ function preprocessMermaidSvg(svgString: string): { svg: string; maxWidth: numbe
       }
     });
 
-    // Mermaid state diagrams pre-wrap edge labels into multiple <tspan>
-    // elements, often breaking mid-word ("Action=RESTRICT_ACCES" / "S").
-    // Detect consecutive tspans that end/start with alphanumerics (indicating
-    // mid-word break) and merge them back. User's intentional <br> breaks
-    // typically land at word boundaries (trailing/leading space) so they
-    // don't get merged.
-    const textElements = doc.querySelectorAll('text');
-    let mergedCount = 0;
-    textElements.forEach((textEl) => {
-      const tspans = Array.from(textEl.querySelectorAll('tspan.text-inner-tspan'));
-      if (tspans.length < 2) return;
-      // Walk backwards so we can merge without invalidating subsequent indices
-      for (let i = tspans.length - 2; i >= 0; i--) {
-        const curr = tspans[i];
-        const next = tspans[i + 1];
-        const currText = curr.textContent || '';
-        const nextText = next.textContent || '';
-        // Check if split happens mid-word:
-        // - current ends with alphanumeric/=/_/
-        // - next starts with alphanumeric/=/_
-        const currEnd = currText.slice(-1);
-        const nextStart = nextText.slice(0, 1);
-        const isMidWord = /[A-Za-z0-9=_\-]/.test(currEnd) && /[A-Za-z0-9=_\-]/.test(nextStart);
-        if (isMidWord) {
-          curr.textContent = currText + nextText;
-          next.remove();
-          mergedCount++;
-        }
-      }
-    });
-    if (mergedCount > 0) {
-      console.log(`[Mermaid Preprocess] Merged ${mergedCount} mid-word tspan splits`);
-    }
+    // Mid-word tspan merging was tried but incorrectly joined across
+    // user-intentional <br> breaks. See src/utils/mermaidPostprocess.ts
+    // for the removed logic and rationale.
 
     return { svg: new XMLSerializer().serializeToString(doc), maxWidth };
   }
