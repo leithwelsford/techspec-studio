@@ -460,31 +460,22 @@ function preprocessMermaidSvg(svgString: string): { svg: string; maxWidth: numbe
     svgEl.removeAttribute('style');
 
     // Mermaid wraps edge labels in <foreignObject> that can be too narrow,
-    // causing text to wrap mid-word. Widen any foreignObject whose content
-    // doesn't fit, measuring the longest <br>-separated line.
+    // causing text to wrap mid-word. Widen them based on content length.
     const foreignObjects = doc.querySelectorAll('foreignObject');
     foreignObjects.forEach((fo) => {
       const w = parseFloat(fo.getAttribute('width') || '0');
       const child = fo.querySelector('div, span, p');
       if (!child) return;
-      // Use innerHTML so <br> tags are detected as line separators
       const html = (child as HTMLElement).innerHTML || '';
-      // Split on <br> tags AND newlines
       const lines = html.split(/<br\s*\/?>|\n/i).map(l => {
-        // Strip any remaining HTML tags
         const tmp = document.createElement('div');
         tmp.innerHTML = l;
         return (tmp.textContent || '').trim();
       });
       const longestLine = lines.reduce((max, l) => Math.max(max, l.length), 0);
-      // Estimate width: ~8px per char for Arial 14pt + padding
       const estimatedWidth = longestLine * 8 + 24;
-      // Always widen if our estimate exceeds the current width (catches both
-      // tiny width=1 and modest widths that are still too narrow for the text)
       if (estimatedWidth > w) {
         fo.setAttribute('width', String(estimatedWidth));
-        // Also strip any explicit width/max-width from inner elements that
-        // might cause browser to wrap text anyway
         fo.querySelectorAll('div, span, p').forEach(el => {
           const existingStyle = el.getAttribute('style') || '';
           const newStyle = existingStyle
@@ -495,6 +486,40 @@ function preprocessMermaidSvg(svgString: string): { svg: string; maxWidth: numbe
         });
       }
     });
+
+    // Mermaid state diagrams pre-wrap edge labels into multiple <tspan>
+    // elements, often breaking mid-word ("Action=RESTRICT_ACCES" / "S").
+    // Detect consecutive tspans that end/start with alphanumerics (indicating
+    // mid-word break) and merge them back. User's intentional <br> breaks
+    // typically land at word boundaries (trailing/leading space) so they
+    // don't get merged.
+    const textElements = doc.querySelectorAll('text');
+    let mergedCount = 0;
+    textElements.forEach((textEl) => {
+      const tspans = Array.from(textEl.querySelectorAll('tspan.text-inner-tspan'));
+      if (tspans.length < 2) return;
+      // Walk backwards so we can merge without invalidating subsequent indices
+      for (let i = tspans.length - 2; i >= 0; i--) {
+        const curr = tspans[i];
+        const next = tspans[i + 1];
+        const currText = curr.textContent || '';
+        const nextText = next.textContent || '';
+        // Check if split happens mid-word:
+        // - current ends with alphanumeric/=/_/
+        // - next starts with alphanumeric/=/_
+        const currEnd = currText.slice(-1);
+        const nextStart = nextText.slice(0, 1);
+        const isMidWord = /[A-Za-z0-9=_\-]/.test(currEnd) && /[A-Za-z0-9=_\-]/.test(nextStart);
+        if (isMidWord) {
+          curr.textContent = currText + nextText;
+          next.remove();
+          mergedCount++;
+        }
+      }
+    });
+    if (mergedCount > 0) {
+      console.log(`[Mermaid Preprocess] Merged ${mergedCount} mid-word tspan splits`);
+    }
 
     return { svg: new XMLSerializer().serializeToString(doc), maxWidth };
   }
