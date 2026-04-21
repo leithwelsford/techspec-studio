@@ -459,25 +459,40 @@ function preprocessMermaidSvg(svgString: string): { svg: string; maxWidth: numbe
     svgEl.removeAttribute('height');
     svgEl.removeAttribute('style');
 
-    // Mermaid sometimes wraps edge labels in <foreignObject> with width="1"
-    // (or some other minimal value), causing labels to clip mid-word.
-    // Expand any tiny foreignObject widths to fit their HTML content.
+    // Mermaid wraps edge labels in <foreignObject> that can be too narrow,
+    // causing text to wrap mid-word. Widen any foreignObject whose content
+    // doesn't fit, measuring the longest <br>-separated line.
     const foreignObjects = doc.querySelectorAll('foreignObject');
     foreignObjects.forEach((fo) => {
       const w = parseFloat(fo.getAttribute('width') || '0');
-      // If width is suspiciously small, expand it
-      if (w > 0 && w < 200) {
-        // Measure HTML content — find first div/span with text
-        const child = fo.querySelector('div, span, p');
-        if (child) {
-          const text = child.textContent || '';
-          // Estimate width: ~7px per character (Arial 12pt)
-          // Use the longest line if there are line breaks
-          const lines = text.split(/\n|<br\s*\/?>/i);
-          const longestLine = lines.reduce((max, l) => Math.max(max, l.length), 0);
-          const estimatedWidth = Math.max(w, longestLine * 7 + 20);
-          fo.setAttribute('width', String(estimatedWidth));
-        }
+      const child = fo.querySelector('div, span, p');
+      if (!child) return;
+      // Use innerHTML so <br> tags are detected as line separators
+      const html = (child as HTMLElement).innerHTML || '';
+      // Split on <br> tags AND newlines
+      const lines = html.split(/<br\s*\/?>|\n/i).map(l => {
+        // Strip any remaining HTML tags
+        const tmp = document.createElement('div');
+        tmp.innerHTML = l;
+        return (tmp.textContent || '').trim();
+      });
+      const longestLine = lines.reduce((max, l) => Math.max(max, l.length), 0);
+      // Estimate width: ~8px per char for Arial 14pt + padding
+      const estimatedWidth = longestLine * 8 + 24;
+      // Always widen if our estimate exceeds the current width (catches both
+      // tiny width=1 and modest widths that are still too narrow for the text)
+      if (estimatedWidth > w) {
+        fo.setAttribute('width', String(estimatedWidth));
+        // Also strip any explicit width/max-width from inner elements that
+        // might cause browser to wrap text anyway
+        fo.querySelectorAll('div, span, p').forEach(el => {
+          const existingStyle = el.getAttribute('style') || '';
+          const newStyle = existingStyle
+            .replace(/(^|;)\s*width\s*:[^;]*/gi, '')
+            .replace(/(^|;)\s*max-width\s*:[^;]*/gi, '')
+            + ';white-space: nowrap';
+          el.setAttribute('style', newStyle);
+        });
       }
     });
 
