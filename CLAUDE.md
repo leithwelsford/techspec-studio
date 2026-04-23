@@ -27,6 +27,10 @@ cd server && npm run dev                    # With --watch hot reload
 docker-compose up                           # Both frontend + pandoc via Docker
 ```
 
+Endpoints (see [server/pandoc-service.js](server/pandoc-service.js)):
+- `GET /api/health` — checks pandoc binary is installed
+- `POST /api/export-pandoc` — multipart: `markdown`, `template` (.docx), optional `images[]`, `luaFilter`; returns DOCX binary
+
 **Note**: Dev server uses `strictPort: true` on port 3000 and binds `0.0.0.0` (for Docker). If port is in use, it will fail rather than try another port.
 
 **Dev Server Logging**: A custom Vite plugin (`vite.config.ts`) exposes `/api/log` — the browser POSTs cache hit/miss stats, fix progress, and generation events, which print to the terminal with color-coded output. This is how you monitor AI cost and caching during development.
@@ -66,7 +70,7 @@ docker-compose up                           # Both frontend + pandoc via Docker
 
 6. **TypeScript strict mode** - `noUnusedLocals` and `noUnusedParameters` enforced in tsconfig.json. Prefix unused params with underscore: `(_event: Event) => {}`
 
-7. **Never re-initialize Mermaid** - Mermaid is initialized once in `main.tsx`. Components should use `mermaid.render()` directly, never call `mermaid.initialize()`:
+7. **Never re-initialize Mermaid** - Mermaid is initialized once in [src/main.tsx:9](src/main.tsx#L9). Components should use `mermaid.render()` directly, never call `mermaid.initialize()`:
    ```typescript
    // ✅ CORRECT - use render directly
    import mermaid from 'mermaid';
@@ -91,21 +95,9 @@ docker-compose up                           # Both frontend + pandoc via Docker
 - [src/services/ai/contextManager.ts](src/services/ai/contextManager.ts) - Token budget allocation
 - [server/pandoc-service.js](server/pandoc-service.js) - Pandoc backend (Express)
 
-**Directory Structure**:
-```
-src/
-├── components/         # React components
-│   ├── ai/            # AI-related UI (ChatPanel, ReviewPanel, etc.)
-│   ├── editors/       # MarkdownEditor, BlockDiagramEditor, SequenceDiagramEditor
-│   └── documents/     # Reference document handling
-├── services/
-│   ├── ai/            # AI service, prompts, parsers, context management
-│   └── storage/       # IndexedDB document storage
-├── store/             # Zustand store (projectStore.ts)
-├── types/             # TypeScript types (index.ts)
-├── utils/             # Utilities (encryption, export, markdown processing)
-└── data/templates/    # Spec templates (3GPP, IEEE, ISO)
-```
+**Repo roots worth knowing**:
+- [samples/](samples/) — sample BRS and draft spec used for manual testing of the generation workflow
+- [scripts/](scripts/) — one-off Node inspection scripts (approval data, document validation); `scripts/legacy/` holds archived Python utilities
 
 ## Architecture
 
@@ -118,7 +110,7 @@ All state in `projectStore.ts` with IndexedDB persistence (middleware in `src/ut
 
 **Storage Pattern**:
 - **localStorage** (`tech-spec-project` key): Zustand store state (project, AI config, chat history)
-- **IndexedDB** (`techspec-documents` database): Large binary data (PDFs, DOCX templates) via `documentStorage.ts`
+- **IndexedDB** (`techspec-documents` DB v1, object store `reference-documents`, keyPath `id`, indexes `by-filename` and `by-uploadedAt`): large binary data (PDFs, DOCX templates) via `documentStorage.ts` — 20MB per-file cap
 - Store holds references (IDs) to IndexedDB documents
 
 ### AI Service Layer
@@ -167,18 +159,13 @@ Generate → Create PendingApproval → User reviews in ReviewPanel → Approve 
 | Block diagrams | Custom SVG (JSON) | BlockDiagramEditor.tsx | Architecture, network topology, interactive editing |
 | All other diagrams | Mermaid.js | SequenceDiagramEditor.tsx | 23 Mermaid types - see below |
 
-**Supported Mermaid types** (AI selects based on `<!-- TODO: [DIAGRAM TYPE] -->` comments):
-- **Core:** sequence, flow, state, class, er
-- **Planning:** gantt, timeline, kanban
-- **Data viz:** pie, quadrant, xy, sankey, radar, treemap
-- **Architecture:** c4, architecture, block-beta
-- **Other:** mindmap, journey, gitgraph, requirement, zenuml, packet
+AI selects the Mermaid subtype from `<!-- TODO: [DIAGRAM TYPE] -->` comments (23 subtypes supported — see [src/services/ai/prompts/diagramPrompts.ts](src/services/ai/prompts/diagramPrompts.ts) for the full list).
 
 **Parsers** (`src/services/ai/parsers/`): Convert AI text responses into structured diagram data:
 - `blockDiagramParser.ts` - Extracts nodes/edges from AI response
 - `mermaidParser.ts` - Extracts and validates Mermaid code blocks
 
-**Mermaid Self-Healing** (`src/services/mermaidSelfHealer.ts`): AI-powered automatic fix for Mermaid syntax errors. When a diagram fails to render, the self-healer sends the error and code to AI for correction.
+**Mermaid Self-Healing** (`src/services/mermaidSelfHealer.ts`): AI-powered automatic fix for Mermaid syntax errors. When a diagram fails to render, the self-healer sends the error and code to AI for correction. Caps at `maxIterations = 3` per diagram to bound cost; proposes fixes for user review rather than auto-applying.
 
 **Mermaid Docs Cache** (`src/services/ai/mermaidDocsCache.ts`): Pre-fetches and caches Mermaid documentation at app startup (non-blocking). Provides syntax examples to AI for accurate diagram generation and error correction.
 
@@ -265,13 +252,6 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed solutions.
 - **Import errors with `@/`**: Use relative imports only
 - **State not persisting**: Check console for IndexedDB errors
 - **Mermaid not rendering**: Validate at https://mermaid.live
-
-**Clearing Data**:
-```javascript
-localStorage.removeItem('tech-spec-project');
-indexedDB.deleteDatabase('techspec-documents');
-location.reload();
-```
 
 **Debugging Store State**:
 ```javascript
