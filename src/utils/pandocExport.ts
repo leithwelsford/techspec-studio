@@ -420,6 +420,33 @@ export async function exportWithPandoc(
     );
   }
 
+  // Pandoc's default markdown reader has `blank_before_header` enabled: an ATX
+  // heading must be preceded by a blank line, otherwise it is treated as a
+  // paragraph continuation and the `#` renders as literal text.
+  // The authored markdown frequently lacks this blank line, which drops whole
+  // sections in the exported DOCX. Insert one when missing (outside code blocks).
+  {
+    const lines = resolvedMarkdown.split('\n');
+    const out: string[] = [];
+    let inFencedCode = false;
+    let insertions = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^```/.test(line)) inFencedCode = !inFencedCode;
+      const isAtxHeading = !inFencedCode && /^#{1,6}[ \t]/.test(line);
+      const prev = out[out.length - 1];
+      if (isAtxHeading && prev !== undefined && prev.trim() !== '') {
+        out.push('');
+        insertions++;
+      }
+      out.push(line);
+    }
+    if (insertions > 0) {
+      console.log(`[Pandoc Export] ✓ Inserted ${insertions} blank line(s) before ATX headings (Pandoc blank_before_header requirement)`);
+    }
+    resolvedMarkdown = out.join('\n');
+  }
+
   // Handle heading numbering based on numberingMode
   // Default to 'template' mode which strips manual numbers (most templates have auto-numbering)
   const numberingMode = options.numberingMode ?? 'template';
